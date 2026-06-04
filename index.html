@@ -1,0 +1,2504 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>JCL Gruppen</title>
+
+<link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+  <!-- =========================================================
+     ST1 — ERSTE STARTSEITE / SPORTAUSWAHL
+     Первая страница сайта: выбор вида спорта
+========================================================= -->
+
+<section id="sportStartScreen" class="sport-start-screen">
+  <div class="sport-start-inner">
+
+    <header class="sport-start-header">
+      <div class="sport-start-title-block">
+        <div class="sport-start-main-logo">JCL</div>
+        <h1>Willkommen beim JCL</h1>
+        <p>Judo Club Langenfeld e.V.</p>
+      </div>
+
+      <img
+        id="clubRoundLogo"
+        class="sport-start-club-logo"
+        src=""
+        alt="Judo Club Langenfeld Logo"
+      >
+    </header>
+
+    <main>
+      <div id="sportStartGrid" class="sport-start-grid"></div>
+    </main>
+
+    <section id="sponsorFutureArea" class="sponsor-future-area">
+      <!-- Später: Werbung / Sponsorenlogos -->
+    </section>
+
+    <footer class="sport-start-footer">
+      <strong>JCL</strong>
+      <span>Judo Club Langenfeld e.V.</span>
+    </footer>
+
+  </div>
+</section>
+
+<div id="appBox" class="box hidden">
+
+
+
+  <div class="top-header">
+  <div class="top-title-block">
+    <h1>JCL-Gruppen</h1>
+  </div>
+
+  <div id="topSponsorLogos" class="top-sponsor-logos"></div>
+
+  <div id="topNavButtons" class="top-icon-actions hidden">
+
+  <button class="icon-nav-btn" onclick="goBack()" title="Zurück">
+    <img class="nav-icon-img"
+      src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/Back.png">
+  </button>
+
+  <button class="icon-nav-btn" onclick="goRoleHome()" title="Startseite">
+    <img class="nav-icon-img"
+      src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/Home.png">
+  </button>
+
+  <button class="icon-nav-btn" onclick="goHome()" title="Logout">
+    <img class="nav-icon-img"
+      src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/Exit.png">
+  </button>
+
+</div>
+
+<div id="adminTopClubLogoBox">
+  <img id="adminTopClubLogo" src="" alt="Club Logo">
+</div>
+
+
+</div>
+
+
+
+  <!-- =========================================================
+     ST2 — LOGIN-SEITE / TRAINER ODER VERWALTUNG
+     Вторая страница: выбор тренера/администрации и PIN
+========================================================= -->
+
+<div id="loginScreen" class="login-screen-st2 hidden">
+
+  <button class="st2-back-btn" onclick="backToSportStartFromLogin()">
+    ← Zurück
+  </button>
+
+  <div class="st2-login-panel">
+
+    <div class="st2-header">
+
+      <div class="st2-logo-block">
+        <div class="st2-main-logo">JCL</div>
+        <div class="st2-club-name">Judo Club Langenfeld e.V.</div>
+      </div>
+
+      <img
+        id="st2ClubLogo"
+        class="st2-club-logo"
+        src=""
+        alt="Judo Club Langenfeld Logo">
+
+    </div>
+
+    <div class="st2-selected-sport">
+      <img id="st2SportIcon" class="st2-sport-icon" src="" alt="">
+      <div id="st2SportName" class="st2-sport-name">JUDO</div>
+    </div>
+
+    <h2 id="st2LoginTitle" class="st2-login-title">
+      Bitte wählen Sie Ihren Trainer
+    </h2>
+
+    <select id="trainerSelect" class="st2-select"></select>
+
+    <label class="st2-pin-label">PIN-Code eingeben</label>
+
+    <div class="st2-pin-row">
+      <input
+        id="pinInput"
+        class="st2-pin-input"
+        type="password"
+        placeholder="PIN-Code">
+
+      <button
+        type="button"
+        class="st2-eye-btn"
+        onclick="togglePinVisibility()">
+        👁
+      </button>
+    </div>
+
+    <button class="st2-login-btn" onclick="login()">
+      🔒 ANMELDEN
+    </button>
+
+    <div id="loginStatus" class="st2-login-status"></div>
+
+  </div>
+
+</div>
+
+  <div id="mainScreen" class="hidden">
+    <h2 id="welcome"></h2>
+    <div id="currentGroupInfo"
+     style="
+       font-size:18px;
+       font-weight:bold;
+       margin-top:10px;
+       margin-bottom:20px;
+     ">
+  Aktuelle Gruppe: -
+</div>
+
+   <!-- Alte große Navigationsbuttons entfernt -->
+
+<div id="mainStatus" class="status"></div>
+
+    <div id="adminScreen" class="hidden">
+  <h2>Admin Dashboard</h2>
+  <p class="small">Wähle einen Bereich aus.</p>
+
+  <div class="admin-dashboard admin-dashboard-bg">
+
+  <button class="dashboard-card" onclick="showPromoTransition(()=>showAdminStudentScreen())">
+  <div class="dashboard-title">Schülerliste</div>
+  <div class="dashboard-text">Schüler ansehen, bearbeiten und archivieren</div>
+</button>
+
+<button class="dashboard-card empty-card" type="button"></button>
+
+<button class="dashboard-card" onclick="showPromoTransition(()=>showClubStatistikScreen())">
+  <div class="dashboard-title">Club Statistik</div>
+  <div class="dashboard-text">Alter, OBI und Schülerzahlen auswerten</div>
+</button>
+
+<button class="dashboard-card secondary-card" onclick="showPromoTransition(()=>showAddGroup())">
+  <div class="dashboard-title">Neue Gruppe hinzufügen</div>
+  <div class="dashboard-text">Neue Trainingsgruppe erstellen</div>
+</button>
+
+<button class="dashboard-card" onclick="showPromoTransition(()=>openTrainerStatistikFromAdmin())">
+  <div class="dashboard-title">Trainer Statistik</div>
+  <div class="dashboard-text">Trainer, Gruppen und Schüler anzeigen</div>
+</button>
+
+<button class="dashboard-card secondary-card" onclick="showPromoTransition(()=>showAddTrainer())">
+  <div class="dashboard-title">Trainer / Admin / Buchhaltung hinzufügen</div>
+  <div class="dashboard-text">Trainer-, Admin- und Buchhaltungskonten verwalten</div>
+</button>
+
+<button class="dashboard-card" onclick="showAdminBuchhaltungScreen()">
+  <div class="dashboard-title">Administrator / Buchhaltung</div>
+  <div class="dashboard-text">Admin- und Buchhaltungsdaten verwalten</div>
+</button>
+
+<button class="dashboard-card secondary-card" onclick="showPromoTransition(()=>showSportManagementScreen())">
+  <div class="dashboard-title">Sportarten verwalten</div>
+  <div class="dashboard-text">Sportarten hinzufügen, aktivieren oder deaktivieren</div>
+</button>
+
+<button class="dashboard-card disabled-card" type="button">
+  <div class="dashboard-title">Einstellungen</div>
+  <div class="dashboard-text">Kommt später</div>
+</button>
+
+<button
+class="dashboard-card secondary-card"
+onclick="showPromoTransition(()=>showDeleteCandidatesScreen())">
+
+<div class="dashboard-title">
+🗑 Löschkandidaten
+</div>
+
+
+
+<div class="dashboard-text">
+Super-Archiv prüfen und bereinigen
+</div>
+
+</button>
+
+
+
+<button class="dashboard-card disabled-card" type="button">
+  <div class="dashboard-title">Benutzer & Rechte</div>
+  <div class="dashboard-text">Kommt später</div>
+</button>
+
+<button
+  class="dashboard-card secondary-card"
+  onclick="showPromoTransition(()=>showSponsorManagementScreen())">
+
+  <div class="dashboard-title">
+    Werbung / Sponsoren
+  </div>
+
+  <div class="dashboard-text">
+    Sponsorenlogos verwalten und aktivieren
+  </div>
+
+</button>
+
+</div>
+</div>
+
+<div id="sponsorManagementScreen" class="hidden">
+
+  <div class="trainer-overview-card">
+
+    <div class="trainer-overview-title">
+      <div class="trainer-overview-icon">📢</div>
+      <div>
+        <h2>Werbung / Sponsoren</h2>
+        <div class="small">
+          Sponsorenlogos verwalten, aktivieren und deaktivieren.
+        </div>
+      </div>
+    </div>
+
+    <button
+      class="save"
+      onclick="document.getElementById('sponsorUploadInput').click()">
+      + Sponsor hinzufügen
+    </button>
+
+    <input
+      id="sponsorUploadInput"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      onchange="uploadSponsorLogo(event)"
+    >
+
+    <div id="sponsorLogoList">
+      Sponsorenlogos werden geladen...
+    </div>
+
+  </div>
+
+  <div class="trainer-overview-card" style="margin-top:24px;">
+
+    <div class="trainer-overview-title">
+      <div class="trainer-overview-icon">🎬</div>
+      <div>
+        <h2>Popup Werbung</h2>
+        <div class="small">
+          Übergangs-Bilder verwalten (Promo Transition).
+        </div>
+      </div>
+    </div>
+
+    <button
+      class="save"
+      onclick="document.getElementById('promoTransitionUploadInput').click()">
+      + Popup-Bild hinzufügen
+    </button>
+
+    <input
+      id="promoTransitionUploadInput"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      onchange="uploadPromoTransitionImage(event)"
+    >
+
+    <div class="popup-settings-card">
+      <div class="popup-settings-title">⚙️ Einstellungen</div>
+
+      <div class="popup-settings-label">Modus</div>
+      <div class="popup-mode-grid">
+        <div class="popup-mode-card" data-mode="random" onclick="selectPopupMode('random')">
+          <div class="popup-mode-icon">🔀</div>
+          <div class="popup-mode-name">Zufällig</div>
+          <div class="popup-mode-desc">Zufällige Auswahl</div>
+        </div>
+        <div class="popup-mode-card" data-mode="sequence" onclick="selectPopupMode('sequence')">
+          <div class="popup-mode-icon">📋</div>
+          <div class="popup-mode-name">Reihenfolge</div>
+          <div class="popup-mode-desc">Bilder nacheinander anzeigen</div>
+        </div>
+        <div class="popup-mode-card" data-mode="fixed" onclick="selectPopupMode('fixed')">
+          <div class="popup-mode-icon">🖼</div>
+          <div class="popup-mode-name">Festes Bild</div>
+          <div class="popup-mode-desc">Immer dasselbe Bild anzeigen</div>
+        </div>
+      </div>
+
+      <div id="popupFixedImageRow" class="popup-fixed-row" style="display:none;">
+        <div class="popup-settings-label">Festes Bild auswählen</div>
+        <select id="popupFixedImageSelect"
+          class="popup-select"
+          onchange="markPopupDirty()">
+        </select>
+      </div>
+
+      <div class="popup-duration-row">
+        <div class="popup-settings-label">Anzeigedauer</div>
+        <select id="popupDurationSelect"
+          class="popup-select"
+          onchange="markPopupDirty()">
+          <option value="2">2 Sekunden</option>
+          <option value="3" selected>3 Sekunden</option>
+          <option value="4">4 Sekunden</option>
+          <option value="5">5 Sekunden</option>
+          <option value="7">7 Sekunden</option>
+          <option value="10">10 Sekunden</option>
+        </select>
+        <div class="popup-hint">Empfohlen: 2–10 Sekunden</div>
+      </div>
+
+      <button id="popupSaveBtn" class="popup-save-btn popup-save-btn--idle" onclick="savePopupTransitionSettings()">
+        💾 Einstellungen speichern
+      </button>
+    </div>
+
+    <div id="promoTransitionImageList">
+      Popup-Bilder werden geladen...
+    </div>
+
+    <div class="popup-info-card">
+      <div class="popup-info-title">ℹ️ Wie funktioniert das System?</div>
+      <div class="popup-info-grid">
+        <div><b>🔀 Zufällig</b><br>Bei jedem Übergang wird ein zufälliges aktives Bild gewählt.</div>
+        <div><b>📋 Reihenfolge</b><br>Aktive Bilder werden der Reihe nach angezeigt.</div>
+        <div><b>🖼 Festes Bild</b><br>Es wird immer das ausgewählte Bild angezeigt.</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div id="deleteCandidatesScreen" class="hidden">
+
+  <div class="trainer-overview-card">
+
+    <div class="trainer-overview-title">
+      <div class="trainer-overview-icon">🗑</div>
+      <div>
+        <h2>Löschkandidaten</h2>
+        <div class="small">
+          Super-Archiv prüfen und endgültig bereinigen.
+        </div>
+      </div>
+    </div>
+
+    <div id="deleteCandidatesSummary" class="club-summary-grid"></div>
+
+    <div id="deleteCandidatesList">
+      Daten werden geladen...
+    </div>
+
+  </div>
+
+</div>
+
+     <div id="editTrainerScreen" class="hidden">
+
+      <div class="edit-trainer-dark-header">
+
+  <div class="edit-trainer-dark-title-wrap">
+    <div class="edit-trainer-dark-icon">✏️</div>
+
+    <div>
+      <h2 id="editTrainerMainTitle">Trainer bearbeiten</h2>
+      <div class="edit-trainer-dark-subtitle">
+        <span id="editTrainerMainSubtitle">
+  Bearbeite Trainerdaten und Gruppenzuordnung.
+</span>
+
+
+      </div>
+    </div>
+  </div>
+
+  <img
+    id="editTrainerTopClubLogo"
+    class="edit-trainer-top-logo"
+    src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_JCL_logo.png"
+    alt="JCL Logo"
+  >
+
+</div>
+
+  <div class="add-trainer-modern-card">
+
+    <div class="add-trainer-hero">
+      <div class="add-trainer-hero-icon">✏️</div>
+      <div>
+        <h2 id="editTrainerCardTitle">
+Trainer bearbeiten
+</h2>
+        <span id="editTrainerMainSubtitle">
+Bearbeite Trainerdaten und Gruppenzuordnung.
+</span>
+      </div>
+    </div>
+
+    <div id="editTrainerSuccessBox" class="trainer-edit-message hidden"></div>
+
+    <div class="add-trainer-section-title">
+      <div class="add-trainer-section-icon">👤</div>
+      <div>
+        <h3 id="editTrainerInfoTitle">Trainer Informationen</h3>
+        <span id="editTrainerInfoSubtitle">
+  Grundlegende Daten des Trainers
+</span>
+      </div>
+    </div>
+
+    <input id="editTrainerIdHidden" type="hidden">
+
+    <div class="add-trainer-form-grid">
+
+      <div class="add-trainer-field">
+        <label>Nachname</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">👤</div>
+          <input id="editTrainerNachnameNew" placeholder="Nachname">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Vorname</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">👤</div>
+          <input id="editTrainerVornameNew" placeholder="Vorname">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Telefon</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">📞</div>
+          <input id="editTrainerTelefonNew" placeholder="Telefon">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>E-Mail</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">✉️</div>
+          <input id="editTrainerEmailNew" placeholder="E-Mail">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>PIN</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🔑</div>
+          <input id="editTrainerPinNew" placeholder="PIN">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Rolle</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🛡️</div>
+          <select id="editTrainerRoleNew">
+            <option value="Trainer">Trainer</option>
+            <option value="Admin">Admin</option>
+            <option value="Buchhaltung">Buchhaltung</option>
+          </select>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="add-trainer-modern-card">
+
+    <div class="add-trainer-section-title">
+      <div class="add-trainer-section-icon">👥</div>
+      <div>
+        <h3>Gruppen zuweisen</h3>
+        <div class="small">
+          Wähle die Gruppen aus, die dieser Trainer betreuen soll.
+        </div>
+      </div>
+    </div>
+
+    <div id="editTrainerGroupsBoxNew" class="add-trainer-groups-box"></div>
+
+  </div>
+
+  <div class="add-trainer-buttons">
+    <button class="add-trainer-cancel" onclick="backToTrainerStatistik()">✕ Abbrechen</button>
+    <button class="add-trainer-save" onclick="saveEditedTrainer()">✓ Änderungen speichern</button>
+  </div>
+
+</div>
+
+    <div id="addTrainerScreen" class="hidden">
+
+  <div class="add-trainer-modern-card">
+
+    <div class="add-trainer-hero">
+      <div class="add-trainer-hero-left">
+
+  <div class="add-trainer-hero-icon">👤</div>
+
+  <div>
+    <h2>Neuen Trainer hinzufügen</h2>
+
+    <div class="small">
+      Erstelle einen neuen Trainer und weise ihn Gruppen zu.
+    </div>
+  </div>
+
+</div>
+
+<div class="add-trainer-hero-logo">
+  <img
+    src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_JCL_logo.png"
+    alt="JCL Logo"
+  >
+</div>
+    </div>
+
+<div id="addTrainerSuccessBox" class="add-trainer-success-box hidden"></div>
+
+    <div class="add-trainer-section-title">
+      <div class="add-trainer-section-icon">👤</div>
+      <div>
+        <h3>Trainer Informationen</h3>
+        <div class="small">Grundlegende Daten des Trainers</div>
+      </div>
+    </div>
+
+<div class="add-trainer-field">
+  <label>Sportart</label>
+
+  <div class="add-trainer-input-row">
+    <div class="add-trainer-field-icon">🏅</div>
+
+    <select
+      id="newTrainerSport"
+      onchange="handleNewTrainerSportChange()"
+    >
+      <option value="">
+        Keine Sportart / Verwaltung
+      </option>
+    </select>
+
+  </div>
+</div>
+
+    <div class="add-trainer-form-grid">
+
+      
+
+      <div class="add-trainer-field">
+        <label>Nachname</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">👤</div>
+          <input id="newTrainerNachname" placeholder="Nachname">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Vorname</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">👤</div>
+          <input id="newTrainerVorname" placeholder="Vorname">
+        </div>
+      </div>
+
+<div class="add-trainer-field">
+  <label>Telefon</label>
+  <div class="add-trainer-input-row">
+    <div class="add-trainer-field-icon">📞</div>
+    <input id="newTrainerTelefon" placeholder="Telefon">
+  </div>
+</div>
+
+<div class="add-trainer-field">
+  <label>E-Mail</label>
+  <div class="add-trainer-input-row">
+    <div class="add-trainer-field-icon">✉️</div>
+    <input id="newTrainerEmail" placeholder="E-Mail">
+  </div>
+</div>
+
+      <div class="add-trainer-field">
+        <label>PIN</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🔑</div>
+          <input id="newTrainerPin" placeholder="PIN">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Rolle</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🛡️</div>
+          <select id="newTrainerRole">
+            <option value="Trainer">Trainer</option>
+            <option value="Admin">Admin</option>
+            <option value="Buchhaltung">Buchhaltung</option>
+          </select>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div id="newTrainerGroupsCard" class="add-trainer-modern-card hidden">
+
+    <div class="add-trainer-section-title">
+      <div class="add-trainer-section-icon">👥</div>
+      <div>
+        <h3>Gruppen zuweisen</h3>
+        <div class="small">
+          Wähle die Gruppen aus, die dieser Trainer betreuen soll.
+        </div>
+      </div>
+    </div>
+
+    <div id="newTrainerGroupsBox" class="add-trainer-groups-box"></div>
+
+  </div>
+
+  <div class="add-trainer-buttons">
+    <button class="add-trainer-cancel" onclick="goBack()">✕ Abbrechen</button>
+    <button class="add-trainer-save" onclick="saveNewTrainer()">✓ Trainer speichern</button>
+  </div>
+
+</div>
+
+<div id="editGroupScreen" class="hidden">
+
+  <div class="add-group-card">
+
+   <div class="add-group-header">
+
+  <div class="add-group-header-icon">
+    <img
+      src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/Stud_Edit.png"
+      alt="Edit"
+      class="header-action-icon">
+  </div>
+
+  <div>
+    <h2>Gruppe bearbeiten</h2>
+    <div class="small">
+      Gruppendaten ändern und speichern.
+    </div>
+  </div>
+
+</div>
+
+    <div id="editGroupSuccessBox" class="group-edit-success-box hidden"></div>
+
+    <input id="editGroupIdHidden" type="hidden">
+
+    <div class="add-group-grid">
+
+      
+
+      <div>
+        <label>Gruppenname</label>
+        <div class="input-icon-row">
+          <div class="field-icon purple">👥</div>
+          <input id="editGroupNameNew" placeholder="Gruppenname">
+        </div>
+      </div>
+
+      <div>
+        <label>GruppeID</label>
+        <div class="input-icon-row">
+          <div class="field-icon blue">ID</div>
+          <input id="editGroupIdDisplay" disabled>
+        </div>
+      </div>
+
+<div>
+<label>Trainer</label>
+
+<div class="input-icon-row">
+
+<div class="field-icon purple">👨‍🏫</div>
+
+<div class="multi-select-box">
+
+<button
+type="button"
+class="multi-select-button"
+onclick="toggleEditGroupTrainerBox()">
+
+<span id="editGroupSelectedTrainerText">
+Trainer auswählen...
+</span>
+
+<span>▾</span>
+
+</button>
+
+<div
+id="editGroupTrainerCheckboxBox"
+class="multi-select-dropdown hidden">
+</div>
+
+</div>
+
+</div>
+</div>
+</div>
+
+      <div>
+        <label>Alter</label>
+        <div class="input-icon-row">
+          <div class="field-icon green">📅</div>
+          <input id="editGroupAlterNew" placeholder="z.B. 10–12">
+        </div>
+      </div>
+
+      <div>
+        <label>Niveau</label>
+        <div class="input-icon-row">
+          <div class="field-icon blue">📊</div>
+          <input id="editGroupNiveauNew" placeholder="z.B. Anfänger">
+        </div>
+      </div>
+
+      <div>
+<label>Trainingstage</label>
+
+<div class="input-icon-row">
+<div class="field-icon green">📅</div>
+
+<div class="multi-select-box">
+<button
+type="button"
+class="multi-select-button"
+onclick="toggleEditTrainingDaysBox()">
+
+<span id="editSelectedTrainingDaysText">
+Trainingstage auswählen...
+</span>
+
+<span>⌄</span>
+</button>
+
+<div
+id="editTrainingDaysCheckboxBox"
+class="multi-select-dropdown hidden">
+
+<label class="check-line">
+<input type="checkbox" value="Mo" onchange="updateEditTrainingDaysText()">
+Montag
+</label>
+
+<label class="check-line">
+<input type="checkbox" value="Di" onchange="updateEditTrainingDaysText()">
+Dienstag
+</label>
+
+<label class="check-line">
+<input type="checkbox" value="Mi" onchange="updateEditTrainingDaysText()">
+Mittwoch
+</label>
+
+<label class="check-line">
+<input type="checkbox" value="Do" onchange="updateEditTrainingDaysText()">
+Donnerstag
+</label>
+
+<label class="check-line">
+<input type="checkbox" value="Fr" onchange="updateEditTrainingDaysText()">
+Freitag
+</label>
+
+<label class="check-line">
+<input type="checkbox" value="Sa" onchange="updateEditTrainingDaysText()">
+Samstag
+</label>
+
+<label class="check-line">
+<input type="checkbox" value="So" onchange="updateEditTrainingDaysText()">
+Sonntag
+</label>
+
+</div>
+</div>
+
+<input id="editGroupTrainingstagNew" type="hidden">
+</div>
+</div>
+
+<div>
+<label>Trainingszeit pro Tag</label>
+
+<div class="input-icon-row">
+<div class="field-icon orange">🕒</div>
+
+<div id="editTrainingDayTimesBox" class="day-times-box">
+<div class="small">Bitte zuerst Trainingstage auswählen.</div>
+</div>
+
+<input id="editGroupTrainingszeitNew" type="hidden">
+</div>
+</div>
+
+    </div>
+
+    <div class="add-trainer-buttons">
+      <button class="add-trainer-cancel" onclick="backToGroupOverview()">✕ Abbrechen</button>
+      <button class="add-trainer-save" onclick="saveEditedGroup()">✓ Änderungen speichern</button>
+    </div>
+
+  </div>
+
+</div>
+
+    <div id="addGroupScreen" class="hidden">
+
+  <div class="add-group-card">
+
+    <div class="add-group-header">
+      <div class="add-group-header-icon">👥</div>
+
+      <div>
+        <h2>Neue Gruppe hinzufügen</h2>
+        <div class="small">
+          Erstellen Sie eine neue Trainingsgruppe und legen Sie alle relevanten Details fest.
+        </div>
+      </div>
+    </div>
+
+    <div class="add-group-grid">
+
+  <div>
+  <label>Sportart</label>
+  <div class="input-icon-row">
+    <div class="field-icon orange">🏅</div>
+    <select id="newGroupSport" onchange="loadTrainerCheckboxes()">
+      <option value="">Sportart auswählen...</option>
+    </select>
+  </div>
+</div>
+
+     <div>
+  <label>Gruppenname</label>
+  <div class="input-icon-row">
+    <div class="field-icon purple">👥</div>
+    <input id="newGruppenname" placeholder="z.B. JCL Gruppe 3">
+  </div>
+</div>
+
+<div>
+  <label>GruppeID</label>
+  <div class="input-icon-row">
+    <div class="field-icon blue">ID</div>
+    <input id="newGruppeId" placeholder="z.B. G10-12-3">
+  </div>
+</div>
+
+<div>
+  <label>Alter</label>
+  <div class="input-icon-row">
+    <div class="field-icon green">📅</div>
+    <input id="newAlter" placeholder="z.B. 10–12">
+  </div>
+</div>
+
+<div>
+  <label>Trainer (Mehrfachauswahl möglich)</label>
+
+  <div class="input-icon-row">
+    <div class="field-icon gray">👥</div>
+
+    <div class="multi-select-box">
+      <button type="button"
+              class="multi-select-button"
+              onclick="toggleTrainerCheckboxBox()">
+
+        <span id="selectedTrainerText">
+          Trainer auswählen...
+        </span>
+
+        <span>⌄</span>
+      </button>
+
+      <div id="trainerCheckboxBox"
+           class="multi-select-dropdown hidden">
+
+        <label class="check-line">
+          <input
+            type="checkbox"
+            value=""
+            id="noTrainerCheckbox"
+            onchange="handleNoTrainerCheckbox()">
+
+          Kein Trainer
+        </label>
+
+        <div id="trainerCheckboxList"></div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div>
+  <label>Trainingstage</label>
+
+  <div class="input-icon-row">
+    <div class="field-icon gray">🗓️</div>
+
+    <div class="multi-select-box">
+
+      <button type="button"
+              class="multi-select-button"
+              onclick="toggleTrainingDaysBox()">
+
+        <span id="selectedTrainingDaysText">
+          Trainingstage auswählen...
+        </span>
+
+        <span>⌄</span>
+
+      </button>
+
+      <div id="trainingDaysCheckboxBox"
+           class="multi-select-dropdown hidden">
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="Mo"
+                 onchange="updateTrainingDaysText()">
+          Montag
+        </label>
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="Di"
+                 onchange="updateTrainingDaysText()">
+          Dienstag
+        </label>
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="Mi"
+                 onchange="updateTrainingDaysText()">
+          Mittwoch
+        </label>
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="Do"
+                 onchange="updateTrainingDaysText()">
+          Donnerstag
+        </label>
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="Fr"
+                 onchange="updateTrainingDaysText()">
+          Freitag
+        </label>
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="Sa"
+                 onchange="updateTrainingDaysText()">
+          Samstag
+        </label>
+
+        <label class="check-line">
+          <input type="checkbox"
+                 value="So"
+                 onchange="updateTrainingDaysText()">
+          Sonntag
+        </label>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div>
+  <label>Niveau</label>
+  <div class="input-icon-row">
+    <div class="field-icon blue">📊</div>
+    <input id="newNiveau"
+           placeholder="z.B. Anfänger / Fortgeschrittene">
+  </div>
+</div>
+
+<div>
+  <label>Trainingszeit pro Tag</label>
+
+  <div class="input-icon-row">
+    <div class="field-icon orange">🕒</div>
+
+    <div id="trainingDayTimesBox" class="day-times-box">
+      <div class="small">Bitte zuerst Trainingstage auswählen.</div>
+    </div>
+
+    <input id="newTrainingszeit" type="hidden">
+  </div>
+</div>
+
+<div>
+  <label>Notizen (optional)</label>
+
+  <div class="input-icon-row textarea-row">
+    <div class="field-icon gray">📄</div>
+
+    <textarea
+      id="newGroupNotes"
+      placeholder="Zusätzliche Informationen (optional)">
+    </textarea>
+</div>
+  </div>
+</div>
+
+    <button class="save-group-modern-button" onclick="saveNewGroup()">
+      💾 Gruppe speichern
+    </button>
+</div>
+</div>
+ 
+<div id="sportManagementScreen" class="hidden">
+
+  <div class="sport-admin-page">
+
+    <div class="sport-admin-header">
+
+      <div>
+        <h2>Sportarten Verwaltung</h2>
+        <div class="sport-admin-subtitle">
+          Sportarten aktivieren, deaktivieren oder neue hinzufügen
+        </div>
+      </div>
+
+      <div class="sport-admin-logo-box">
+        <img id="sportAdminClubLogo" class="sport-admin-logo" src="" alt="Club Logo">
+      </div>
+
+    </div>
+
+    <div class="sport-admin-summary-card">
+      <div class="sport-admin-summary-icon">🏅</div>
+
+      <div>
+        <div class="sport-admin-summary-title">Aktive Sportarten</div>
+        <div id="sportCountBox" class="sport-admin-summary-number">0</div>
+      </div>
+    </div>
+
+    <div id="sportManagementGrid" class="sport-admin-grid">
+      Sportarten werden geladen...
+    </div>
+
+    <div class="sport-admin-info-box">
+      ⓘ Inaktive Sportarten werden auf der Startseite und in den Auswahlmenüs nicht angezeigt.
+    </div>
+
+    <div id="sportFieldSettingsPanel" class="sport-field-panel hidden">
+      <div class="sport-field-panel-title">
+        ⚙️ Anzeige für Sportler —
+        <span id="sportFieldPanelName"></span>
+      </div>
+
+      <div class="sf-card-grid">
+
+        <!-- Graduierung -->
+        <div class="sf-field-card">
+          <div class="sf-card-top">
+            <div class="sf-card-icon">🥋</div>
+            <div class="sf-card-text">
+              <div class="sf-card-name">Graduierung anzeigen</div>
+              <div class="sf-card-desc">Anzeige von Kyu / Geup / Dan</div>
+            </div>
+            <label class="popup-toggle-switch">
+              <input type="checkbox" id="sfShowGraduation">
+              <span class="popup-toggle-slider"></span>
+            </label>
+          </div>
+          <div class="sf-card-bottom">
+            <span class="sf-select-label">Bezeichnung:</span>
+            <select id="sfGraduationLabel" class="sf-select">
+              <option value="Kyu">Kyu</option>
+              <option value="Kyu / Dan">Kyu / Dan</option>
+              <option value="Geup">Geup</option>
+              <option value="Geup / Dan">Geup / Dan</option>
+              <option value="Dan">Dan</option>
+              <option value="Level">Level</option>
+              <option value="Rang">Rang</option>
+              <option value="Graduierung">Graduierung</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Gürtelfarbe -->
+        <div class="sf-field-card">
+          <div class="sf-card-top">
+            <div class="sf-card-icon">🎽</div>
+            <div class="sf-card-text">
+              <div class="sf-card-name">Gürtelfarbe anzeigen</div>
+              <div class="sf-card-desc">Anzeige von OBI / Gürtel</div>
+            </div>
+            <label class="popup-toggle-switch">
+              <input type="checkbox" id="sfShowBelt">
+              <span class="popup-toggle-slider"></span>
+            </label>
+          </div>
+          <div class="sf-card-bottom">
+            <span class="sf-select-label">Bezeichnung:</span>
+            <select id="sfBeltLabel" class="sf-select">
+              <option value="OBI">OBI</option>
+              <option value="Gürtel">Gürtel</option>
+              <option value="Tti">Tti</option>
+              <option value="Gürtelfarbe">Gürtelfarbe</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Gewicht -->
+        <div class="sf-field-card">
+          <div class="sf-card-top">
+            <div class="sf-card-icon">⚖️</div>
+            <div class="sf-card-text">
+              <div class="sf-card-name">Gewicht anzeigen</div>
+              <div class="sf-card-desc">Anzeige des aktuellen Gewichts</div>
+            </div>
+            <label class="popup-toggle-switch">
+              <input type="checkbox" id="sfShowWeight">
+              <span class="popup-toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <button class="sport-field-save-btn" onclick="saveSportFieldSettings()">
+        💾 Einstellungen speichern
+      </button>
+    </div>
+
+<div id="addSportPopup" class="sport-popup hidden">
+
+  <div class="sport-popup-card">
+
+    <h3>Neue Sportart hinzufügen</h3>
+
+    <div class="sport-popup-subtitle">
+      Bitte geben Sie den Namen der neuen Sportart ein.
+    </div>
+
+    <label>Sportart Name</label>
+    <input
+      <input
+  <input
+  <input
+  id="newSportNameInput"
+  type="search"
+  name="new-sport-name-no-suggest"
+  placeholder="z.B. Turnen"
+  oninput="loadMatchingSportImages()"
+  autocomplete="new-password"
+  autocorrect="off"
+  autocapitalize="none"
+  spellcheck="false"
+  aria-autocomplete="none"
+>
+
+    <label>Bild auswählen</label>
+    <select id="newSportImageSelect">
+      <option value="">Bitte zuerst Sportart eingeben</option>
+    </select>
+
+    <div class="sport-popup-buttons">
+      <button class="sport-popup-cancel" onclick="closeAddSportPopup()">
+        Abbrechen
+      </button>
+
+      <button class="sport-popup-save" onclick="saveNewSportFromPopup()">
+        Sport speichern
+      </button>
+    </div>
+
+  </div>
+
+</div>
+
+  </div>
+
+</div>
+
+<div id="clubStatistikScreen" class="hidden">
+  <h2>Club Statistik</h2>
+
+<div class="club-sport-filter-box">
+
+  <label>Sportart auswählen</label>
+
+  <select
+    id="clubSportFilter"
+    onchange="handleClubSportFilterChange()"
+  >
+    <option value="">
+      Alle Sportarten
+    </option>
+  </select>
+
+</div>
+
+  <div class="club-summary-grid">
+
+    <div
+      class="club-stat-card club-blue"
+      onclick="showPromoTransition(()=>openTrainerStatistikFromClub())"
+      style="cursor:pointer;"
+    >
+
+      <div class="club-stat-icon">👥</div>
+      <div>
+        <div class="club-stat-title">Trainer</div>
+        <div id="clubTrainerCount" class="club-stat-number">-</div>
+      </div>
+    </div>
+
+    <div
+  class="club-stat-card club-green"
+  onclick="showPromoTransition(()=>showGroupOverviewScreen())"
+  style="cursor:pointer;"
+>
+  <div class="club-stat-icon">👨‍👩‍👧‍👦</div>
+
+  <div>
+    <div class="club-stat-title">Gruppen</div>
+    <div id="clubGroupCount" class="club-stat-number">-</div>
+  </div>
+</div>
+
+    <div
+class="club-stat-card club-orange"
+onclick="showPromoTransition(()=>openClubStudentStatsFromClub())"
+style="cursor:pointer;"
+>
+      <div class="club-stat-icon">🎓</div>
+      <div>
+        <div class="club-stat-title">Schüler</div>
+        <div id="clubStudentCount" class="club-stat-number">-</div>
+      </div>
+    </div>
+
+    <div
+class="club-stat-card club-purple"
+onclick="showPromoTransition(()=>showAdminStatistikCenter())"
+style="cursor:pointer;"
+>
+
+<div class="club-stat-icon">
+📅
+</div>
+
+<div>
+<div class="club-stat-title">
+Studenten Anwesenheit Statistik
+</div>
+
+</div>
+
+  </div>
+
+<div id="sportStatsOverviewBox" class="sport-stats-overview-box">
+
+  <div class="sport-stats-overview-title">
+    <div class="sport-stats-overview-icon">🏅</div>
+    <div>
+      <h3>Statistik nach Sportart</h3>
+      <div class="small">
+        Übersicht über Gruppen, Trainer und Schüler pro Sportart.
+      </div>
+    </div>
+  </div>
+
+  <div id="sportStatsOverviewList">
+    Sportarten werden geladen...
+  </div>
+
+</div>
+</div>
+</div>
+
+  <div id="clubStudentStatsScreen" class="work-screen hidden">
+    <div class="club-sport-filter-box">
+
+  <label>Sportart auswählen</label>
+
+  <select
+    id="clubStudentSportFilter"
+    onchange="handleClubStudentSportFilterChange()"
+  >
+    <option value="">
+      Alle Sportarten
+    </option>
+  </select>
+
+</div>
+
+<div id="clubStudentStatsBox" class="club-filter-box">
+    <div class="club-filter-title">
+      <div class="club-filter-icon">📊</div>
+      <div>
+        <h3 style="margin:0;">Schüler Statistik</h3>
+        <div class="small">Filtern und analysieren Sie Schülerdaten nach Alter und Graduierung.</div>
+      </div>
+    </div>
+
+    <div class="edit-grid">
+      <div>
+        <label>Alter von</label>
+        <input id="statAgeFrom" type="number" placeholder="z.B. 6">
+      </div>
+
+      <div>
+        <label>Alter bis</label>
+        <input id="statAgeTo" type="number" placeholder="z.B. 12">
+      </div>
+
+      <div>
+        <label>OBI von</label>
+        <select id="statObiFrom">
+          <option value="">Alle</option>
+          <option value="1">weiß</option>
+          <option value="2">weiß-gelb</option>
+          <option value="3">gelb</option>
+          <option value="4">gelb-orange</option>
+          <option value="5">orange</option>
+          <option value="6">orange-grün</option>
+          <option value="7">grün</option>
+          <option value="8">blau</option>
+          <option value="9">braun</option>
+          <option value="10">schwarz</option>
+        </select>
+      </div>
+
+      <div>
+        <label>OBI bis</label>
+        <select id="statObiTo">
+          <option value="">Alle</option>
+          <option value="1">weiß</option>
+          <option value="2">weiß-gelb</option>
+          <option value="3">gelb</option>
+          <option value="4">gelb-orange</option>
+          <option value="5">orange</option>
+          <option value="6">orange-grün</option>
+          <option value="7">grün</option>
+          <option value="8">blau</option>
+          <option value="9">braun</option>
+          <option value="10">schwarz</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="club-action-grid">
+      <button onclick="applyStatsFilter()">🔎 Filtern</button>
+      <button class="secondary" onclick="showFilteredStudentsForStatistics()">👥 Schüler anzeigen</button>
+      <button class="secondary" onclick="hideFilteredStudentsForStatistics()">🙈 Liste ausblenden</button>
+    </div>
+
+    <div id="statsResult" class="status">Keine Statistik geladen.</div>
+    <div id="statsStudentsList"></div>
+  
+</div>   
+  </div>
+
+  <div id="adminStudentScreen" class="hidden">
+   
+    <div class="admin-selected-sport-card">
+  <div class="admin-selected-sport-icon-box">
+    <img id="adminSelectedSportIcon" src="" alt="">
+  </div>
+
+  <div>
+    <div class="admin-selected-sport-label">
+      Aktuell ausgewählter Sport
+    </div>
+
+    <div id="adminSelectedSportName" class="admin-selected-sport-name">
+      Alle Sportarten
+    </div>
+  </div>
+</div>
+
+<div class="trainer-page-card">
+
+<div class="trainer-control-grid">
+
+<div class="trainer-select-card">
+
+<label>Gruppe auswählen</label>
+
+<select
+id="adminGroupSelect"
+onchange="
+loadAdminStudentCount();
+applyAdminStudentFilter();
+">
+
+<option value="">
+Alle Gruppen
+</option>
+
+</select>
+
+</div>
+
+<div class="trainer-counter-card">
+
+  <div id="adminStudentCountValue">
+    👥 Gesamt Schüler: 0
+  </div>
+
+</div>
+
+<button
+  id="orphanStudentsButton"
+  class="orphan-students-button hidden"
+  onclick="showOrphanStudentsList()">
+
+  ⚠ Ohne Gruppe / Trainer: 0
+
+</button>
+
+<div class="trainer-home-logo-box">
+  <img
+    id="adminHomeClubLogo"
+    class="trainer-home-logo">
+</div>
+
+</div>
+
+</div>
+
+<div class="admin-sport-filter-box">
+  <div class="admin-sport-filter-title">
+    Sportart auswählen
+  </div>
+
+  <div id="adminSportFilterGrid" class="admin-sport-filter-grid"></div>
+</div>
+
+<div id="adminStudentStatsBox" class="trainer-stat-card">
+
+  <div class="trainer-stat-title">
+    <div class="trainer-stat-icon">📊</div>
+    <div>
+      <h3>Schüler Statistik</h3>
+      <div class="small">Nach Name, Alter, Kyu und OBI filtern</div>
+    </div>
+  </div>
+
+  <div class="trainer-filter-grid">
+
+    <div class="wide">
+      <label>Name / Nachname</label>
+      <input
+        id="adminStatName"
+        type="search"
+        placeholder="Name oder Nachname eingeben"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        readonly
+        onfocus="this.removeAttribute('readonly');"
+        oninput="showAdminStudentNameSuggestions()">
+      <div id="adminStudentNameSuggestions" class="suggestions-box"></div>
+    </div>
+
+    <div></div>
+
+    <div>
+      <label>Alter von</label>
+      <input id="adminStatAgeFrom" type="number" placeholder="z.B. 6">
+    </div>
+
+    <div>
+      <label>Alter bis</label>
+      <input id="adminStatAgeTo" type="number" placeholder="z.B. 12">
+    </div>
+
+    <div>
+      <label>Kyu von</label>
+      <select id="adminStatKyuFrom" onchange="syncAdminStatObiFromKyu('from')">
+        <option value="">Alle</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Kyu bis</label>
+      <select id="adminStatKyuTo" onchange="syncAdminStatObiFromKyu('to')">
+        <option value="">Alle</option>
+      </select>
+    </div>
+
+    <div>
+      <label>OBI von</label>
+      <select id="adminStatObiFrom" onchange="syncAdminStatKyuFromObi('from')">
+        <option value="">Alle</option>
+      </select>
+    </div>
+
+    <div>
+      <label>OBI bis</label>
+      <select id="adminStatObiTo" onchange="syncAdminStatKyuFromObi('to')">
+        <option value="">Alle</option>
+      </select>
+    </div>
+
+  </div>
+
+  <div class="trainer-filter-buttons">
+    <button class="trainer-purple-button" onclick="applyAdminStudentFilter()">🔎 Filtern</button>
+    <button class="trainer-light-button" onclick="resetAdminStudentFilter()">↩ Filter zurücksetzen</button>
+  </div>
+
+</div>
+
+<div id="adminStudentStatsResult">
+</div>
+
+</div>
+
+<div id="groupOverviewScreen" class="hidden">
+
+  <div class="trainer-overview-card">
+
+    <div class="trainer-overview-title">
+      <div class="trainer-overview-icon">👥</div>
+
+      <div>
+        <h2>Gruppen Übersicht</h2>
+        <div class="small">Übersicht aller Gruppen im Club</div>
+      </div>
+    </div>
+
+    <div class="club-sport-filter-box">
+  <label>Sportart auswählen</label>
+
+  <select
+    id="groupOverviewSportFilter"
+    onchange="handleGroupOverviewSportFilterChange()"
+  >
+    <option value="">Alle Sportarten</option>
+  </select>
+</div>
+
+    <div class="club-summary-grid">
+
+      <div class="club-stat-card club-blue">
+        <div class="club-stat-icon">👥</div>
+        <div>
+          <div class="club-stat-title">Gesamt Gruppen</div>
+          <div id="overviewGroupCount" class="club-stat-number">-</div>
+        </div>
+      </div>
+
+      <div class="club-stat-card club-green">
+        <div class="club-stat-icon">👨‍🎓</div>
+        <div>
+          <div class="club-stat-title">Gesamt Schüler</div>
+          <div id="overviewStudentCount" class="club-stat-number">-</div>
+        </div>
+      </div>
+
+      <div
+        class="club-stat-card club-purple"
+        onclick="showAdminStatistikScreen()"
+        style="cursor:pointer;"
+      >
+        <div class="club-stat-icon">📅</div>
+        <div>
+          <div class="club-stat-title">Heute anwesend</div>
+          <div id="todayAttendanceCount" class="club-stat-number">-</div>
+        </div>
+      </div>
+
+      <div
+        class="club-stat-card club-orange"
+        style="cursor:pointer;"
+      >
+        <div class="club-stat-icon">🥋</div>
+        <div>
+          <div class="club-stat-title">Statistik Obi / Kyu</div>
+        </div>
+      </div>
+</div>
+
+    <h3>Alle Gruppen</h3>
+
+    <div id="groupOverviewContent"></div>
+
+  </div>
+
+</div>
+<div id="adminStatistikScreen" class="hidden">
+
+  <h2>Studenten Anwesenheit Statistik</h2>
+
+  <div class="attendance-modern-card">
+
+    <div class="attendance-modern-title">
+      <div class="attendance-modern-icon">📅</div>
+      <div>
+        <h3>Studenten Anwesenheit Statistik</h3>
+        <div class="small">
+          Anwesenheit nach Datum, Gruppe und Trainer filtern und anzeigen.
+        </div>
+      </div>
+    </div>
+
+<div class="club-sport-filter-box">
+  <label>Sportart auswählen</label>
+
+  <select
+    id="attendanceStatSportFilter"
+    onchange="handleAttendanceStatSportFilterChange()"
+  >
+    <option value="">
+      Alle Sportarten
+    </option>
+  </select>
+</div>
+
+    <div class="attendance-filter-grid">
+
+      <div>
+        <label>Datum von</label>
+        <input type="date" id="adminStatDateFrom">
+      </div>
+
+      <div>
+        <label>Datum bis</label>
+        <input type="date" id="adminStatDateTo">
+      </div>
+
+      <div>
+        <label>Gruppe</label>
+        <select id="adminStatGroup" onchange="rebuildAdminStatTrainerSelectSupabase()">
+          <option value="">Alle Gruppen</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Trainer</label>
+        <select id="adminStatTrainer" onchange="rebuildAdminStatGroupSelectSupabase()">
+          <option value="">Alle Trainer</option>
+        </select>
+      </div>
+
+    </div>
+
+    <button class="attendance-load-button" onclick="loadAdminAttendanceStatisticsSupabase()">
+      🔎 Statistik laden
+    </button>
+
+    <div id="adminAttendanceResult" class="attendance-result-box">
+      Keine Daten geladen.
+    </div>
+
+</div>
+</div>
+
+<div id="orphanStudentsScreen" class="hidden">
+
+<div class="admin-selected-sport-card">
+
+<div class="admin-selected-sport-icon-box">
+<img id="orphanSelectedSportIcon" src="" alt="">
+</div>
+
+<div>
+
+<div class="admin-selected-sport-label">
+Aktuell ausgewählter Sport
+</div>
+
+<div
+id="orphanSelectedSportName"
+class="admin-selected-sport-name">
+
+Alle Sportarten
+
+</div>
+
+</div>
+</div>
+
+
+<div class="admin-sport-filter-box">
+
+<div class="admin-sport-filter-title">
+Sportart auswählen
+</div>
+
+<div
+id="orphanSportFilterGrid"
+class="admin-sport-filter-grid">
+
+</div>
+
+</div>
+
+
+<div
+id="orphanStudentsStatsBox"
+class="trainer-stat-card">
+
+<div class="trainer-stat-title">
+
+<div class="trainer-stat-icon">
+⚠
+</div>
+
+<div>
+
+<h3>
+Schüler ohne Gruppe / Trainer
+</h3>
+
+<div class="small">
+
+Schüler ohne aktive Gruppe
+oder ohne aktiven Trainer
+
+</div>
+
+</div>
+
+</div>
+
+<div id="orphanStudentsResult"></div>
+
+</div>
+
+</div>
+
+<div id="adminBuchhaltungScreen" class="hidden">
+
+  <div class="trainer-overview-card">
+
+    <div class="trainer-overview-title">
+      <div class="trainer-overview-icon">👥</div>
+
+      <div>
+        <h2>Administrator / Buchhaltung</h2>
+        <div class="small">
+          Administratoren und Buchhaltung verwalten.
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-buch-toolbar">
+
+  <button
+    type="button"
+    class="admin-buch-add-card"
+    onclick="showAddAdminBuchForm()"
+  >
+    <div class="admin-buch-add-icon">➕</div>
+
+    <div>
+      <div class="admin-buch-add-title">
+        Neuer Administrator / Buchhaltung
+      </div>
+
+      <div class="admin-buch-add-text">
+        Administrator oder Buchhalter hinzufügen
+      </div>
+    </div>
+  </button>
+
+</div>
+
+<div class="admin-buch-header">
+
+<div class="admin-buch-title-wrap">
+
+<div class="admin-buch-title-icon">
+🛡️
+</div>
+
+<div>
+
+<h2>
+Administrator / Buchhaltung
+</h2>
+
+<div class="admin-buch-subtitle">
+
+Administratoren und Buchhaltung verwalten
+
+</div>
+
+</div>
+
+</div>
+
+<img
+id="adminBuchTopClubLogo"
+class="admin-buch-top-logo"
+src=""
+>
+
+</div>
+
+<div id="adminBuchhaltungContent">
+
+Daten werden geladen...
+
+</div>
+
+  </div>
+
+</div>
+
+<div id="buchhaltungScreen" class="hidden">
+  <h2>Buchhaltung</h2>
+
+  <div class="form-box">
+    <h3>Neue Schüler ohne Vertrag</h3>
+    <div id="buchhaltungList">
+      Daten werden geladen...
+    </div>
+  </div>
+</div>
+
+  <div id="groupScreen" class="hidden">
+
+  <div class="trainer-home-hero-card">
+
+  <div class="trainer-home-top-grid">
+
+    <div class="trainer-home-select-box">
+      <label>Gruppe auswählen</label>
+      <select
+        id="groupSelect"
+        onchange="loadStudents().then(() => loadGroupStatKyuObiOptions()).then(() => applyGroupFilter())">
+      </select>
+    </div>
+
+    <div class="trainer-home-summary-box">
+
+      <div id="studentCounterBox" class="trainer-home-counter">
+  👥 Gesamt Schüler: 0
+</div>
+
+      <div class="trainer-home-logo-box">
+        <img
+          id="trainerHomeClubLogo"
+          class="trainer-home-logo"
+          src=""
+          alt="Club Logo">
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="trainer-home-action-row">
+
+    <button
+      id="attendanceButton"
+      class="trainer-home-main-btn attendance"
+      onclick="showPromoTransition(openSelectedGroupList)">
+      📋 Anwesenheit
+    </button>
+
+    <button
+      id="weightButton"
+      class="trainer-home-main-btn weight"
+      onclick="showPromoTransition(showWeight)">
+      ⚖️ Wiegung
+    </button>
+
+  </div>
+
+</div>
+
+  <div id="groupStudentStatsBox" class="trainer-stat-card">
+    <div class="trainer-stat-title">
+      <div class="trainer-stat-icon">📊</div>
+      <div>
+        <h3>Schüler Statistik</h3>
+        <div class="small">Nach Name, Alter, Kyu und OBI filtern</div>
+      </div>
+    </div>
+
+    <div class="trainer-filter-grid">
+      <div class="wide">
+        <label>Name / Nachname</label>
+        <input
+          id="groupStatName"
+          type="search"
+          placeholder="Name oder Nachname eingeben"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          readonly
+          onfocus="this.removeAttribute('readonly');"
+          oninput="showGroupStudentNameSuggestions()"
+        >
+        <div id="groupStudentNameSuggestions" class="suggestions-box"></div>
+      </div>
+
+      <div></div>
+
+      <div>
+        <label>Alter von</label>
+        <input id="groupStatAgeFrom" type="number" placeholder="z.B. 6">
+      </div>
+
+      <div>
+        <label>Alter bis</label>
+        <input id="groupStatAgeTo" type="number" placeholder="z.B. 12">
+      </div>
+
+      <div id="groupStatKyuFromWrap">
+        <label id="groupStatKyuFromLabel">Kyu von</label>
+        <select id="groupStatKyuFrom" onchange="syncGroupStatObiFromKyu('from')">
+          <option value="">Alle</option>
+          <option value="9">weiß</option>
+          <option value="8">weiß-gelb</option>
+          <option value="7">gelb</option>
+          <option value="6">gelb-orange</option>
+          <option value="5">orange</option>
+          <option value="4">orange-grün</option>
+          <option value="3">grün</option>
+          <option value="2">blau</option>
+          <option value="1">braun</option>
+        </select>
+      </div>
+
+      <div id="groupStatKyuToWrap">
+        <label id="groupStatKyuToLabel">Kyu bis</label>
+        <select id="groupStatKyuTo" onchange="syncGroupStatObiFromKyu('to')">
+          <option value="">Alle</option>
+          <option value="9">weiß</option>
+          <option value="8">weiß-gelb</option>
+          <option value="7">gelb</option>
+          <option value="6">gelb-orange</option>
+          <option value="5">orange</option>
+          <option value="4">orange-grün</option>
+          <option value="3">grün</option>
+          <option value="2">blau</option>
+          <option value="1">braun</option>
+        </select>
+      </div>
+
+      <div id="groupStatObiFromWrap">
+        <label id="groupStatObiFromLabel">OBI von</label>
+        <select id="groupStatObiFrom" onchange="syncGroupStatKyuFromObi('from')">
+          <option value="">Alle</option>
+          <option value="1">weiß</option>
+          <option value="2">weiß-gelb</option>
+          <option value="3">gelb</option>
+          <option value="4">gelb-orange</option>
+          <option value="5">orange</option>
+          <option value="6">orange-grün</option>
+          <option value="7">grün</option>
+          <option value="8">blau</option>
+          <option value="9">braun</option>
+          <option value="10">schwarz</option>
+        </select>
+      </div>
+
+      <div id="groupStatObiToWrap">
+        <label id="groupStatObiToLabel">OBI bis</label>
+        <select id="groupStatObiTo" onchange="syncGroupStatKyuFromObi('to')">
+          <option value="">Alle</option>
+          <option value="1">weiß</option>
+          <option value="2">weiß-gelb</option>
+          <option value="3">gelb</option>
+          <option value="4">gelb-orange</option>
+          <option value="5">orange</option>
+          <option value="6">orange-grün</option>
+          <option value="7">grün</option>
+          <option value="8">blau</option>
+          <option value="9">braun</option>
+          <option value="10">schwarz</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="trainer-filter-buttons">
+      <button class="filter-main" onclick="applyGroupFilter()">🔎 Filtern</button>
+      <button class="filter-reset" onclick="resetGroupStudentStatsFilter()">↩ Filter zurücksetzen</button>
+    </div>
+
+    <div id="groupStudentStatsResult" class="trainer-empty-card">
+      <div class="trainer-empty-icon">📋</div>
+      <b>Keine Statistik geladen.</b>
+    </div>
+
+    <div id="groupStudentStatsList"></div>
+  </div>
+</div>
+      
+
+    <div id="trainerAdminScreen" class="hidden">
+
+  <div class="trainer-stat-card">
+
+    <div class="trainer-stat-title">
+      <div class="trainer-stat-icon">👥</div>
+      <div>
+        <h2>Trainer-Übersicht</h2>
+        <div class="small">
+          Wähle einen Trainer aus, um Details, Gruppen und Schüler anzuzeigen.
+        </div>
+      </div>
+    </div>
+
+     <div class="club-stat-card club-purple">
+  <div class="club-stat-icon">🏅</div>
+
+  <div>
+    <div class="club-stat-title">Sportart auswählen</div>
+
+    <select
+      id="trainerOverviewSportFilter"
+      onchange="handleTrainerOverviewSportFilterChange()"
+    >
+      <option value="">Alle Sportarten</option>
+    </select>
+  </div>
+</div>
+
+    <div id="trainerTotalCard" class="trainer-total-card">
+  <div class="trainer-total-icon">👤</div>
+
+  <div>
+    <div class="trainer-total-title">Gesamt Trainer</div>
+    <div id="trainerTotalCount" class="trainer-total-number">0</div>
+    <div class="trainer-total-subtitle">Aktive Trainer nach Judo</div>
+   
+   
+  </div>
+  </div>
+ 
+
+<img
+  class="trainer-overview-logo"
+  src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_JCL_logo.png"
+  alt="JCL Logo">
+
+    <label>Trainer auswählen</label>
+
+    <div class="trainer-select-action-row">
+
+  <div class="trainer-input-row">
+    <div class="trainer-field-icon">👤</div>
+    <select id="trainerAdminSelect"></select>
+  </div>
+
+  <button
+  id="editSelectedTrainerBtn"
+  class="trainer-small-action-btn trainer-img-btn"
+  onclick="openEditSelectedTrainer()"
+  disabled
+  title="Trainer bearbeiten"
+>
+  <img src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/Stud_Edit.png" alt="Bearbeiten">
+</button>
+
+<button
+  id="deleteSelectedTrainerBtn"
+  class="trainer-small-action-btn trainer-img-btn"
+  onclick="deleteSelectedTrainer()"
+  disabled
+  title="Trainer löschen"
+>
+  <img src="https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/Stud_Delete.png" alt="Löschen">
+</button>
+
+</div>
+
+<div id="trainerInfoBoxModern"></div>
+
+<div style="margin-top:20px;text-align:center;">
+
+<button
+class="trainer-purple-button"
+onclick="toggleTrainerStudentFilter()"
+>
+📋 Filter Schüler anzeigen
+</button>
+
+</div>
+  </div>
+
+
+  <div id="trainerFilterBlock" class="trainer-stat-card hidden">
+
+    <div class="trainer-stat-title">
+      <div class="trainer-stat-icon">🔎</div>
+      <div>
+        <h2>Filter Schüler</h2>
+        <div class="small">
+          Verwende die Filter, um die Schülerliste nach deinen Kriterien einzugrenzen.
+        </div>
+      </div>
+    </div>
+
+    <div class="trainer-search-center">
+  <div class="trainer-search-box trainer-name-search-wrap">
+
+    <label class="trainer-name-search-label">
+      Name / Nachname
+    </label>
+
+    <span>🔍</span>
+
+    <input
+      id="filterName"
+      type="search"
+      placeholder="Name oder Nachname eingeben"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      oninput="showTrainerStudentNameSuggestions()"
+    >
+
+    <div id="trainerStudentNameSuggestions" class="suggestions-box"></div>
+      </div>
+    </div>
+
+    <div class="trainer-filter-grid">
+
+      <div>
+        <label>Alter von</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">📅</div>
+          <input id="trainerFilterAgeFrom" type="number" placeholder="z.B. 6">
+        </div>
+      </div>
+
+      <div>
+        <label>Alter bis</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">📅</div>
+          <input id="trainerFilterAgeTo" type="number" placeholder="z.B. 12">
+        </div>
+      </div>
+
+      <div id="trainerFilterKyuFromWrap">
+        <label id="trainerFilterKyuFromLabel">Kyu von</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">🥋</div>
+          <select id="trainerFilterKyuFrom">
+            <option value="">Alle</option>
+            <option value="10">10. Kyu</option>
+            <option value="9">9. Kyu</option>
+            <option value="8">8. Kyu</option>
+            <option value="7">7. Kyu</option>
+            <option value="6">6. Kyu</option>
+            <option value="5">5. Kyu</option>
+            <option value="4">4. Kyu</option>
+            <option value="3">3. Kyu</option>
+            <option value="2">2. Kyu</option>
+            <option value="1">1. Kyu</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="trainerFilterKyuToWrap">
+        <label id="trainerFilterKyuToLabel">Kyu bis</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">🥋</div>
+          <select id="trainerFilterKyuTo">
+            <option value="">Alle</option>
+            <option value="10">10. Kyu</option>
+            <option value="9">9. Kyu</option>
+            <option value="8">8. Kyu</option>
+            <option value="7">7. Kyu</option>
+            <option value="6">6. Kyu</option>
+            <option value="5">5. Kyu</option>
+            <option value="4">4. Kyu</option>
+            <option value="3">3. Kyu</option>
+            <option value="2">2. Kyu</option>
+            <option value="1">1. Kyu</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="trainerFilterObiFromWrap">
+        <label id="trainerFilterObiFromLabel">OBI von</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">🥋</div>
+          <select id="trainerFilterObiFrom">
+            <option value="">Alle</option>
+            <option value="1">weiß</option>
+            <option value="2">weiß-gelb</option>
+            <option value="3">gelb</option>
+            <option value="4">gelb-orange</option>
+            <option value="5">orange</option>
+            <option value="6">orange-grün</option>
+            <option value="7">grün</option>
+            <option value="8">blau</option>
+            <option value="9">braun</option>
+            <option value="10">schwarz</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="trainerFilterObiToWrap">
+        <label id="trainerFilterObiToLabel">OBI bis</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">🥋</div>
+          <select id="trainerFilterObiTo">
+            <option value="">Alle</option>
+            <option value="1">weiß</option>
+            <option value="2">weiß-gelb</option>
+            <option value="3">gelb</option>
+            <option value="4">gelb-orange</option>
+            <option value="5">orange</option>
+            <option value="6">orange-grün</option>
+            <option value="7">grün</option>
+            <option value="8">blau</option>
+            <option value="9">braun</option>
+            <option value="10">schwarz</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label>Gruppe</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">👥</div>
+          <select id="trainerFilterGroup">
+            <option value="">Alle Gruppen</option>
+          </select>
+        </div>
+      </div>
+
+      
+
+    </div>
+
+    <div class="trainer-filter-buttons">
+      <button class="trainer-purple-button" onclick="applyTrainerFilters()">
+        🔎 Filtern
+      </button>
+
+      <button class="trainer-light-button" onclick="resetTrainerFilters()">
+        ⟳ Filter zurücksetzen
+      </button>
+    </div>
+
+  </div>
+
+
+  <div id="trainerStudentListBlock" class="trainer-stat-card hidden">
+
+    <div class="trainer-stat-title">
+      <div class="trainer-stat-icon">👥</div>
+      <div>
+        <h2>Schülerliste</h2>
+        <div id="trainerStudentsFoundText" class="small">
+          Bitte Trainer auswählen.
+        </div>
+      </div>
+    </div>
+
+    <div id="trainerStudentsList"></div>
+
+  </div>
+
+</div>
+
+
+<div id="attendanceScreen" class="hidden">
+  <h2 id="attendanceTitle">Anwesenheit</h2>
+
+  <div id="groupDetailsBox" class="hidden"></div>
+
+  <div id="todayAttendanceBox" class="status">
+  Heute anwesend: <span id="trainerTodayAttendanceCount">0</span>
+</div>
+
+  <div id="groupFilterStatsBox" class="hidden"></div>
+
+<div class="attendanceDashboardButtons">
+
+
+<button
+id="attendanceWeightButton"
+class="weight-dashboard-btn"
+onclick="showPromoTransition(showWeight)">
+
+<span class="studentPlus">⚖️</span>
+<span>Wiegung</span>
+
+</button>
+
+  <button
+    id="addStudentButton"
+    class="new-student-dashboard-btn"
+    onclick="showPromoTransition(openAddStudentForm)"
+  >
+    <span class="studentPlus">+</span>
+    <span>Neuer Student</span>
+  </button>
+
+</div>
+
+ <div id="studentsList"></div>
+
+<button
+ id="saveAttendanceButton"
+ class="save"
+ onclick="saveAttendance()"
+>
+ Anwesenheit speichern
+</button>
+
+</div>
+
+<div id="weightScreen" class="hidden">
+
+<div id="weightList"></div>
+
+</div>
+
+<div id="addStudentScreen" class="hidden">
+  <h2>Teilnehmer hinzufügen</h2>
+  <div id="addStudentForm"></div>
+</div>
+
+<div id="studentStatsScreen" class="hidden">
+  <h2>Schüler-Statistik</h2>
+  <div id="studentStatsBox"></div>
+</div>
+
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+
+<div id="promoTransitionOverlay" class="promo-overlay hidden">
+  <div class="promo-fullscreen">
+    <img
+      id="promoTransitionImage"
+      class="promo-image"
+      alt="Promo Slide">
+  </div>
+</div>
+
+<script src="supabase.js"></script>
+<script src="app.js"></script>
+
+<div id="customMessageOverlay" class="custom-message-overlay hidden">
+
+  <div class="custom-message-box">
+
+    <div class="custom-message-icon">✓</div>
+
+    <div class="custom-message-title">
+      Erfolgreich gespeichert
+    </div>
+
+    <div id="customMessageText" class="custom-message-text">
+      Änderung wurde gespeichert.
+    </div>
+
+    <button
+      class="custom-message-button"
+      onclick="closeCustomMessage()">
+      OK
+    </button>
+
+  </div>
+
+</div>
+
+<div id="deleteConfirmOverlay"
+class="custom-message-overlay hidden">
+
+<div class="custom-message-box">
+
+<div class="custom-message-icon">
+⚠
+</div>
+
+<div class="custom-message-title">
+Bestätigung
+</div>
+
+<div id="deleteConfirmText"
+class="custom-message-text">
+
+Administrator wirklich löschen?
+
+</div>
+
+<div
+style="
+display:flex;
+gap:15px;
+">
+
+<button
+class="custom-message-button"
+style="
+background:
+linear-gradient(
+135deg,
+#8b0000,
+#d62828
+);
+"
+id="confirmDeleteBtn">
+
+Löschen
+
+</button>
+
+<button
+class="custom-message-button"
+onclick="closeDeleteConfirm()">
+
+Abbrechen
+
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+</body>
+
+</html>
+

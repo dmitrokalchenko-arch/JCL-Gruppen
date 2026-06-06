@@ -502,7 +502,8 @@ margin:18px 0;
 }
 
 .admin-buch-add-card {
-  width: 560px;
+  width: 100%;
+  max-width: 560px;
   min-height: 96px;
   display: grid;
   grid-template-columns: 62px 1fr;
@@ -1121,7 +1122,7 @@ display:block;
 .input-icon-row input,
 .input-icon-row textarea,
 .multi-select-button {
-  width:520px;
+  width:100%;
 max-width:520px;
   min-height: 54px;
   border: 1px solid #d9dee8;
@@ -1168,7 +1169,7 @@ max-width:520px;
 }
 
 .day-times-box {
-  width: 520px;
+  width: 100%;
   max-width: 520px;
   min-height: 54px;
   border: 1px solid #d9dee8;
@@ -1715,8 +1716,8 @@ border-left:6px solid #ea5b5b;
 }
 
 .trainer-select-box select {
-  width: 520px !important;
-  min-width: 520px !important;
+  width: 100% !important;
+  min-width: unset !important;
   max-width: 520px !important;
   height: 54px !important;
   border: 2px solid #d8c7ff !important;
@@ -11881,4 +11882,164 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
 
   box-shadow:
     inset 0 0 6px rgba(255, 212, 0, 0.08) !important;
+}
+
+/* ===== АДАПТИВНОСТЬ 480px — диапазон реальных мобильных телефонов ===== */
+
+@media (max-width: 480px) {
+
+  /* --- Основной контейнер --- */
+  .box {
+    padding: 12px 8px !important;
+    border-radius: 12px !important;
+  }
+
+  /* --- Верхняя шапка --- */
+  .top-header {
+    padding: 0 10px 10px 10px !important;
+    gap: 8px !important;
+  }
+
+  /* --- Карточки административного дашборда --- */
+  .dashboard-card {
+    padding: 16px 14px 16px 70px !important;
+    min-height: 100px !important;
+  }
+
+  /* --- Сетка кнопок тренера (2 → 1 колонка) --- */
+  .trainer-action-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* --- Основные кнопки тренера на главной --- */
+  .trainer-home-action-row {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* --- Верхняя сетка главной тренера --- */
+  .trainer-home-top-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* --- Сводная сетка клуба (4 → 2 колонки) --- */
+  .club-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  /* --- Карточка добавления в бухгалтерии --- */
+  .admin-buch-add-card {
+    padding: 14px 12px !important;
+    gap: 12px !important;
+  }
+
+  /* --- Поля ввода и мультиселект --- */
+  .input-icon-row input,
+  .input-icon-row textarea,
+  .multi-select-button,
+  .day-times-box {
+    font-size: 15px !important;
+  }
+
+  /* --- Выпадающий список выбора тренера (ST2) --- */
+  .trainer-select-box select {
+    font-size: 15px !important;
+    height: 48px !important;
+    padding: 0 10px !important;
+  }
+
+  /* --- Кнопки главной тренера --- */
+  .trainer-home-main-btn {
+    height: 56px !important;
+    font-size: 18px !important;
+  }
+
+  /* --- Уменьшение gap в административном дашборде --- */
+  .admin-dashboard {
+    gap: 14px 14px !important;
+    margin-top: 16px !important;
+  }
+}
+
+/* ===== АДАПТИВНОСТЬ 375px — iPhone SE и самые узкие телефоны ===== */
+
+@media (max-width: 375px) {
+
+  .box {
+    padding: 8px 6px !important;
+  }
+
+  .top-header {
+    padding: 0 6px 8px 6px !important;
+  }
+
+  .club-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-card {
+    padding: 12px 10px 12px 56px !important;
+  }
+}
+
+/* ===== ШАГ 3: АДАПТИВНОСТЬ ТАБЛИЦЫ УЧЕНИКОВ — горизонтальный скролл ===== */
+
+/* Контейнеры таблиц учеников: прокрутка только внутри блока */
+#statsStudentsList,
+#adminStudentStatsResult,
+#orphanStudentsResult,
+#groupStudentStatsResult,
+#trainerStudentsList,
+#trainerStudentListBlock {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+/* Таблица не сжимается ниже рабочей ширины */
+#statsStudentsList .attendance-table,
+#adminStudentStatsResult .attendance-table,
+#orphanStudentsResult .attendance-table,
+#groupStudentStatsResult .attendance-table,
+#trainerStudentsList .attendance-table {
+  min-width: 900px;
+  width: 100%;
+}
+
+/* Тёмная таблица тренера тоже не сжимается */
+#trainerStudentListBlock .student-universal-table {
+  min-width: 900px;
+}
+
+/* Гарантируем, что страница не получает горизонтальный скролл из-за таблиц */
+@media (max-width: 900px) {
+  #statsStudentsList,
+  #adminStudentStatsResult,
+  #orphanStudentsResult,
+  #groupStudentStatsResult,
+  #trainerStudentsList,
+  #trainerStudentListBlock {
+    overflow-x: auto;
+    border-radius: 12px;
+  }
+
+  /* Ячейки не переносятся — таблица остаётся читаемой при скролле */
+  #statsStudentsList .attendance-table th,
+  #statsStudentsList .attendance-table td,
+  #adminStudentStatsResult .attendance-table th,
+  #adminStudentStatsResult .attendance-table td,
+  #orphanStudentsResult .attendance-table th,
+  #orphanStudentsResult .attendance-table td,
+  #groupStudentStatsResult .attendance-table th,
+  #groupStudentStatsResult .attendance-table td,
+  #trainerStudentsList .attendance-table th,
+  #trainerStudentsList .attendance-table td,
+  #trainerStudentListBlock .student-universal-table th,
+  #trainerStudentListBlock .student-universal-table td {
+    white-space: nowrap;
+    padding: 10px 10px;
+  }
 }

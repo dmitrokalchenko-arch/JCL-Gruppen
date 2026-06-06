@@ -12574,3 +12574,754 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
     margin-top: 16px !important;
   }
 }
+
+/* ===== ПУНКТЫ A + B + C: АДАПТИВНОСТЬ ШАПКИ И ЛОГОТИПОВ ≤480px ===== */
+
+@media (max-width: 480px) {
+
+  /* ─── A: Рекламные логотипы в верхней ленте ────────────────────────── */
+
+  /* Убираем абсолютное позиционирование ленты: на узком экране она
+     накладывается поверх заголовка и кнопок.
+     Переводим в static flow — лента встраивается между блоками flex-header. */
+  .top-sponsor-logos {
+    position: static !important;
+    transform: none !important;
+    padding: 0 4px !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-shrink: 1 !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Каждый логотип спонсора: 80px → 36px по высоте */
+  .top-sponsor-logo {
+    height: 36px !important;
+    max-width: 80px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* ─── B: Кнопки Back / Home / Logout ───────────────────────────────── */
+
+  /* Три кнопки по 66px = 198px + gaps — слишком много на 375px экране.
+     Уменьшаем до 46px: 3 × 46 + 2 × 6 = 150px */
+  .icon-nav-btn {
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    padding: 2px !important;
+  }
+
+  /* Иконка внутри кнопки: 54px → 34px */
+  .nav-icon-img {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* Расстояние между кнопками */
+  .top-icon-actions {
+    gap: 6px !important;
+  }
+
+  /* ─── C: Логотип JCL в карточке #groupScreen ───────────────────────── */
+
+  /* Проблема: box 110×110px, но img внутри 300×300px с overflow:visible —
+     изображение визуально выходит за правый край карточки на 190px.
+     На 375px экране это перекрывает весь правый блок карточки.
+     Решение: уменьшаем img до размера, не превышающего box. */
+  #groupScreen .trainer-home-logo-box {
+    width: 80px !important;
+    height: 80px !important;
+    right: 10px !important;
+  }
+
+  #groupScreen .trainer-home-logo {
+    width: 80px !important;
+    height: 80px !important;
+  }
+}
+
+/* ===== ПУНКТ D + FIX КНОПОК #adminStudentScreen ≤480px ===== */
+
+@media (max-width: 480px) {
+
+  /* ─── D: Логотип клуба в шапке экрана учеников ─────────────────────── */
+
+  /* Проблема: логотип 280×280px при right:-10px выходит за левый край
+     содержимого на ~155px (280 - 10 - 375/2 ≈ перекрывает контент).
+     Уменьшаем до 130px — логотип остаётся декоративным, не мешает. */
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 130px !important;
+    height: 130px !important;
+  }
+
+  /* Сдвигаем box чуть ближе к краю, чтобы логотип не залезал на контент */
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    right: -5px !important;
+    top: 10px !important;
+  }
+
+  /* ─── FIX: Кнопки Back/Home/Logout на экране #adminStudentScreen ────── */
+
+  /* Существующее правило (строка 5793) задаёт 64×64px !important с высокой
+     специфичностью. Тот же селектор в медиа-запросе имеет равную специфичность
+     и побеждает за счёт позиции позже в файле. */
+  body:has(#adminStudentScreen:not(.hidden)) .icon-nav-btn {
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    padding: 2px !important;
+  }
+
+  /* Иконка внутри кнопки: 46px → 34px */
+  body:has(#adminStudentScreen:not(.hidden)) .nav-icon-img {
+    width: 34px !important;
+    height: 34px !important;
+  }
+}
+
+/* ===== ИСПРАВЛЕНИЯ ПО СКРИНШОТАМ — мобильный вид ≤480px ===== */
+
+@media (max-width: 480px) {
+
+  /* ─── ISSUE 1: Рекламная лента — вторая строка под заголовком ────────
+     Переводим .top-header в flex-wrap: заголовок + кнопки в первой строке,
+     лента спонсоров — во второй строке на всю ширину.               */
+
+  .top-header {
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 4px 8px !important;
+    padding: 6px 10px 8px 10px !important;
+  }
+
+  /* Заголовок "JCL-Gruppen" — первая строка, растягивается */
+  .top-title-block {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    order: 1 !important;
+  }
+
+  /* Кнопки Back/Home/Logout — первая строка, правая сторона */
+  .top-icon-actions {
+    flex: 0 0 auto !important;
+    order: 2 !important;
+  }
+
+  /* Рекламная лента — вторая строка, полная ширина */
+  .top-sponsor-logos {
+    flex: 1 1 100% !important;
+    order: 3 !important;
+    position: static !important;
+    transform: none !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 4px 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Логотипы спонсоров — крупнее, хорошо видны */
+  .top-sponsor-logo {
+    height: 48px !important;
+    max-width: 130px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* ─── ISSUE 2: Логотип JCL на Admin Dashboard перекрывает заголовок ─
+     #adminScreen::before — абсолютный псевдоэлемент 180×180px.
+     На 375px экране при right:55px, top:35px он накладывается на h2.
+     Решение: уменьшаем и отодвигаем в правый угол.                    */
+
+  #adminScreen::before {
+    width: 70px !important;
+    height: 70px !important;
+    right: 12px !important;
+    top: 12px !important;
+  }
+
+  /* Заголовок "Admin Dashboard" — меньше, не перекрывается */
+  #adminScreen h2 {
+    font-size: 28px !important;
+    margin-top: 20px !important;
+  }
+
+  #adminScreen .small {
+    font-size: 15px !important;
+  }
+
+  /* Уменьшаем padding самого #adminScreen */
+  #adminScreen {
+    padding: 16px !important;
+  }
+
+  /* ─── ISSUE 3: Иконки в карточках Admin Dashboard налезают на текст ─
+     .dashboard-card::before: left:34px, width:78px → достигает 112px.
+     При padding-left:70px (из предыдущих правил) иконка уже в тексте.
+     Решение: уменьшаем иконку до 44px, центрируем по вертикали,
+     обновляем padding карточки под новый размер.                       */
+
+  .dashboard-card {
+    padding: 12px 32px 12px 62px !important;
+    min-height: 64px !important;
+  }
+
+  .dashboard-card::before {
+    width: 44px !important;
+    height: 44px !important;
+    left: 10px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    font-size: 20px !important;
+  }
+
+  /* Стрелка справа — меньше, ближе к краю */
+  .dashboard-card::after {
+    font-size: 26px !important;
+    right: 10px !important;
+  }
+
+  /* Заголовок карточки */
+  .dashboard-title {
+    font-size: 15px !important;
+    font-weight: 900 !important;
+    margin-bottom: 4px !important;
+  }
+
+  /* Описание карточки */
+  .dashboard-text {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Специфичные переопределения для #adminScreen (id+class бьёт class):
+     без этих правил #adminScreen .dashboard-title { 22px !important }
+     выиграет у моего .dashboard-title { 15px !important }            */
+  #adminScreen .dashboard-title {
+    font-size: 15px !important;
+    margin-bottom: 4px !important;
+  }
+
+  #adminScreen .dashboard-text {
+    font-size: 12px !important;
+  }
+
+  #adminScreen {
+    padding: 16px !important;
+  }
+
+  #adminScreen h2 {
+    font-size: 28px !important;
+    margin-top: 20px !important;
+  }
+
+  #adminScreen .small {
+    font-size: 15px !important;
+  }
+}
+
+/* =================================================================
+   ФИНАЛЬНЫЕ ПРАВИЛА ШАПКИ И ЛОГОТИПОВ
+   Эти правила идут последними и переопределяют всё предыдущее.
+================================================================= */
+
+/* ── 1. МОБИЛЬНЫЙ ВЕРТИКАЛЬНЫЙ: ≤480px ──────────────────────────────────
+   Строка 1: название (слева) + кнопки (справа)
+   Строка 2: рекламные логотипы на всю ширину                          */
+
+@media (max-width: 480px) {
+
+  /* Шапка — двухстрочный flex */
+  .top-header {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0 8px !important;
+    padding: 6px 10px 6px 10px !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+  }
+
+  /* Строка 1, левая часть: заголовок */
+  .top-title-block {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    order: 1 !important;
+  }
+
+  /* Уменьшаем h1 чтобы кнопки влезли в первую строку */
+  .top-title-block h1 {
+    font-size: 20px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* Строка 1, правая часть: кнопки навигации */
+  .top-icon-actions {
+    flex: 0 0 auto !important;
+    order: 2 !important;
+    gap: 6px !important;
+  }
+
+  /* Строка 2: рекламная лента на всю ширину */
+  .top-sponsor-logos {
+    flex: 0 0 100% !important;
+    order: 3 !important;
+    position: static !important;
+    transform: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 10px !important;
+    padding: 4px 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Размер каждого логотипа спонсора */
+  .top-sponsor-logo {
+    height: 48px !important;
+    max-width: 130px !important;
+    flex-shrink: 0 !important;
+    object-fit: contain !important;
+  }
+
+  /* Кнопки Back/Home/Logout */
+  .icon-nav-btn {
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    padding: 2px !important;
+  }
+
+  .nav-icon-img {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* adminStudentScreen — одинаковый размер кнопок */
+  body:has(#adminStudentScreen:not(.hidden)) .icon-nav-btn {
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    padding: 2px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) .nav-icon-img {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* Логотип клуба на странице учеников: 110px */
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    right: 0px !important;
+    top: 8px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 110px !important;
+    height: 110px !important;
+  }
+}
+
+/* ── 2. ГОРИЗОНТАЛЬНЫЙ ТЕЛЕФОН: landscape + высота ≤500px ───────────────
+   Двухстрочная структура: строка 1 (название+кнопки), строка 2 (лента). */
+
+@media (max-height: 500px) and (orientation: landscape) {
+
+  .top-header {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0 6px !important;
+    padding: 4px 8px !important;
+    box-sizing: border-box !important;
+  }
+
+  .top-title-block {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    order: 1 !important;
+  }
+
+  .top-title-block h1 {
+    font-size: 18px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .top-icon-actions {
+    flex: 0 0 auto !important;
+    order: 2 !important;
+    gap: 4px !important;
+  }
+
+  .icon-nav-btn {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 1px !important;
+  }
+
+  .nav-icon-img {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .top-sponsor-logos {
+    flex: 0 0 100% !important;
+    order: 3 !important;
+    position: static !important;
+    transform: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 2px 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .top-sponsor-logo {
+    height: 32px !important;
+    max-width: 100px !important;
+    flex-shrink: 0 !important;
+    object-fit: contain !important;
+  }
+}
+
+/* ── 3. ЛОГОТИП #adminStudentScreen — ДЕСКТОП И ПЛАНШЕТ ─────────────────
+   Уменьшаем с 280px до 180px: остаётся декоративным, не мешает контенту. */
+
+@media (min-width: 481px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 180px !important;
+    height: 180px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    right: 0px !important;
+    top: -20px !important;
+  }
+}
+
+/* =================================================================
+   ТОЧЕЧНЫЕ ИСПРАВЛЕНИЯ — LANDSCAPE DASHBOARD + LOGO POSITION
+================================================================= */
+
+/* ── 1. ADMIN DASHBOARD В ГОРИЗОНТАЛЬНОМ ТЕЛЕФОНЕ ───────────────────────
+   На landscape-телефоне (ширина 667-844px) срабатывает max-width:900px,
+   который делает admin-dashboard однострочным. Возвращаем 2 колонки
+   и уменьшаем все элементы карточек для компактного вида.              */
+
+@media (max-height: 500px) and (orientation: landscape) {
+
+  /* #adminScreen — меньше padding */
+  #adminScreen {
+    padding: 10px !important;
+  }
+
+  #adminScreen h2 {
+    font-size: 18px !important;
+    margin-top: 6px !important;
+  }
+
+  #adminScreen .small {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
+  }
+
+  /* Сетка карточек: принудительно 2 колонки */
+  .admin-dashboard,
+  #adminScreen .admin-dashboard {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 7px !important;
+    margin-top: 8px !important;
+  }
+
+  /* Карточка — компактная */
+  #adminScreen .dashboard-card,
+  .admin-dashboard .dashboard-card {
+    padding: 8px 22px 8px 50px !important;
+    min-height: 50px !important;
+  }
+
+  /* Иконка: 78px → 34px, центрирована по вертикали */
+  #adminScreen .dashboard-card::before,
+  .admin-dashboard .dashboard-card::before {
+    width: 34px !important;
+    height: 34px !important;
+    left: 8px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    font-size: 15px !important;
+  }
+
+  /* Стрелка */
+  #adminScreen .dashboard-card::after,
+  .admin-dashboard .dashboard-card::after {
+    font-size: 18px !important;
+    right: 6px !important;
+  }
+
+  /* Заголовок карточки */
+  #adminScreen .dashboard-title,
+  .admin-dashboard .dashboard-title {
+    font-size: 11px !important;
+    font-weight: 900 !important;
+    margin-bottom: 1px !important;
+  }
+
+  /* Описание карточки */
+  #adminScreen .dashboard-text,
+  .admin-dashboard .dashboard-text {
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+  }
+
+  /* ── 2a. ЛОГОТИП #adminStudentScreen В LANDSCAPE ─────────────────────
+     Перемещаем ниже шапки в зону sport card (overflow:visible позволяет
+     выйти за границы .top-header, которому принадлежит логотип).      */
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 185px !important;   /* ниже шапки + welcome text */
+    right: 15px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 120px !important;
+    height: 120px !important;
+  }
+}
+
+/* ── 2b. ЛОГОТИП #adminStudentScreen — ВЕРТИКАЛЬНЫЙ ТЕЛЕФОН ≤480px ──────
+   На вертикальном телефоне шапка выше (2 строки ~110px + welome ~40px).
+   Смещаем логотип в зону sport card (~220px от верха .top-header).    */
+
+@media (max-width: 480px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 215px !important;
+    right: 4px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 80px !important;
+    height: 80px !important;
+  }
+}
+
+/* ── 2c. ЛОГОТИП #adminStudentScreen — ДЕСКТОП И ПЛАНШЕТ ≥481px ─────────
+   Шапка ~60-70px + welcome ~50px + отступ = logo появляется на уровне
+   sport card (~250px от верха .top-header).                             */
+
+@media (min-width: 481px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 250px !important;
+    right: 20px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 160px !important;
+    height: 160px !important;
+  }
+}
+
+/* =================================================================
+   ФИНАЛЬНЫЕ ТОЧЕЧНЫЕ ИСПРАВЛЕНИЯ:
+   1. Позиция логотипа на #adminStudentScreen
+   2. Сетка выбора видов спорта на мобильных
+================================================================= */
+
+/* ── ЗАДАЧА 1: Позиция логотипа на #adminStudentScreen ──────────────────
+   Текущее (desktop): top:250px; right:20px; 160px
+   Проблема: logo (250–410px) перекрывает Gesamt-card (~320px).
+   Решение: top:175px; right:5px; 90px → logo 175–265px, до 320px ✓   */
+
+@media (min-width: 481px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 175px !important;
+    right: 5px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 90px !important;
+    height: 90px !important;
+  }
+}
+
+/* Landscape: header compact ~90px, ставим logo сразу под header */
+@media (max-height: 500px) and (orientation: landscape) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 100px !important;
+    right: 5px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 75px !important;
+    height: 75px !important;
+  }
+}
+
+/* Mobile ≤480px: header 2 строки ~110px */
+@media (max-width: 480px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 118px !important;
+    right: 3px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 60px !important;
+    height: 60px !important;
+  }
+}
+
+/* ── ЗАДАЧА 2: Сетка выбора видов спорта на мобильных ───────────────────
+   Существующий breakpoint @560px: grid → 1fr (1 колонка).
+   Переопределяем: 3 колонки ≤480px, 2 колонки ≤360px.                 */
+
+@media (max-width: 480px) {
+
+  /* 3 карточки в ряд */
+  .sport-start-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .sport-card-button {
+    border-radius: 12px !important;
+  }
+
+  .sport-card-image {
+    border-radius: 12px !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.40) !important;
+  }
+
+  .sport-start-grid.has-many-sports {
+    gap: 8px !important;
+  }
+
+  .sport-start-grid.has-many-sports .sport-card-image {
+    max-height: 120px !important;
+  }
+
+  .sport-start-inner {
+    padding: 16px 10px !important;
+  }
+}
+
+/* 2 колонки для ≤360px */
+@media (max-width: 360px) {
+  .sport-start-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .sport-start-grid.has-many-sports .sport-card-image {
+    max-height: 130px !important;
+  }
+}
+
+/* =================================================================
+   ТОЧЕЧНЫЕ ИСПРАВЛЕНИЯ ЛОГОТИПОВ — три экрана
+================================================================= */
+
+/* ── 1. СТАРТОВЫЙ ЭКРАН (ST1): логотип .sport-start-club-logo ───────────
+   Проблема: при desktop >900px logo 250×250px при right:-5px перекрывает
+   текст "Willkommen beim JCL" на средних десктопных экранах.
+   Решение: немного правее (right:-10px) и уменьшить до 195px.
+   На ≤900px логотип уже static (существующий breakpoint), не трогаем.  */
+
+@media (min-width: 901px) {
+  .sport-start-club-logo {
+    top: -20px !important;
+    right: -10px !important;
+    width: 195px !important;
+    height: 195px !important;
+  }
+}
+
+/* ── 2. ADMIN DASHBOARD: #adminScreen::before ────────────────────────────
+   Проблема: на mobile/landscape логотип (z-index:1) скрыт под dashboard
+   (z-index:2). На landscape logo 180px выходит за overflow:hidden.
+   Решение: поднять z-index выше 2, уменьшить размер, corner-позиция.  */
+
+/* Мобильный ≤480px */
+@media (max-width: 480px) {
+  #adminScreen::before {
+    width: 62px !important;
+    height: 62px !important;
+    top: 8px !important;
+    right: 8px !important;
+    z-index: 3 !important;   /* выше dashboard (z-index:2) */
+  }
+}
+
+/* Landscape */
+@media (max-height: 500px) and (orientation: landscape) {
+  #adminScreen::before {
+    width: 58px !important;
+    height: 58px !important;
+    top: 6px !important;
+    right: 8px !important;
+    z-index: 3 !important;
+  }
+}
+
+/* ── 3. ADMINSTUDENTSCREEN: #adminTopClubLogoBox — позиция ──────────────
+   Проблема: top:175px (desktop) → logo на уровне Gesamt-card (перекрывает).
+   Нужно: logo ПРАВЕЕ блока "Alle Sportarten", в пустой области.
+   Расчёт: header~60px + margin18 + welcome30 = ~108px до sport card.
+   Logo на top:95px → 35px ниже header = в зоне welcome/перед sport card.
+   Right:5px → крайние ~95px ширины (правее sport card на 65% ширины).   */
+
+/* Desktop ≥481px */
+@media (min-width: 481px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 95px !important;
+    right: 5px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 100px !important;
+    height: 100px !important;
+  }
+}
+
+/* Landscape */
+@media (max-height: 500px) and (orientation: landscape) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 80px !important;
+    right: 5px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 80px !important;
+    height: 80px !important;
+  }
+}
+
+/* Mobile ≤480px */
+@media (max-width: 480px) {
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogoBox {
+    top: 95px !important;
+    right: 3px !important;
+  }
+
+  body:has(#adminStudentScreen:not(.hidden)) #adminTopClubLogo {
+    width: 65px !important;
+    height: 65px !important;
+  }
+}

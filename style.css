@@ -13325,3 +13325,1030 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
     height: 65px !important;
   }
 }
+
+/* =================================================================
+   ZEITRAUM STATISTIK — ЭТАП 1
+   Карточка-кнопка на Club Statistik + стили нового экрана
+================================================================= */
+
+/* ── Карточка-кнопка "Zeitraum Statistik" в .club-summary-grid ─── */
+
+.zr-entry-card {
+  /* Занимает 2 средние колонки из 4 → по центру */
+  grid-column: 2 / 4;
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease !important;
+}
+
+/* Dark-gold тема из #clubStatistikScreen наследуется автоматически.
+   Дополнительно: hover и подзаголовок */
+.zr-entry-card:hover {
+  transform: translateY(-3px) !important;
+  border-color: #ffd54a !important;
+  box-shadow:
+    0 0 22px rgba(255,213,74,.45),
+    inset 0 0 22px rgba(255,213,74,.06) !important;
+}
+
+.zr-entry-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: rgba(255,255,255,.70);
+  line-height: 1.4;
+}
+
+/* Мобильный: при 1-колоночном grid-е карточка занимает всю ширину */
+@media (max-width: 480px) {
+  .zr-entry-card {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+/* ── Основной экран #zeitraumStatistikScreen ───────────────────── */
+
+#zeitraumStatistikScreen {
+  padding: 24px;
+  color: #ffffff;
+  min-height: 60vh;
+}
+
+/* Шапка экрана */
+.zr-screen-header {
+  margin-bottom: 28px;
+}
+
+.zr-title {
+  font-size: 32px;
+  font-weight: 900;
+  color: #ffd54a;
+  margin: 0 0 6px 0;
+  text-shadow: 0 0 18px rgba(255,213,74,.45);
+}
+
+.zr-subtitle {
+  font-size: 15px;
+  color: rgba(255,255,255,.72);
+}
+
+/* ── Блоки-секции ─────────────────────────────────────────────── */
+
+.zr-block {
+  background: rgba(5, 12, 28, .82);
+  border: 1px solid #d6a600;
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  box-shadow:
+    0 0 14px rgba(255,200,0,.18),
+    inset 0 0 18px rgba(255,200,0,.04);
+}
+
+.zr-block-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 900;
+  color: #ffd54a;
+  margin-bottom: 14px;
+  letter-spacing: .3px;
+}
+
+.zr-block-icon {
+  font-size: 20px;
+}
+
+/* ── Полоса иконок видов спорта ───────────────────────────────── */
+
+.zr-sport-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.zr-sport-loading {
+  color: rgba(255,255,255,.55);
+  font-size: 14px;
+}
+
+/* Чип-карточка спорта */
+.zr-sport-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 90px;
+  padding: 10px 8px 8px;
+  background: rgba(10, 20, 48, .75);
+  border: 1.5px solid rgba(255,200,0,.35);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, transform .15s;
+  user-select: none;
+}
+
+.zr-sport-chip:hover {
+  border-color: #ffd54a;
+  transform: translateY(-2px);
+  box-shadow: 0 0 14px rgba(255,213,74,.35);
+}
+
+.zr-sport-chip--active {
+  border-color: #ffd54a !important;
+  background: rgba(255,200,0,.12) !important;
+  box-shadow:
+    0 0 18px rgba(255,213,74,.50),
+    inset 0 0 14px rgba(255,200,0,.08) !important;
+}
+
+/* Изображение вида спорта */
+.zr-sport-chip-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.zr-sport-chip-emoji {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  border-radius: 10px;
+  background: rgba(255,200,0,.10);
+}
+
+/* Название спорта */
+.zr-sport-chip-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+/* Checkbox скрыт — кликается весь чип */
+.zr-sport-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* Индикатор выбора в правом верхнем углу */
+.zr-sport-check-indicator {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,200,0,.5);
+  background: rgba(5,12,28,.9);
+  transition: background .2s, border-color .2s;
+}
+
+.zr-sport-chip--active .zr-sport-check-indicator {
+  background: #ffd54a;
+  border-color: #ffd54a;
+}
+
+.zr-sport-chip--active .zr-sport-check-indicator::after {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: #06101f;
+  font-weight: 900;
+}
+
+/* ── Радиокнопки Analyse-Typ ──────────────────────────────────── */
+
+.zr-radio-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.zr-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 10px 18px;
+  background: rgba(10, 20, 48, .70);
+  border: 1.5px solid rgba(255,200,0,.30);
+  border-radius: 12px;
+  transition: border-color .2s, background .2s;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.zr-radio-label:hover {
+  border-color: #ffd54a;
+  background: rgba(255,200,0,.08);
+}
+
+.zr-radio-label input[type="radio"] {
+  accent-color: #ffd54a;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.zr-radio-text {
+  user-select: none;
+}
+
+/* ── Select Kennzahl ──────────────────────────────────────────── */
+
+.zr-select-wrap {
+  margin-bottom: 8px;
+}
+
+.zr-select {
+  width: 100%;
+  max-width: 360px;
+  height: 48px;
+  background: rgba(5, 12, 28, .90) !important;
+  border: 1.5px solid #d6a600 !important;
+  border-radius: 12px !important;
+  color: #ffffff !important;
+  padding: 0 14px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+.zr-select option {
+  background: #06101f;
+  color: #ffffff;
+}
+
+.zr-kennzahl-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #ffd54a;
+  padding: 6px 10px;
+  background: rgba(255,200,0,.08);
+  border-radius: 8px;
+  border: 1px solid rgba(255,200,0,.25);
+}
+
+/* ── Сетки checkboxes (годы / месяцы) ────────────────────────── */
+
+.zr-checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.zr-placeholder-hint {
+  font-size: 13px;
+  color: rgba(255,255,255,.50);
+  padding: 8px 0;
+}
+
+/* ── Кнопка "Analyse starten" ─────────────────────────────────── */
+
+.zr-action-row {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.zr-start-btn {
+  height: 56px;
+  padding: 0 40px;
+  background: linear-gradient(135deg, #c8870a, #e0a820) !important;
+  color: #06101f !important;
+  border: none !important;
+  border-radius: 14px !important;
+  font-size: 17px !important;
+  font-weight: 900 !important;
+  cursor: pointer;
+  letter-spacing: .3px;
+  box-shadow:
+    0 0 18px rgba(255,200,0,.45),
+    0 6px 20px rgba(0,0,0,.35);
+  transition: transform .15s, box-shadow .15s;
+  margin: 0 !important;
+  width: auto !important;
+}
+
+.zr-start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 28px rgba(255,213,74,.65),
+    0 8px 24px rgba(0,0,0,.40);
+}
+
+.zr-start-btn:active {
+  transform: translateY(1px);
+}
+
+/* ── Блок результатов ─────────────────────────────────────────── */
+
+.zr-result-box {
+  background: rgba(3, 10, 24, .78);
+  border: 1.5px solid rgba(255,200,0,.40);
+  border-radius: 16px;
+  padding: 24px;
+  min-height: 120px;
+  margin-top: 8px;
+}
+
+.zr-result-placeholder {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  color: rgba(255,255,255,.65);
+  font-size: 15px;
+}
+
+.zr-result-placeholder-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.zr-result-warn {
+  color: #ffbb44;
+}
+
+.zr-result-ready {
+  color: #ffffff;
+}
+
+.zr-filter-summary {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 14px;
+  color: rgba(255,255,255,.80);
+  padding: 10px 14px;
+  background: rgba(255,200,0,.06);
+  border-radius: 10px;
+  border: 1px solid rgba(255,200,0,.18);
+}
+
+.zr-result-info {
+  margin-top: 12px;
+  font-size: 13px;
+  color: rgba(255,255,255,.50);
+  font-style: italic;
+}
+
+/* ── Адаптивность ─────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  #zeitraumStatistikScreen {
+    padding: 16px;
+  }
+
+  .zr-title {
+    font-size: 26px;
+  }
+
+  .zr-sport-chip {
+    width: 78px;
+  }
+
+  .zr-sport-chip-img {
+    width: 46px;
+    height: 46px;
+  }
+
+  .zr-radio-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .zr-start-btn {
+    width: 100% !important;
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #zeitraumStatistikScreen {
+    padding: 12px 10px;
+  }
+
+  .zr-title {
+    font-size: 22px;
+  }
+
+  .zr-block {
+    padding: 14px 12px;
+    margin-bottom: 12px;
+  }
+
+  .zr-sport-chip {
+    width: 68px;
+    padding: 8px 6px 6px;
+  }
+
+  .zr-sport-chip-img {
+    width: 38px;
+    height: 38px;
+  }
+
+  .zr-sport-chip-name {
+    font-size: 9px;
+  }
+
+  .zr-result-box {
+    padding: 16px 12px;
+  }
+
+  .zr-select {
+    max-width: 100%;
+  }
+}
+
+/* =================================================================
+   ZEITRAUM STATISTIK — карточки выбора видов спорта
+   Дизайн: как .buch-sport-filter-card (cover-фото), но с:
+   - видимым названием (overlay снизу)
+   - ✓ галочкой при выборе
+   - множественным выбором
+================================================================= */
+
+/* Контейнер-сетка (заменяет .zr-sport-strip) */
+.zr-sport-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* ── Карточка спорта ─────────────────────────────────────────── */
+
+.zr-sport-card {
+  position: relative;
+  width: 120px;
+  height: 100px;
+  border: 1.5px solid rgba(255, 255, 255, .10);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(10, 20, 50, .72);
+  cursor: pointer;
+  padding: 0;
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  flex-shrink: 0;
+}
+
+/* Фото — contain: изображение НИКОГДА не увеличивается сверх оригинала.
+   cover → pixelation при маленьких icon_file-иконках (64px в 120px контейнере).
+   contain → изображение уменьшается под контейнер если оно большое (sharp),
+             или показывается в натуральном размере если маленькое (без blur).
+   Тёмный фон карточки виден в letterbox-зонах — аналог Schülerliste. */
+.zr-sport-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 14px;
+  display: block;
+}
+
+/* Фallback если картинки нет */
+.zr-sport-card-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+}
+
+/* Название — градиентный overlay снизу */
+.zr-sport-card-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 22px 6px 6px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(0, 0, 0, .78)
+  );
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.2;
+  border-radius: 0 0 14px 14px;
+  letter-spacing: .2px;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Галочка ✓ в правом верхнем углу — скрыта по умолчанию */
+.zr-sport-card-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffd54a;
+  color: #06101f;
+  font-size: 13px;
+  font-weight: 900;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  box-shadow:
+    0 0 8px rgba(255, 213, 74, .90),
+    0 2px 6px rgba(0, 0, 0, .50);
+  line-height: 1;
+}
+
+/* ── Hover ───────────────────────────────────────────────────── */
+
+.zr-sport-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: rgba(255, 200, 0, .50);
+  box-shadow:
+    0 0 16px rgba(255, 200, 0, .28),
+    0 6px 18px rgba(0, 0, 0, .40);
+}
+
+/* ── Выбранное состояние ─────────────────────────────────────── */
+
+.zr-sport-card.zr-sport-card--active {
+  border: 2px solid #ffd54a !important;
+  transform: scale(1.04) !important;
+  box-shadow:
+    0 0 24px rgba(255, 213, 74, .70),
+    0 0 48px rgba(255, 180, 0, .30),
+    0 6px 20px rgba(0, 0, 0, .45) !important;
+  z-index: 2;
+}
+
+/* Показываем галочку при выборе */
+.zr-sport-card.zr-sport-card--active .zr-sport-card-check {
+  display: flex;
+}
+
+/* ── Адаптивность ────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .zr-sport-card {
+    width: 100px;
+    height: 84px;
+  }
+
+  .zr-sport-card-name {
+    font-size: 9px;
+    padding: 18px 4px 5px;
+  }
+}
+
+@media (max-width: 480px) {
+  .zr-sport-grid {
+    gap: 8px;
+  }
+
+  .zr-sport-card {
+    width: 82px;
+    height: 70px;
+    border-radius: 12px;
+  }
+
+  .zr-sport-card img {
+    border-radius: 10px;
+  }
+
+  .zr-sport-card-name {
+    font-size: 8px;
+    padding: 14px 3px 4px;
+  }
+
+  .zr-sport-card-check {
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    top: 4px;
+    right: 4px;
+  }
+}
+
+/* =================================================================
+   ZEITRAUM STATISTIK — карточка "Alle Sportarten" + доработки
+================================================================= */
+
+/* ── Карточка "Alle Sportarten" — первая в сетке ──────────────── */
+
+.zr-sport-card--alle {
+  background: linear-gradient(
+    135deg,
+    rgba(22, 15, 0, .92),
+    rgba(5, 8, 20, .96)
+  );
+  border-color: rgba(255, 200, 70, .55) !important;
+}
+
+/* Логотип клуба — object-fit: contain (не crop, полный логотип) */
+.zr-sport-card--alle img,
+.zr-alle-logo {
+  object-fit: contain !important;
+  padding: 12px !important;          /* отступ чтобы логотип не обрезался */
+  background: transparent !important;
+}
+
+/* При выборе — усиленный золотой glow */
+.zr-sport-card--alle.zr-sport-card--active {
+  border-color: #ffd54a !important;
+  box-shadow:
+    0 0 30px rgba(255, 213, 74, .80),
+    0 0 60px rgba(255, 180, 0, .40),
+    0 6px 20px rgba(0, 0, 0, .45) !important;
+}
+
+/* Название "Alle Sportarten" — золотой текст */
+.zr-sport-card--alle .zr-sport-card-name {
+  color: #ffd54a;
+  font-size: 9px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(0, 0, 0, .85)
+  );
+}
+
+/* ── Блок Kennzahl — плавное появление/скрытие ─────────────────
+   Когда hidden — скрывается полностью (display:none из .hidden).
+   Анимация при появлении через transition на opacity.            */
+
+#zrKennzahlBlock {
+  transition: opacity .25s ease;
+}
+
+#zrKennzahlBlock.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Перезаписываем .hidden чтобы сохранить transition эффект,
+   но убрать из потока когда полностью скрыт              */
+#zrKennzahlBlock.hidden {
+  display: none !important;
+}
+/* =================================================================
+   ZEITRAUM STATISTIK — ЭТАП 2: Jahresvergleich-таблица
+================================================================= */
+
+.zr-table-section {
+  margin-bottom: 28px;
+}
+
+.zr-table-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.zr-table-sport {
+  font-size: 17px;
+  font-weight: 900;
+  color: #ffd54a;
+  text-shadow: 0 0 12px rgba(255,213,74,.4);
+}
+
+.zr-table-kz-label {
+  font-size: 14px;
+  color: rgba(255,255,255,.65);
+}
+
+.zr-no-data {
+  color: rgba(255,255,255,.5);
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+.zr-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+  border: 1px solid #d6a600;
+  box-shadow: 0 0 16px rgba(255,200,0,.18);
+}
+
+.zr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 620px;
+}
+
+.zr-table thead tr {
+  background: rgba(214,166,0,.18);
+}
+
+.zr-table th {
+  padding: 10px 14px;
+  text-align: left;
+  color: #ffd54a;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid #d6a600;
+}
+
+.zr-table td {
+  padding: 9px 14px;
+  color: rgba(255,255,255,.88);
+  border-bottom: 1px solid rgba(214,166,0,.15);
+  white-space: nowrap;
+}
+
+.zr-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.zr-table tbody tr:hover {
+  background: rgba(255,213,74,.06);
+}
+
+.zr-row-running td {
+  background: rgba(255,213,74,.04);
+}
+
+.zr-td-year {
+  font-weight: 700;
+  color: #ffd54a !important;
+  font-size: 15px;
+}
+
+.zr-pos {
+  color: #4cde8a;
+  font-weight: 700;
+}
+
+.zr-neg {
+  color: #ff5f5f;
+  font-weight: 700;
+}
+
+.zr-neutral {
+  color: rgba(255,255,255,.45);
+}
+
+.zr-lauft {
+  color: rgba(255,255,255,.40);
+  font-style: italic;
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .zr-table th,
+  .zr-table td {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+  .zr-table-sport {
+    font-size: 15px;
+  }
+}
+
+/* =================================================================
+   ZEITRAUM STATISTIK — чекбоксы годов / месяцев
+================================================================= */
+
+.zr-checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.zr-check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(214,166,0,.35);
+  background: rgba(255,255,255,.04);
+  color: rgba(255,255,255,.85);
+  font-size: 13px;
+  transition: border-color .15s, background .15s;
+  user-select: none;
+}
+
+.zr-check-label:hover {
+  border-color: #ffd54a;
+  background: rgba(255,213,74,.08);
+}
+
+.zr-check-label input[type="checkbox"] {
+  accent-color: #ffd54a;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* Колонка «Monat» в таблице Letzte 12 Monate */
+.zr-td-monat {
+  font-weight: 600;
+  color: rgba(255,255,255,.9);
+  white-space: nowrap;
+}
+
+/* =================================================================
+   ZEITRAUM STATISTIK — Gesamtentwicklung-карточка + Gesamtverein
+================================================================= */
+
+/* ── Итоговая карточка Gesamtentwicklung ─────────────────────── */
+.zr-gesamt-card {
+  margin-top: 14px;
+}
+
+.zr-gesamt-card-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background: rgba(5, 12, 28, .92);
+  border: 1px solid #ffd54a;
+  border-radius: 14px;
+  padding: 16px 20px;
+  box-shadow:
+    0 0 20px rgba(255,213,74,.25),
+    inset 0 0 18px rgba(255,213,74,.05);
+}
+
+.zr-gesamt-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: #ffd54a;
+  opacity: .8;
+}
+
+.zr-gesamt-period {
+  font-size: 13px;
+  color: rgba(255,255,255,.55);
+}
+
+.zr-gesamt-values {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: rgba(255,255,255,.85);
+  font-weight: 600;
+}
+
+.zr-gesamt-arrow {
+  color: rgba(255,213,74,.6);
+  font-size: 16px;
+}
+
+.zr-gesamt-delta {
+  font-size: 20px;
+  font-weight: 900;
+  margin-top: 2px;
+}
+
+.zr-gesamt-delta .zr-pos { font-size: 20px; }
+.zr-gesamt-delta .zr-neg { font-size: 20px; }
+
+/* ── Блок Gesamtverein (общий блок клуба) ─────────────────────── */
+.zr-section-gesamt {
+  border-left: 3px solid #ffd54a;
+  padding-left: 16px;
+  margin-bottom: 32px;
+}
+
+.zr-section-gesamt .zr-table-scroll {
+  border-color: #ffd54a;
+  box-shadow:
+    0 0 24px rgba(255,213,74,.28),
+    inset 0 0 20px rgba(255,213,74,.05);
+}
+
+.zr-section-gesamt .zr-table thead tr {
+  background: rgba(214,166,0,.28);
+}
+
+.zr-gesamt-sport {
+  font-size: 19px !important;
+  color: #ffd54a !important;
+  text-shadow: 0 0 18px rgba(255,213,74,.55) !important;
+}
+
+@media (max-width: 600px) {
+  .zr-gesamt-card-inner {
+    padding: 12px 14px;
+  }
+  .zr-gesamt-delta {
+    font-size: 17px;
+  }
+  .zr-gesamt-values {
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+}
+
+/* Подсказка "нужно минимум 2 года" */
+.zr-gesamt-hint {
+  font-size: 13px;
+  color: rgba(255,255,255,.45);
+  font-style: italic;
+  padding: 10px 16px !important;
+  border-color: rgba(214,166,0,.35) !important;
+  box-shadow: none !important;
+}
+
+/* =================================================================
+   ZEITRAUM STATISTIK — Двухколоночная карточка Aktivität
+================================================================= */
+
+.zr-gesamt-activity-card {
+  margin-top: 14px;
+  background: rgba(5, 12, 28, .92);
+  border: 1px solid #ffd54a;
+  border-radius: 14px;
+  padding: 16px 20px;
+  box-shadow:
+    0 0 20px rgba(255,213,74,.25),
+    inset 0 0 18px rgba(255,213,74,.05);
+}
+
+.zr-gesamt-activity-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+/* Двухколоночная сетка */
+.zr-gesamt-activity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.zr-gesamt-activity-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(214,166,0,.25);
+  border-radius: 10px;
+}
+
+.zr-gesamt-activity-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: rgba(255,213,74,.75);
+}
+
+.zr-gesamt-activity-values {
+  font-size: 14px;
+  color: rgba(255,255,255,.80);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.zr-gesamt-activity-delta {
+  font-size: 18px;
+  font-weight: 900;
+  margin-top: 2px;
+}
+
+.zr-gesamt-activity-delta .zr-pos { font-size: 18px; }
+.zr-gesamt-activity-delta .zr-neg { font-size: 18px; }
+
+/* Адаптив: на телефоне одна колонка */
+@media (max-width: 560px) {
+  .zr-gesamt-activity-grid {
+    grid-template-columns: 1fr;
+  }
+  .zr-gesamt-activity-delta {
+    font-size: 16px;
+  }
+}

@@ -1326,6 +1326,19 @@ Studenten Anwesenheit Statistik
 
   </div>
 
+<!-- ===== ZEITRAUM STATISTIK BUTTON ===== -->
+<div
+  class="club-stat-card zr-entry-card"
+  onclick="showZeitraumStatistikScreen()"
+  style="cursor:pointer;"
+>
+  <div class="club-stat-icon">📈</div>
+  <div>
+    <div class="club-stat-title">Zeitraum Statistik</div>
+    <div class="zr-entry-subtitle">Vereinsentwicklung nach Zeitraum analysieren</div>
+  </div>
+</div>
+
 <div id="sportStatsOverviewBox" class="sport-stats-overview-box">
 
   <div class="sport-stats-overview-title">
@@ -1345,6 +1358,128 @@ Studenten Anwesenheit Statistik
 </div>
 </div>
 </div>
+
+<!-- ========================================================
+     ZEITRAUM STATISTIK SCREEN
+     Vereinsentwicklung nach Zeitraum analysieren
+     Этап 1: визуальная заготовка (без Supabase-расчётов)
+======================================================== -->
+<div id="zeitraumStatistikScreen" class="hidden">
+
+  <!-- Шапка экрана -->
+  <div class="zr-screen-header">
+    <div class="zr-header-text">
+      <h2 class="zr-title">📈 Zeitraum Statistik</h2>
+      <div class="zr-subtitle">Vereinsentwicklung nach Zeitraum analysieren</div>
+    </div>
+  </div>
+
+  <!-- Блок 1: Выбор видов спорта -->
+  <div class="zr-block">
+    <div class="zr-block-title">
+      <span class="zr-block-icon">🏅</span>
+      Sportart auswählen
+    </div>
+    <div id="zrSportFilterStrip" class="zr-sport-strip">
+      <!-- Заполняется через JS из таблицы sports -->
+      <div class="zr-sport-loading">Sportarten werden geladen...</div>
+    </div>
+  </div>
+
+  <!-- Блок 2: Analyse-Typ -->
+  <div class="zr-block">
+    <div class="zr-block-title">
+      <span class="zr-block-icon">🔍</span>
+      Analyse-Typ
+    </div>
+    <div class="zr-radio-row">
+      <label class="zr-radio-label">
+        <input
+          type="radio"
+          name="zrAnalyseTyp"
+          value="jahresvergleich"
+          checked
+          onchange="handleZrAnalyseTypChange()"
+        >
+        <span class="zr-radio-text">Jahresvergleich</span>
+      </label>
+      <label class="zr-radio-label">
+        <input
+          type="radio"
+          name="zrAnalyseTyp"
+          value="letzte12"
+          onchange="handleZrAnalyseTypChange()"
+        >
+        <span class="zr-radio-text">Letzte 12 Monate</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Блок 3: Kennzahl -->
+  <div class="zr-block" id="zrKennzahlBlock">
+    <div class="zr-block-title">
+      <span class="zr-block-icon">📊</span>
+      Kennzahl
+    </div>
+    <div class="zr-select-wrap">
+      <select id="zrKennzahlSelect" class="zr-select">
+        <option value="students_active_count">Schüler</option>
+        <option value="trainers_count">Trainer</option>
+        <option value="groups_count">Gruppen</option>
+        <option value="attendance_count">Anwesenheit</option>
+        <option value="trainings_count">Trainings</option>
+      </select>
+    </div>
+    <div class="zr-kennzahl-hint hidden" id="zrKennzahlHint">
+      Bei mehreren Sportarten bitte eine Kennzahl auswählen.
+    </div>
+  </div>
+
+  <!-- Блок 4a: Выбор годов (для Jahresvergleich) -->
+  <div class="zr-block" id="zrJahreBlock">
+    <div class="zr-block-title">
+      <span class="zr-block-icon">📅</span>
+      Jahre auswählen
+    </div>
+    <div id="zrJahreGrid" class="zr-checkbox-grid">
+      <!-- Заполняется через JS (loadAvailableYears) -->
+      <div class="zr-placeholder-hint">
+        Jahres-Daten werden nach dem Start der Analyse geladen.
+      </div>
+    </div>
+  </div>
+
+  <!-- Блок 4b: Выбор месяцев (для Letzte 12 Monate) -->
+  <div class="zr-block hidden" id="zrMonateBlock">
+    <div class="zr-block-title">
+      <span class="zr-block-icon">🗓️</span>
+      Monate auswählen
+    </div>
+    <div id="zrMonateGrid" class="zr-checkbox-grid">
+      <!-- Заполняется через JS (getLastTwelveMonths) -->
+      <div class="zr-placeholder-hint">
+        Monats-Daten werden nach dem Start der Analyse geladen.
+      </div>
+    </div>
+  </div>
+
+  <!-- Кнопка запуска -->
+  <div class="zr-action-row">
+    <button class="zr-start-btn" onclick="startZeitraumAnalyse()">
+      🚀 Analyse starten
+    </button>
+  </div>
+
+  <!-- Блок результатов -->
+  <div id="zrResultBox" class="zr-result-box">
+    <div class="zr-result-placeholder">
+      <div class="zr-result-placeholder-icon">📊</div>
+      <div>Bitte Filter auswählen und Analyse starten.</div>
+    </div>
+  </div>
+
+</div>
+<!-- ===== / ZEITRAUM STATISTIK SCREEN ===== -->
 
   <div id="clubStudentStatsScreen" class="work-screen hidden">
     <div class="club-sport-filter-box">

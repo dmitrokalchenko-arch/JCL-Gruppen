@@ -880,6 +880,19 @@ if (
 
     return;
   }
+  // ── ZEITRAUM STATISTIK → Club Statistik ──
+  if (
+    currentView === 'zeitraumStatistik' &&
+    previousView === 'clubStatistik'
+  ) {
+    previousView = null;
+    currentView = 'clubStatistik';
+    showPromoTransition(async () => {
+      await showClubStatistikScreen();
+    });
+    return;
+  }
+
   if(currentView==='trainerAdmin' || currentView==='trainerAdminFromClub'){
 
    if(previousView==='clubStatistik'){
@@ -4411,7 +4424,8 @@ function hideAllWorkScreens() {
     'orphanStudentsScreen',
     'sportManagementScreen',
     'sponsorManagementScreen',
-    'deleteCandidatesScreen'
+    'deleteCandidatesScreen',
+    'zeitraumStatistikScreen'
   ];
 
   ids.forEach(function(id) {
@@ -10793,4 +10807,970 @@ async function deleteSport(sportId, sportName){
   document
     .getElementById('deleteConfirmOverlay')
     .classList.remove('hidden');
+}
+
+/* =========================================================
+   ZEITRAUM STATISTIK — ЭТАП 1 (визуальная заготовка)
+   Supabase-расчёты будут добавлены в следующих этапах.
+========================================================= */
+
+async function showZeitraumStatistikScreen() {
+  hideAllWorkScreens();
+  previousView = 'clubStatistik';
+  currentView  = 'zeitraumStatistik';
+
+  const screen = document.getElementById('zeitraumStatistikScreen');
+  if (screen) screen.classList.remove('hidden');
+
+  document.getElementById('currentGroupInfo').textContent =
+    'Aktuelle Seite: Club Statistik / Zeitraum Statistik';
+
+  await loadZeitraumSportFilter();
+  handleZrAnalyseTypChange();
+  loadZrAvailableMonths();
+  loadZrAvailableYears();
+}
+
+/**
+ * Загружает виды спорта из Supabase и рендерит карточки.
+ *
+ * КАЧЕСТВО ИЗОБРАЖЕНИЙ:
+ * Используем .select('*') чтобы getSportImageUrl() получил
+ * все поля (sport_id, icon_file и др.) и смог найти
+ * наилучший URL через STARTSEITE_CARD_FILES (большие PNG
+ * из Startseite_1/ бакета) — тот же источник, что на ST1.
+ *
+ * ПЕРВАЯ КАРТОЧКА — "Alle Sportarten" с логотипом клуба.
+ * data-sport-id="__alle__" — служебный идентификатор.
+ */
+async function loadZeitraumSportFilter() {
+  const strip = document.getElementById('zrSportFilterStrip');
+  if (!strip) return;
+
+  strip.innerHTML = '<div class="zr-sport-loading">Sportarten werden geladen...</div>';
+  strip.className = 'zr-sport-grid';
+
+  // select('*') — все поля нужны getSportImageUrl для корректного
+  // приоритета: STARTSEITE_CARD_FILES → STARTSEITE_ICON_FILES → icon_file
+  const { data, error } = await db
+    .from('sports')
+    .select('*')
+    .eq('aktiv', 'JA')
+    .order('sort_order', { ascending: true });
+
+  if (error || !data || data.length === 0) {
+    strip.innerHTML = '<div class="zr-sport-loading">Keine aktiven Sportarten gefunden.</div>';
+    return;
+  }
+
+  // ── Карточка "Alle Sportarten" ──────────────────────────────────
+  const alleCard = `
+    <button
+      type="button"
+      class="zr-sport-card zr-sport-card--alle"
+      data-sport-id="__alle__"
+      data-sport-name="Alle Sportarten"
+      onclick="toggleZrSport(this)"
+      title="Alle Sportarten"
+    >
+      <img src="${CLUB_LOGO}" alt="Alle Sportarten" class="zr-alle-logo">
+      <div class="zr-sport-card-name">Alle Sportarten</div>
+      <div class="zr-sport-card-check" aria-hidden="true">✓</div>
+    </button>
+  `;
+
+  // ── Карточки конкретных видов спорта ────────────────────────────
+  const sportCards = data.map(function(sport) {
+    // getSportImageUrl приоритет:
+    // 1. STARTSEITE_CARD_FILES[sport_id] → крупный PNG из Startseite_1/
+    // 2. STARTSEITE_ICON_FILES[sport_id] → тот же крупный PNG
+    // 3. SPORT_ICON_URL + sport.icon_file → маленькая иконка (fallback)
+    const imgUrl = getSportImageUrl(sport);
+
+    return `
+      <button
+        type="button"
+        class="zr-sport-card"
+        data-sport-id="${sport.sport_id}"
+        data-sport-name="${sport.name}"
+        onclick="toggleZrSport(this)"
+        title="${sport.name}"
+      >
+        ${imgUrl
+          ? `<img src="${imgUrl}" alt="${sport.name}">`
+          : `<div class="zr-sport-card-fallback">🥋</div>`
+        }
+        <div class="zr-sport-card-check" aria-hidden="true">✓</div>
+      </button>
+    `;
+  }).join('');
+
+  strip.innerHTML = alleCard + sportCards;
+}
+
+/**
+ * Переключает выбор карточки спорта с взаимоисключающей логикой:
+ *
+ * Клик по "Alle Sportarten":
+ *   → снимает все конкретные виды спорта
+ *   → переключает саму Alle Sportarten
+ *
+ * Клик по конкретному спорту:
+ *   → снимает "Alle Sportarten"
+ *   → переключает данный спорт
+ */
+/**
+ * Переключает выбор карточки спорта.
+ *
+ * "Alle Sportarten" — управляющая кнопка "выбрать всё / снять всё":
+ *   • Если НЕ все конкретные спорты выбраны → выбрать ВСЕ + подсветить Alle.
+ *   • Если ВСЕ конкретные спорты уже выбраны → снять ВСЕ включая Alle.
+ *
+ * Конкретный спорт:
+ *   • Переключает себя.
+ *   • Alle Sportarten автоматически становится активной если ВСЕ спорты
+ *     теперь выбраны, и снимается если хотя бы один не выбран.
+ */
+function toggleZrSport(btn) {
+  const isAlle = btn.dataset.sportId === '__alle__';
+
+  // Все конкретные карточки (не Alle)
+  const allSpecific = document.querySelectorAll(
+    '.zr-sport-card:not([data-sport-id="__alle__"])'
+  );
+  const alleBtn = document.querySelector('.zr-sport-card[data-sport-id="__alle__"]');
+
+  if (isAlle) {
+    // Сколько конкретных уже выбрано
+    const activeCount = document.querySelectorAll(
+      '.zr-sport-card:not([data-sport-id="__alle__"]).zr-sport-card--active'
+    ).length;
+    const totalCount = allSpecific.length;
+
+    if (activeCount === totalCount && totalCount > 0) {
+      // Все уже выбраны → снять ВСЕ
+      btn.classList.remove('zr-sport-card--active');
+      allSpecific.forEach(function(c) { c.classList.remove('zr-sport-card--active'); });
+    } else {
+      // Не все выбраны → выбрать ВСЕ
+      btn.classList.add('zr-sport-card--active');
+      allSpecific.forEach(function(c) { c.classList.add('zr-sport-card--active'); });
+    }
+
+  } else {
+    // Конкретный спорт: переключаем его
+    btn.classList.toggle('zr-sport-card--active');
+
+    // Синхронизируем состояние Alle Sportarten:
+    // активна только когда ВСЕ конкретные спорты выбраны
+    if (alleBtn) {
+      const activeCount = document.querySelectorAll(
+        '.zr-sport-card:not([data-sport-id="__alle__"]).zr-sport-card--active'
+      ).length;
+      const totalCount = allSpecific.length;
+
+      if (activeCount === totalCount && totalCount > 0) {
+        alleBtn.classList.add('zr-sport-card--active');
+      } else {
+        alleBtn.classList.remove('zr-sport-card--active');
+      }
+    }
+  }
+
+  handleZrSportChange();
+}
+
+/**
+ * Обновляет видимость блока Kennzahl и сбрасывает результаты.
+ *
+ * "Alle Sportarten" НЕ считается как вид спорта — она управляющая кнопка.
+ * Kennzahl определяется только по реальным выбранным видам спорта:
+ *   0 или 1 спорт  → Kennzahl СКРЫТ  (система покажет все показатели)
+ *   2+ спорта      → Kennzahl ВИДЕН  (нужно выбрать один показатель для сравнения)
+ */
+function handleZrSportChange() {
+  const specificActive = document.querySelectorAll(
+    '.zr-sport-card:not([data-sport-id="__alle__"]).zr-sport-card--active'
+  ).length;
+
+  const showKennzahl = specificActive >= 2;
+
+  const kennzahlBlock = document.getElementById('zrKennzahlBlock');
+  if (kennzahlBlock) {
+    kennzahlBlock.classList.toggle('hidden', !showKennzahl);
+  }
+
+  resetZrResultBox();
+}
+
+/**
+ * Переключает видимость блоков Jahre/Monate
+ * при смене Analyse-Typ.
+ */
+function handleZrAnalyseTypChange() {
+  const selected = document.querySelector('input[name="zrAnalyseTyp"]:checked');
+  const typ = selected ? selected.value : 'jahresvergleich';
+
+  const jahreBlock  = document.getElementById('zrJahreBlock');
+  const monateBlock = document.getElementById('zrMonateBlock');
+
+  if (typ === 'jahresvergleich') {
+    if (jahreBlock)  jahreBlock.classList.remove('hidden');
+    if (monateBlock) monateBlock.classList.add('hidden');
+  } else {
+    if (jahreBlock)  jahreBlock.classList.add('hidden');
+    if (monateBlock) monateBlock.classList.remove('hidden');
+  }
+  resetZrResultBox();
+}
+
+/**
+ * Сбрасывает блок результатов к состоянию-заглушке.
+ */
+function resetZrResultBox() {
+  const box = document.getElementById('zrResultBox');
+  if (!box) return;
+  box.innerHTML = `
+    <div class="zr-result-placeholder">
+      <div class="zr-result-placeholder-icon">📊</div>
+      <div>Bitte Filter auswählen und Analyse starten.</div>
+    </div>
+  `;
+}
+
+/* =========================================================
+   ZEITRAUM STATISTIK — ЭТАП 2
+   Jahresvergleich + Letzte 12 Monate
+========================================================= */
+
+const ZR_KENNZAHL_MAP = {
+  students_active_count: { label: 'Schüler',    unit: 'Schüler'   },
+  trainers_count:        { label: 'Trainer',     unit: 'Trainer'   },
+  groups_count:          { label: 'Gruppen',     unit: 'Gruppen'   },
+  attendance_count:      { label: 'Anwesenheit', unit: 'Einträge'  },
+  trainings_count:       { label: 'Trainings',   unit: 'Trainings' },
+};
+
+const ZR_ALL_KENNZAHLEN = [
+  'groups_count',
+  'trainers_count',
+  'students_active_count',
+  'attendance_count',
+  'trainings_count',
+];
+
+/* Нормализация sport_id из таблицы sports (строчные) →
+   формат в club_yearly_snapshots / club_monthly_stats (заглавные) */
+const ZR_SPORT_ID_MAP = {
+  judo:       'JUDO',
+  jiujitsu:   'JIU_JITSU',
+  taekwondo:  'TAEKWON_DO',
+  boxen:      'BOXEN',
+  kickboxen:  'KICKBOXEN',
+  muaythai:   'MUAY_THAI',
+  taichi:     'TAI_CHI',
+};
+
+function zrNormalizeSportId(id) {
+  if (!id) return id;
+  const lower = String(id).toLowerCase();
+  return ZR_SPORT_ID_MAP[lower] || String(id).toUpperCase();
+}
+
+const ZR_MONTH_NAMES = [
+  '', 'Jan','Feb','Mär','Apr','Mai','Jun',
+  'Jul','Aug','Sep','Okt','Nov','Dez'
+];
+
+/* ---------------------------------------------------------
+   ЗАГРУЗКА ГОДОВ В ЧЕКБОКСЫ (zrJahreGrid)
+--------------------------------------------------------- */
+async function loadZrAvailableYears() {
+  const grid = document.getElementById('zrJahreGrid');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="zr-placeholder-hint">Jahre werden geladen…</div>';
+
+  const { data, error } = await db
+    .from('club_yearly_snapshots')
+    .select('year')
+    .order('year', { ascending: false });
+
+  if (error || !data || data.length === 0) {
+    grid.innerHTML = '<div class="zr-placeholder-hint">Keine Jahres-Daten gefunden.</div>';
+    return;
+  }
+
+  const years = [...new Set(data.map(r => r.year))].sort(function(a, b) { return b - a; });
+
+  grid.innerHTML = years.map(function(y) {
+    return `
+      <label class="zr-check-label">
+        <input type="checkbox" class="zr-year-check" value="${y}" checked>
+        <span>${y}</span>
+      </label>`;
+  }).join('');
+}
+
+/* ---------------------------------------------------------
+   ГЕНЕРАЦИЯ ПОСЛЕДНИХ 12 МЕСЯЦЕВ В ЧЕКБОКСЫ (zrMonateGrid)
+--------------------------------------------------------- */
+function loadZrAvailableMonths() {
+  const grid = document.getElementById('zrMonateGrid');
+  if (!grid) return;
+
+  const now = new Date();
+  const months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+  }
+
+  grid.innerHTML = months.map(function(m) {
+    const key   = `${m.year}-${String(m.month).padStart(2, '0')}`;
+    const label = `${ZR_MONTH_NAMES[m.month]} ${m.year}`;
+    return `
+      <label class="zr-check-label">
+        <input type="checkbox" class="zr-monat-check" value="${key}" checked>
+        <span>${label}</span>
+      </label>`;
+  }).join('');
+}
+
+/* ---------------------------------------------------------
+   ПОЛУЧЕНИЕ ВЫБРАННЫХ ГОДОВ / МЕСЯЦЕВ ИЗ ЧЕКБОКСОВ
+--------------------------------------------------------- */
+function zrGetSelectedYears() {
+  return Array.from(
+    document.querySelectorAll('.zr-year-check:checked')
+  ).map(function(el) { return Number(el.value); });
+}
+
+function zrGetSelectedMonthKeys() {
+  return Array.from(
+    document.querySelectorAll('.zr-monat-check:checked')
+  ).map(function(el) { return el.value; });
+}
+
+/* ---------------------------------------------------------
+   ГЛАВНАЯ ФУНКЦИЯ «Analyse starten»
+--------------------------------------------------------- */
+async function startZeitraumAnalyse() {
+  const box = document.getElementById('zrResultBox');
+  if (!box) return;
+
+  /* Выбранные виды спорта (только конкретные, не __alle__) */
+  const selectedSports = Array.from(
+    document.querySelectorAll(
+      '.zr-sport-card:not([data-sport-id="__alle__"]).zr-sport-card--active'
+    )
+  ).map(function(btn) {
+    return { id: btn.dataset.sportId, name: btn.dataset.sportName };
+  });
+
+  if (selectedSports.length === 0) {
+    box.innerHTML = `
+      <div class="zr-result-placeholder zr-result-warn">
+        <div class="zr-result-placeholder-icon">⚠️</div>
+        <div>Bitte mindestens eine Sportart auswählen.</div>
+      </div>`;
+    return;
+  }
+
+  /* Тип анализа */
+  const typEl  = document.querySelector('input[name="zrAnalyseTyp"]:checked');
+  const typ    = typEl ? typEl.value : 'jahresvergleich';
+
+  /* Kennzahl */
+  const kzEl   = document.getElementById('zrKennzahlSelect');
+  const kennzahl = kzEl ? kzEl.value : 'students_active_count';
+
+  const isSingle = selectedSports.length === 1;
+  /* sport_id из таблицы sports — строчные (judo, taichi).
+     В club_yearly_snapshots / club_monthly_stats — заглавные (JUDO, TAI_CHI).
+     Нормализуем перед запросом. */
+  const sportIds = selectedSports.map(function(s) { return zrNormalizeSportId(s.id); });
+
+  console.log('ZR selected sports:', selectedSports);
+  console.log('ZR normalized sportIds:', sportIds);
+  console.log('ZR typ:', typ);
+  console.log('ZR kennzahl:', kennzahl);
+
+  box.innerHTML = `
+    <div class="zr-result-placeholder">
+      <div class="zr-result-placeholder-icon">⏳</div>
+      <div>Daten werden geladen…</div>
+    </div>`;
+
+  /* ── JAHRESVERGLEICH ─────────────────────────────────── */
+  if (typ === 'jahresvergleich') {
+    const selectedYears = zrGetSelectedYears();
+    console.log('ZR selected years:', selectedYears);
+
+    const rows = await zrLoadYearlySnapshots(sportIds, selectedYears);
+    console.log('ZR yearly rows:', rows);
+
+    if (!rows || rows.length === 0) {
+      box.innerHTML = `
+        <div class="zr-result-placeholder zr-result-warn">
+          <div class="zr-result-placeholder-icon">📭</div>
+          <div>Keine Statistikdaten für die ausgewählten Filter gefunden.</div>
+        </div>`;
+      return;
+    }
+
+    const grouped = zrGroupSnapshots(rows);
+    let html = '';
+
+    if (isSingle) {
+      const sport  = selectedSports[0];
+      const normId = zrNormalizeSportId(sport.id);
+      ZR_ALL_KENNZAHLEN.forEach(function(kz) {
+        html += zrRenderJahresvergleichTable(sport.name, grouped[normId] || {}, kz, false);
+      });
+    } else {
+      /* Gesamtverein — первый блок */
+      const gesamtData = buildGesamtvereinDataYearly(grouped, sportIds, kennzahl);
+      html += zrRenderJahresvergleichTable('Gesamtverein', gesamtData, kennzahl, true);
+      /* Отдельные виды спорта */
+      selectedSports.forEach(function(sport) {
+        const normId = zrNormalizeSportId(sport.id);
+        html += zrRenderJahresvergleichTable(sport.name, grouped[normId] || {}, kennzahl, false);
+      });
+    }
+
+    box.innerHTML = html || `
+      <div class="zr-result-placeholder zr-result-warn">
+        <div class="zr-result-placeholder-icon">📭</div>
+        <div>Keine Statistikdaten für die ausgewählten Filter gefunden.</div>
+      </div>`;
+    return;
+  }
+
+  /* ── LETZTE 12 MONATE ────────────────────────────────── */
+  const selectedMonthKeys = zrGetSelectedMonthKeys();
+
+  if (selectedMonthKeys.length === 0) {
+    box.innerHTML = `
+      <div class="zr-result-placeholder zr-result-warn">
+        <div class="zr-result-placeholder-icon">⚠️</div>
+        <div>Bitte mindestens einen Monat auswählen.</div>
+      </div>`;
+    return;
+  }
+
+  console.log('ZR selected monthKeys:', selectedMonthKeys);
+
+  const monthRows = await zrLoadMonthlyStats(sportIds, selectedMonthKeys);
+  console.log('ZR monthly rows:', monthRows);
+
+  if (!monthRows || monthRows.length === 0) {
+    box.innerHTML = `
+      <div class="zr-result-placeholder zr-result-warn">
+        <div class="zr-result-placeholder-icon">📭</div>
+        <div>Keine Monatsdaten für die ausgewählten Filter gefunden.</div>
+      </div>`;
+    return;
+  }
+
+  const monthGrouped = zrGroupMonthlyStats(monthRows);
+  let html = '';
+
+  if (isSingle) {
+    const sport  = selectedSports[0];
+    const normId = zrNormalizeSportId(sport.id);
+    ZR_ALL_KENNZAHLEN.forEach(function(kz) {
+      html += zrRenderLetzte12MonateTable(sport.name, monthGrouped[normId] || {}, kz, selectedMonthKeys, false);
+    });
+  } else {
+    /* Gesamtverein — первый блок */
+    const gesamtMonthData = buildGesamtvereinDataMonthly(monthGrouped, sportIds, selectedMonthKeys);
+    html += zrRenderLetzte12MonateTable('Gesamtverein', gesamtMonthData, kennzahl, selectedMonthKeys, true);
+    /* Отдельные виды спорта */
+    selectedSports.forEach(function(sport) {
+      const normId = zrNormalizeSportId(sport.id);
+      html += zrRenderLetzte12MonateTable(sport.name, monthGrouped[normId] || {}, kennzahl, selectedMonthKeys, false);
+    });
+  }
+
+  box.innerHTML = html || `
+    <div class="zr-result-placeholder zr-result-warn">
+      <div class="zr-result-placeholder-icon">📭</div>
+      <div>Keine Monatsdaten für die ausgewählten Filter gefunden.</div>
+    </div>`;
+}
+
+/* ---------------------------------------------------------
+   ЗАГРУЗКА ДАННЫХ ИЗ Supabase
+--------------------------------------------------------- */
+async function zrLoadYearlySnapshots(sportIds, selectedYears) {
+  let query = db
+    .from('club_yearly_snapshots')
+    .select('*')
+    .in('sport_id', sportIds);
+
+  if (selectedYears && selectedYears.length > 0) {
+    query = query.in('year', selectedYears);
+  }
+
+  const { data, error } = await query
+    .order('year', { ascending: true })
+    .order('sport_id', { ascending: true });
+
+  if (error) {
+    console.error('zrLoadYearlySnapshots:', error);
+    return [];
+  }
+  return data || [];
+}
+
+async function zrLoadMonthlyStats(sportIds, monthKeys) {
+  /* monthKeys: ['2025-01', '2025-02', ...] */
+  const years  = [...new Set(monthKeys.map(function(k) { return Number(k.split('-')[0]); }))];
+  const months = [...new Set(monthKeys.map(function(k) { return Number(k.split('-')[1]); }))];
+
+  const { data, error } = await db
+    .from('club_monthly_stats')
+    .select('*')
+    .in('sport_id', sportIds)
+    .in('year', years)
+    .in('month', months)
+    .order('year', { ascending: true })
+    .order('month', { ascending: true });
+
+  if (error) {
+    console.error('zrLoadMonthlyStats:', error);
+    return [];
+  }
+  return data || [];
+}
+
+/* ---------------------------------------------------------
+   ГРУППИРОВКА ДАННЫХ
+--------------------------------------------------------- */
+function zrGroupSnapshots(rows) {
+  /* grouped[sport_id][year][snapshot_type] = row */
+  const grouped = {};
+  rows.forEach(function(row) {
+    const sid  = row.sport_id;
+    const year = row.year;
+    const type = row.snapshot_type;
+    if (!grouped[sid])       grouped[sid]       = {};
+    if (!grouped[sid][year]) grouped[sid][year] = {};
+    grouped[sid][year][type] = row;
+  });
+  return grouped;
+}
+
+function zrGroupMonthlyStats(rows) {
+  /* grouped[sport_id][year-MM] = row */
+  const grouped = {};
+  rows.forEach(function(row) {
+    const sid = row.sport_id;
+    const key = `${row.year}-${String(row.month).padStart(2, '0')}`;
+    if (!grouped[sid]) grouped[sid] = {};
+    grouped[sid][key] = row;
+  });
+  return grouped;
+}
+
+/* ---------------------------------------------------------
+   РЕНДЕР: JAHRESVERGLEICH
+--------------------------------------------------------- */
+function zrRenderJahresvergleichTable(sportName, sportData, kennzahl, isGesamtverein) {
+  const kzMeta      = ZR_KENNZAHL_MAP[kennzahl] || { label: kennzahl, unit: '' };
+  const nowMonth    = new Date().getMonth() + 1;
+  const monthStr    = String(nowMonth).padStart(2, '0');
+  const currentYear = new Date().getFullYear();
+
+  const years = Object.keys(sportData).map(Number).sort(function(a, b) { return a - b; });
+
+  const sectionClass = isGesamtverein ? 'zr-table-section zr-section-gesamt' : 'zr-table-section';
+  const sportLabel   = isGesamtverein
+    ? `<span class="zr-table-sport zr-gesamt-sport">🏛️ ${sportName}</span>`
+    : `<span class="zr-table-sport">${sportName}</span>`;
+
+  if (years.length === 0) {
+    return `
+      <div class="${sectionClass}">
+        <div class="zr-table-section-title">
+          ${sportLabel}
+          <span class="zr-table-kz-label">${kzMeta.label}entwicklung</span>
+        </div>
+        <div class="zr-no-data">Keine Daten vorhanden.</div>
+      </div>`;
+  }
+
+  /*
+   * Для Anwesenheit и Trainings итог считается по same_month_start:
+   * сравниваем Stand 01.MM первого года с Stand 01.MM последнего года.
+   *
+   * Для остальных (Schüler, Trainer, Gruppen) — классическая логика:
+   * year_start первого года → year_end (или same_month_start) последнего года.
+   */
+  const isAktivitaet = (kennzahl === 'attendance_count' || kennzahl === 'trainings_count');
+
+  let tableRows = '';
+  let gesamtFirstVal = null; let gesamtFirstYear = null;
+  let gesamtLastVal  = null; let gesamtLastYear  = null;
+
+  years.forEach(function(year) {
+    const snap = sportData[year] || {};
+    const ys   = snap['year_start']       ? snap['year_start'][kennzahl]       : null;
+    const sms  = snap['same_month_start'] ? snap['same_month_start'][kennzahl] : null;
+    const ye   = snap['year_end']         ? snap['year_end'][kennzahl]         : null;
+    const isRunning = (year === currentYear && ye === null);
+
+    if (isAktivitaet) {
+      if (sms !== null) {
+        if (gesamtFirstVal === null) { gesamtFirstVal = sms; gesamtFirstYear = year; }
+        gesamtLastVal = sms; gesamtLastYear = year;
+      }
+    } else {
+      if (gesamtFirstVal === null && ys !== null) {
+        gesamtFirstVal = ys; gesamtFirstYear = year;
+      }
+      const endVal = isRunning ? sms : ye;
+      if (endVal !== null) { gesamtLastVal = endVal; gesamtLastYear = year; }
+    }
+
+    const devBisMonat      = (ys  !== null && sms !== null) ? sms - ys  : null;
+    const devBisJahresende = (sms !== null && ye  !== null) ? ye  - sms : null;
+    const jahresergebnis   = isRunning
+      ? (ys !== null && sms !== null ? sms - ys : null)
+      : (ys !== null && ye  !== null ? ye  - ys : null);
+
+    const col2 = ys  !== null ? `${ys} ${kzMeta.unit}`  : '—';
+    const col4 = sms !== null ? `${sms} ${kzMeta.unit}` : '—';
+    const col5 = isRunning ? '<span class="zr-lauft">läuft noch</span>' : zrDelta(devBisJahresende);
+    const col6 = isRunning ? '<span class="zr-lauft">läuft noch</span>' : (ye !== null ? `${ye} ${kzMeta.unit}` : '—');
+    const col7 = isRunning ? zrDeltaAktuell(jahresergebnis) : zrDelta(jahresergebnis);
+
+    tableRows += `
+      <tr class="${isRunning ? 'zr-row-running' : ''}">
+        <td class="zr-td-year">${year}</td>
+        <td>${col2}</td>
+        <td>${zrDelta(devBisMonat)}</td>
+        <td>${col4}</td>
+        <td>${col5}</td>
+        <td>${col6}</td>
+        <td>${col7}</td>
+      </tr>`;
+  });
+
+  /* ── Карточка итога ─────────────────────────────────── */
+  let gesamtCard = '';
+
+  if (years.length < 2) {
+    gesamtCard = `
+      <div class="zr-gesamt-card">
+        <div class="zr-gesamt-card-inner zr-gesamt-hint">
+          Für den Gesamtvergleich bitte mindestens zwei Jahre auswählen.
+        </div>
+      </div>`;
+
+  } else if (isAktivitaet && gesamtFirstYear !== null && gesamtLastYear !== null) {
+    /* Двухколоночная карточка для Anwesenheit / Trainings */
+    const fy   = gesamtFirstYear;
+    const ly   = gesamtLastYear;
+    const fSnap = sportData[fy] || {};
+    const lSnap = sportData[ly] || {};
+
+    const fSms = fSnap['same_month_start'] ? fSnap['same_month_start'][kennzahl] : null;
+    const lSms = lSnap['same_month_start'] ? lSnap['same_month_start'][kennzahl] : null;
+    const fYe  = fSnap['year_end']         ? fSnap['year_end'][kennzahl]         : null;
+    const lYe  = lSnap['year_end']         ? lSnap['year_end'][kennzahl]         : null;
+    const lastYearRunning = (ly === currentYear && lYe === null);
+
+    gesamtCard = zrAktivitaetGesamtCard(
+      fy, ly, fSms, lSms, fYe, lYe, lastYearRunning, kzMeta, monthStr
+    );
+
+  } else if (!isAktivitaet && gesamtFirstVal !== null && gesamtLastVal !== null && gesamtFirstYear !== gesamtLastYear) {
+    gesamtCard = zrGesamtentwicklungCard(
+      String(gesamtFirstYear), String(gesamtLastYear),
+      gesamtFirstVal, gesamtLastVal, kzMeta
+    );
+  }
+
+  return `
+    <div class="${sectionClass}">
+      <div class="zr-table-section-title">
+        ${sportLabel}
+        <span class="zr-table-kz-label">${kzMeta.label}entwicklung — Jahresvergleich</span>
+      </div>
+      <div class="zr-table-scroll">
+        <table class="zr-table">
+          <thead>
+            <tr>
+              <th>Jahr</th>
+              <th>Jahresanfang</th>
+              <th>Entwicklung bis Monatsanfang</th>
+              <th>Stand 01.${monthStr}</th>
+              <th>Entwicklung bis Jahresende</th>
+              <th>Jahresende</th>
+              <th>Jahresergebnis</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+      ${gesamtCard}
+    </div>`;
+}
+
+/* ---------------------------------------------------------
+   РЕНДЕР: LETZTE 12 MONATE
+--------------------------------------------------------- */
+function zrRenderLetzte12MonateTable(sportName, monthlyData, kennzahl, monthKeys, isGesamtverein) {
+  const kzMeta = ZR_KENNZAHL_MAP[kennzahl] || { label: kennzahl, unit: '' };
+  const keys   = monthKeys.slice().sort();
+
+  const sectionClass = isGesamtverein ? 'zr-table-section zr-section-gesamt' : 'zr-table-section';
+  const sportLabel   = isGesamtverein
+    ? `<span class="zr-table-sport zr-gesamt-sport">🏛️ ${sportName}</span>`
+    : `<span class="zr-table-sport">${sportName}</span>`;
+
+  if (keys.length === 0) {
+    return `
+      <div class="${sectionClass}">
+        <div class="zr-table-section-title">
+          ${sportLabel}
+          <span class="zr-table-kz-label">${kzMeta.label}entwicklung — Letzte 12 Monate</span>
+        </div>
+        <div class="zr-no-data">Keine Monate ausgewählt.</div>
+      </div>`;
+  }
+
+  let tableRows = '';
+  let prevVal = null;
+
+  /* Для Gesamtentwicklung: первое и последнее значение с данными */
+  let gesamtFirstVal = null; let gesamtFirstLabel = null;
+  let gesamtLastVal  = null; let gesamtLastLabel  = null;
+
+  keys.forEach(function(key) {
+    const row = monthlyData[key] || null;
+    const val = (row && row[kennzahl] !== undefined && row[kennzahl] !== null)
+      ? row[kennzahl] : null;
+
+    const [yearStr, monthNumStr] = key.split('-');
+    const label = `${ZR_MONTH_NAMES[Number(monthNumStr)]} ${yearStr}`;
+
+    const valCell   = val !== null ? `${val} ${kzMeta.unit}` : '—';
+    const deltaCell = (val !== null && prevVal !== null)
+      ? zrDelta(val - prevVal)
+      : '<span class="zr-neutral">—</span>';
+
+    tableRows += `
+      <tr>
+        <td class="zr-td-monat">${label}</td>
+        <td>${valCell}</td>
+        <td>${deltaCell}</td>
+      </tr>`;
+
+    if (val !== null) {
+      if (gesamtFirstVal === null) { gesamtFirstVal = val; gesamtFirstLabel = label; }
+      gesamtLastVal = val; gesamtLastLabel = label;
+      prevVal = val;
+    }
+  });
+
+  const gesamtCard = (gesamtFirstVal !== null && gesamtLastVal !== null && gesamtFirstLabel !== gesamtLastLabel)
+    ? zrGesamtentwicklungCard(gesamtFirstLabel, gesamtLastLabel, gesamtFirstVal, gesamtLastVal, kzMeta)
+    : '';
+
+  return `
+    <div class="${sectionClass}">
+      <div class="zr-table-section-title">
+        ${sportLabel}
+        <span class="zr-table-kz-label">${kzMeta.label}entwicklung — Letzte 12 Monate</span>
+      </div>
+      <div class="zr-table-scroll">
+        <table class="zr-table">
+          <thead>
+            <tr>
+              <th>Monat</th>
+              <th>Wert</th>
+              <th>Entwicklung</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+      ${gesamtCard}
+    </div>`;
+}
+
+/* ---------------------------------------------------------
+   АГРЕГАЦИЯ GESAMTVEREIN
+--------------------------------------------------------- */
+
+/**
+ * Суммирует данные Jahresvergleich по всем видам спорта.
+ * Возвращает структуру, совместимую с zrRenderJahresvergleichTable:
+ * { year: { snapshot_type: { [kennzahl]: summedValue } } }
+ * Суммируются ВСЕ kennzahlen из ZR_ALL_KENNZAHLEN, чтобы функция
+ * рендера могла работать с любым переданным kennzahl.
+ */
+function buildGesamtvereinDataYearly(grouped, normSportIds, kennzahl) {
+  const result = {};
+  const fields = ZR_ALL_KENNZAHLEN;
+
+  normSportIds.forEach(function(sid) {
+    const sportData = grouped[sid] || {};
+    Object.keys(sportData).forEach(function(yearStr) {
+      const year = Number(yearStr);
+      if (!result[year]) result[year] = {};
+      const snap = sportData[year];
+
+      ['year_start', 'same_month_start', 'year_end'].forEach(function(type) {
+        if (!snap[type]) return;
+        if (!result[year][type]) result[year][type] = {};
+        fields.forEach(function(f) {
+          const val = snap[type][f];
+          if (val !== null && val !== undefined) {
+            result[year][type][f] = (result[year][type][f] || 0) + val;
+          }
+        });
+      });
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Суммирует данные Letzte 12 Monate по всем видам спорта.
+ * Возвращает структуру, совместимую с zrRenderLetzte12MonateTable:
+ * { 'YYYY-MM': { [kennzahl]: summedValue } }
+ */
+function buildGesamtvereinDataMonthly(monthGrouped, normSportIds, monthKeys) {
+  const result = {};
+  const fields = ZR_ALL_KENNZAHLEN;
+
+  monthKeys.forEach(function(key) {
+    normSportIds.forEach(function(sid) {
+      const row = (monthGrouped[sid] || {})[key];
+      if (!row) return;
+      if (!result[key]) result[key] = {};
+      fields.forEach(function(f) {
+        const val = row[f];
+        if (val !== null && val !== undefined) {
+          result[key][f] = (result[key][f] || 0) + val;
+        }
+      });
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Двухколоночная карточка итога для Anwesenheit / Trainings.
+ * Левая колонка  — Stand 01.MM (same_month_start)
+ * Правая колонка — Jahresende  (year_end)
+ */
+function zrAktivitaetGesamtCard(fy, ly, fSms, lSms, fYe, lYe, lastYearRunning, kzMeta, monthStr) {
+  /* ── Левая колонка: Stand 01.MM ── */
+  const standLabel  = `Stand 01.${monthStr}`;
+  let standValues   = '—';
+  let standDeltaHtml = '<span class="zr-neutral">—</span>';
+
+  if (fSms !== null && lSms !== null) {
+    standValues = `${fSms} → ${lSms} ${kzMeta.unit}`;
+    const d = lSms - fSms;
+    standDeltaHtml = d > 0
+      ? `<span class="zr-pos">▲ +${d} ${kzMeta.unit}</span>`
+      : d < 0
+        ? `<span class="zr-neg">▼ ${d} ${kzMeta.unit}</span>`
+        : `<span class="zr-neutral">± 0 ${kzMeta.unit}</span>`;
+  } else if (fSms !== null) {
+    standValues = `${fSms} → —`;
+  }
+
+  /* ── Правая колонка: Jahresende ── */
+  let endValues    = '—';
+  let endDeltaHtml = '<span class="zr-neutral">—</span>';
+
+  if (lastYearRunning) {
+    endValues    = fYe !== null ? `${fYe} → <span class="zr-lauft">läuft noch</span>` : '—';
+    endDeltaHtml = '<span class="zr-lauft">läuft noch</span>';
+  } else if (fYe !== null && lYe !== null) {
+    endValues = `${fYe} → ${lYe} ${kzMeta.unit}`;
+    const d = lYe - fYe;
+    endDeltaHtml = d > 0
+      ? `<span class="zr-pos">▲ +${d} ${kzMeta.unit}</span>`
+      : d < 0
+        ? `<span class="zr-neg">▼ ${d} ${kzMeta.unit}</span>`
+        : `<span class="zr-neutral">± 0 ${kzMeta.unit}</span>`;
+  } else if (fYe !== null) {
+    endValues = `${fYe} → —`;
+  }
+
+  return `
+    <div class="zr-gesamt-activity-card">
+      <div class="zr-gesamt-activity-title">
+        <span class="zr-gesamt-label">Gesamtvergleich</span>
+        <span class="zr-gesamt-period">${fy} → ${ly}</span>
+      </div>
+      <div class="zr-gesamt-activity-grid">
+        <div class="zr-gesamt-activity-col">
+          <div class="zr-gesamt-activity-label">${standLabel}</div>
+          <div class="zr-gesamt-activity-values">${standValues}</div>
+          <div class="zr-gesamt-activity-delta">${standDeltaHtml}</div>
+        </div>
+        <div class="zr-gesamt-activity-col">
+          <div class="zr-gesamt-activity-label">Jahresende</div>
+          <div class="zr-gesamt-activity-values">${endValues}</div>
+          <div class="zr-gesamt-activity-delta">${endDeltaHtml}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
+ * Рендерит итоговую карточку Gesamtentwicklung в конце блока.
+ */
+function zrGesamtentwicklungCard(firstLabel, lastLabel, firstVal, lastVal, kzMeta) {
+  const delta = lastVal - firstVal;
+  let deltaHtml;
+  if (delta > 0) {
+    deltaHtml = `<span class="zr-pos">▲ +${delta} ${kzMeta.unit}</span>`;
+  } else if (delta < 0) {
+    deltaHtml = `<span class="zr-neg">▼ ${delta} ${kzMeta.unit}</span>`;
+  } else {
+    deltaHtml = `<span class="zr-neutral">± 0 ${kzMeta.unit}</span>`;
+  }
+
+  return `
+    <div class="zr-gesamt-card">
+      <div class="zr-gesamt-card-inner">
+        <div class="zr-gesamt-label">Gesamtentwicklung</div>
+        <div class="zr-gesamt-period">${firstLabel} → ${lastLabel}</div>
+        <div class="zr-gesamt-values">
+          <span>${firstVal} ${kzMeta.unit}</span>
+          <span class="zr-gesamt-arrow">→</span>
+          <span>${lastVal} ${kzMeta.unit}</span>
+        </div>
+        <div class="zr-gesamt-delta">${deltaHtml}</div>
+      </div>
+    </div>`;
+}
+
+/* ---------------------------------------------------------
+   ДЕЛЬТА-ХЕЛПЕРЫ
+--------------------------------------------------------- */
+function zrDelta(val) {
+  if (val === null || val === undefined) return '<span class="zr-neutral">—</span>';
+  if (val > 0) return `<span class="zr-pos">▲ +${val}</span>`;
+  if (val < 0) return `<span class="zr-neg">▼ ${val}</span>`;
+  return `<span class="zr-neutral">0</span>`;
+}
+
+function zrDeltaAktuell(val) {
+  if (val === null || val === undefined) return '<span class="zr-neutral">—</span>';
+  if (val > 0) return `<span class="zr-pos">▲ +${val} aktuell</span>`;
+  if (val < 0) return `<span class="zr-neg">▼ ${val} aktuell</span>`;
+  return `<span class="zr-neutral">0 aktuell</span>`;
 }

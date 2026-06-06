@@ -5090,6 +5090,8 @@ transform:scale(1.05);
 
 .buch-table {
   padding: 0 12px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .buch-row {
@@ -5259,7 +5261,8 @@ transform:scale(1.05);
 margin-top:20px;
 margin-bottom:20px;
 
-width:420px !important;
+width:100% !important;
+max-width:420px;
 
 height:40px;
 
@@ -12041,5 +12044,533 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   #trainerStudentListBlock .student-universal-table td {
     white-space: nowrap;
     padding: 10px 10px;
+  }
+}
+
+/* ===== ШАГ 4: АДАПТИВНОСТЬ ФОРМ И СЕТОК ТРЕНЕРА ===== */
+
+/* --- Планшет (600–900px): возвращаем 2 колонки для несложных сеток тренера --- */
+/* На планшете 2 колонки выглядят нормально, а текущий 900px-breakpoint
+   схлопывал их до 1 колонки даже на планшете */
+
+@media (min-width: 600px) and (max-width: 900px) {
+
+  /* Сетка кнопок тренера — 2 колонки на планшете */
+  .trainer-action-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  /* Фильтр-сетка тренера — 2 колонки на планшете */
+  .trainer-filter-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 18px;
+  }
+
+  /* Кнопки фильтра — 2 колонки на планшете */
+  .trainer-filter-buttons {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  /* Форма добавления тренера — 2 колонки на планшете */
+  .add-trainer-form-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 20px;
+  }
+
+  /* Сетка групп тренера — 2 колонки на планшете */
+  .add-trainer-groups-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+  }
+
+  /* Кнопки сохранения/отмены — 2 колонки на планшете */
+  .add-trainer-buttons {
+    grid-template-columns: 1fr 1.2fr;
+    gap: 16px;
+  }
+}
+
+/* --- Телефон (≤480px): дополнительные правила для trainer-блоков --- */
+
+@media (max-width: 480px) {
+
+  /* Карточки страниц тренера — уменьшение padding */
+  .trainer-page-card {
+    padding: 14px 12px !important;
+    border-radius: 14px !important;
+    margin-bottom: 14px !important;
+  }
+
+  /* Карточки статистики тренера */
+  .trainer-stat-card {
+    padding: 16px 12px !important;
+    border-radius: 14px !important;
+  }
+
+  /* Сетка управления: кнопка "Назад" + select (150px + 1fr) — на телефоне стопкой */
+  .trainer-control-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* Кнопка "Назад" на полную ширину */
+  .trainer-back-card {
+    height: 52px !important;
+    font-size: 15px !important;
+  }
+
+  /* Строка: select + кнопки редактирования/удаления тренера */
+  .trainer-select-action-row {
+    grid-template-columns: 1fr 48px 48px !important;
+    gap: 8px !important;
+  }
+
+  .trainer-small-action-btn {
+    width: 48px !important;
+    height: 48px !important;
+    font-size: 20px !important;
+  }
+
+  /* Поля фильтра тренера */
+  .trainer-filter-grid input,
+  .trainer-filter-grid select {
+    height: 46px !important;
+    font-size: 15px !important;
+  }
+
+  /* Кнопки фильтра */
+  .trainer-filter-buttons button {
+    height: 48px !important;
+    font-size: 15px !important;
+  }
+
+  /* Кнопки "Anwesenheit" / "Wiegung" — уже в 1 колонку из Шага 2 */
+  .trainer-main-button {
+    height: 52px !important;
+    font-size: 16px !important;
+  }
+
+  /* Заголовок карточки статистики (иконка + текст) */
+  .trainer-stat-title {
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .trainer-stat-title h3 {
+    font-size: 18px !important;
+  }
+
+  /* Форма добавления тренера — поля ввода */
+  .add-trainer-input-row input,
+  .add-trainer-input-row select {
+    height: 48px !important;
+    font-size: 15px !important;
+  }
+
+  /* Кнопки отмена/сохранить тренера */
+  .add-trainer-cancel,
+  .add-trainer-save {
+    height: 50px !important;
+    font-size: 15px !important;
+  }
+}
+
+/* ===== ШАГ 5: АДАПТИВНОСТЬ BUCHHALTUNG ===== */
+
+/* --- 768px: планшет/маленький экран — скрываем/уменьшаем огромное лого,
+     убираем padding-right от хедера --- */
+
+@media (max-width: 768px) {
+
+  /* === Buchhaltung (тёмный экран) === */
+
+  /* Лого в хедере скрываем: на узком экране оно абсолютно позиционировано
+     и физически перекрывает весь контент из-за transform: scale(1.8) */
+  #buchhaltungScreen .buch-modern-logo,
+  .buch-modern-logo {
+    display: none !important;
+  }
+
+  /* Хедер без лого: убираем правый padding, уменьшаем min-height */
+  .buch-modern-header {
+    padding-right: 16px !important;
+    min-height: 100px !important;
+    margin-bottom: 18px !important;
+  }
+
+  /* Заголовок меньше */
+  .buch-modern-header h2 {
+    font-size: 28px !important;
+  }
+
+  /* Подпись под заголовком */
+  .buch-modern-header div {
+    font-size: 15px !important;
+  }
+
+  /* === Admin Buchhaltung (светлый экран) === */
+
+  /* Лого в хедере admin-buch: top: -200px width: 350px — за пределами экрана */
+  #adminBuchhaltungScreen .admin-buch-top-logo {
+    display: none !important;
+  }
+
+  /* Убираем правый padding: было 220px под лого */
+  #adminBuchhaltungScreen .admin-buch-header {
+    padding: 20px 20px 20px 20px !important;
+    min-height: auto !important;
+  }
+
+  /* Заголовок меньше */
+  #adminBuchhaltungScreen .admin-buch-header h2 {
+    font-size: 22px !important;
+  }
+
+  /* === Карточка пользователя (Admin + Buchhaltung): 3 колонки → 2 --- */
+  /* 82px (аватар) + 1fr (имя) + 110px (кнопки) → на планшете убираем
+     фиксированную 110px колонку, кнопки переносятся */
+  .admin-buch-user-card {
+    grid-template-columns: 66px 1fr !important;
+    grid-template-rows: auto auto !important;
+  }
+
+  /* Кнопки занимают всю вторую строку */
+  .admin-buch-actions {
+    grid-column: 1 / -1 !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+  }
+
+  /* Сводная сетка на планшете: 3 → 1 колонка (уже есть правило на 1100px,
+     но на планшете 768px тоже нужно) */
+  .buch-summary-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Заголовок секции чуть меньше */
+  .buch-section-title {
+    font-size: 17px !important;
+    padding: 14px 16px !important;
+  }
+}
+
+/* --- 480px: телефон — дополнительные правила для Buchhaltung --- */
+
+@media (max-width: 480px) {
+
+  /* Основной контейнер — уменьшаем большой padding */
+  #buchhaltungScreen {
+    padding: 14px !important;
+    margin: -14px !important;
+  }
+
+  /* Карточка выбранного вида спорта */
+  .buch-selected-sport-card {
+    height: auto !important;
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+  }
+
+  /* Фильтр видов спорта: карточки чуть меньше */
+  .buch-sport-filter-card {
+    width: 100px !important;
+    height: 76px !important;
+  }
+
+  .buch-sport-filter-box {
+    padding: 12px !important;
+    margin-top: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Сводные карточки: иконка + число */
+  .buch-summary-card {
+    grid-template-columns: 62px 1fr !important;
+    gap: 12px !important;
+    padding: 14px !important;
+    min-height: 86px !important;
+  }
+
+  .buch-summary-icon {
+    width: 50px !important;
+    height: 50px !important;
+    font-size: 24px !important;
+  }
+
+  .buch-summary-card strong {
+    font-size: 28px !important;
+  }
+
+  /* Таблица строк: на 480px существующий 1100px-breakpoint уже
+     переводит .buch-row в 1fr, поэтому горизонтальный скролл
+     не нужен — только добавляем комфортный padding */
+  .buch-table {
+    padding: 0 6px 8px !important;
+  }
+
+  /* Секция Buchhaltung */
+  .buch-section {
+    margin-top: 12px !important;
+  }
+
+  /* === Admin Buchhaltung на телефоне === */
+
+  /* Карточка пользователя: аватар + имя в строку, кнопки под ними */
+  .admin-buch-user-card {
+    grid-template-columns: 52px 1fr !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  .admin-buch-avatar {
+    width: 52px !important;
+    height: 52px !important;
+    font-size: 26px !important;
+  }
+
+  .admin-buch-name {
+    font-size: 16px !important;
+  }
+
+  .admin-buch-section-title {
+    font-size: 18px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Карточка "Добавить": уже исправлена в Шаге 1 (max-width: 560px, width: 100%) */
+
+  /* Секции admin */
+  .admin-buch-section {
+    padding: 14px !important;
+    margin-top: 14px !important;
+  }
+}
+
+/* ===== ШАГ 6: АДАПТИВНОСТЬ МОДАЛЬНЫХ ОКОН ===== */
+
+/* --- Общие правила для всех модальных окон на телефоне --- */
+
+@media (max-width: 480px) {
+
+  /* === custom-message-overlay: уведомление об успехе и подтверждение удаления === */
+
+  .custom-message-box {
+    /* Ограничиваем размер: не выходит за экран */
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 32px) !important;
+    overflow-y: auto !important;
+
+    /* Уменьшаем большой padding (было 35px = 70px суммарно) */
+    padding: 22px 18px !important;
+
+    border-radius: 16px !important;
+  }
+
+  /* Иконка "✓" или "⚠" — уменьшаем */
+  .custom-message-icon {
+    width: 58px !important;
+    height: 58px !important;
+    font-size: 30px !important;
+    margin-bottom: 14px !important;
+  }
+
+  /* Заголовок модального окна */
+  .custom-message-title {
+    font-size: 20px !important;
+    margin-bottom: 10px !important;
+  }
+
+  /* Текст сообщения */
+  .custom-message-text {
+    font-size: 14px !important;
+    margin-bottom: 20px !important;
+  }
+
+  /* Кнопка "OK" (одна кнопка) */
+  .custom-message-button {
+    height: 48px !important;
+    font-size: 15px !important;
+    /* В контейнере с двумя кнопками (deleteConfirmOverlay) — каждая занимает
+       полную строку. Inline display:flex нельзя переопределить без !important
+       на самом контейнере, поэтому делаем кнопки flex-shrink: 0 и min-width */
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+  }
+
+  /* Контейнер с двумя кнопками (Löschen + Abbrechen) в deleteConfirmOverlay.
+     Он задан inline style="display:flex; gap:15px" — override через !important */
+  #deleteConfirmOverlay .custom-message-box > div:last-child {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  /* Обе кнопки в колонке — полная ширина */
+  #deleteConfirmOverlay .custom-message-button {
+    width: 100% !important;
+    flex: none !important;
+  }
+
+  /* === sport-popup: добавление нового вида спорта === */
+
+  .sport-popup-card {
+    /* Уже есть max-width: 90vw — добавляем max-height и скролл */
+    max-height: calc(100vh - 32px) !important;
+    overflow-y: auto !important;
+
+    padding: 18px !important;
+    border-radius: 18px !important;
+  }
+
+  .sport-popup-card h3 {
+    font-size: 22px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .sport-popup-card input,
+  .sport-popup-card select {
+    /* Уже width: 100% — добавляем комфортную высоту */
+    height: 46px !important;
+    font-size: 15px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Кнопки "Abbrechen" / "Sport speichern" — уже в flex-row с flex:1.
+     На 375px каждая ~140px — нормально. Добавляем только высоту */
+  .sport-popup-buttons {
+    margin-top: 18px !important;
+    gap: 8px !important;
+  }
+
+  .sport-popup-buttons button {
+    height: 46px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* ===== ШАГ 7: ФИНАЛЬНАЯ ПОЛИРОВКА 375–480px ===== */
+
+@media (max-width: 480px) {
+
+  /* ─── ST2: экран логина ─────────────────────────────────────────────── */
+
+  /* min-height: 760px выше большинства телефонных экранов (667–740px).
+     Убираем минимальную высоту — панель растягивается по контенту */
+  .st2-login-panel {
+    min-height: auto !important;
+    padding: 26px 18px !important;
+  }
+
+  /* Логотип клуба в шапке — чуть меньше на 375px */
+  .st2-club-logo {
+    width: 120px !important;
+    height: 120px !important;
+  }
+
+  /* Название клуба */
+  .st2-club-name {
+    font-size: 18px !important;
+  }
+
+  /* ─── Экран посещаемости: фильтры ──────────────────────────────────── */
+
+  /* Два поля фильтра (группа + период) → одна колонка на телефоне */
+  .attendance-filter-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .attendance-filter-grid input,
+  .attendance-filter-grid select {
+    height: 48px !important;
+    font-size: 15px !important;
+  }
+
+  /* Кнопка "Загрузить" */
+  .attendance-load-button {
+    height: 50px !important;
+    font-size: 15px !important;
+    margin-top: 16px !important;
+  }
+
+  /* ─── Форма добавления ученика ──────────────────────────────────────── */
+
+  /* 2-колоночная сетка полей → одна колонка */
+  .student-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* ─── Экран взвешивания (Wiegung) ───────────────────────────────────── */
+
+  /* Карточка — уменьшаем большой padding */
+  .weight-modern-card {
+    padding: 14px !important;
+  }
+
+  /* Заголовок "Gewicht erfassen" */
+  .weight-modern-header h2 {
+    font-size: 22px !important;
+  }
+
+  .weight-modern-subtitle {
+    font-size: 14px !important;
+  }
+
+  /* Таблица взвешивания:
+     Исходная сетка: 90px 1.3fr 1.3fr 1fr (или 60px 1fr 1fr 150px при 900px)
+     На 375px при 150px для ввода веса оставалось ~46px на каждое имя.
+     Решение: уменьшаем значок номера до 36px, блок ввода до 100px — имена
+     получают ~97px каждое (читаемо). */
+  .weight-modern-head,
+  .weight-modern-row {
+    grid-template-columns: 36px 1fr 1fr 100px !important;
+    padding: 0 8px !important;
+    font-size: 13px !important;
+    min-height: 68px !important;
+  }
+
+  /* Номер ученика */
+  .weight-number-badge {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 16px !important;
+    border-radius: 8px !important;
+  }
+
+  /* Имя/фамилия */
+  .weight-name {
+    font-size: 14px !important;
+  }
+
+  /* Блок ввода веса */
+  .weight-input-wrap {
+    width: 100px !important;
+    height: 46px !important;
+  }
+
+  /* Поле ввода числа */
+  .weight-modern-input {
+    width: 60px !important;
+    height: 46px !important;
+    font-size: 17px !important;
+    padding: 0 8px !important;
+  }
+
+  /* Единица "kg" */
+  .weight-unit {
+    width: 40px !important;
+    height: 46px !important;
+    font-size: 14px !important;
+  }
+
+  /* Кнопка "Speichern" */
+  .weight-save-modern-btn {
+    height: 52px !important;
+    font-size: 18px !important;
+    margin-top: 16px !important;
   }
 }

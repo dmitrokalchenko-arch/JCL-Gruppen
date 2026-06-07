@@ -1930,7 +1930,7 @@ async function renderStudentTableUniversal(students, options = {}) {
         ${renderSportFieldCells(student)}
 
         ${showGroup ? `
-          <td>${student.groupsText || student.gruppe_id || '-'}</td>
+          <td>${student.groupsHtml || student.groupsText || student.gruppe_id || '-'}</td>
         ` : ''}
 
         <td>${student.trainersText || student.trainer || '-'}</td>
@@ -2699,10 +2699,13 @@ async function toggleSportActive(sportId, currentStatus) {
   // Если спорт сейчас активен — отправляем его в архив вместе со связями
   if (isActive) {
 
-    const ok = confirm(
-      'Diese Sportart wirklich deaktivieren?\n\n' +
-      'Alle Gruppen, Trainer und Schüler dieser Sportart werden ebenfalls deaktiviert und für 92 Tage archiviert.'
-    );
+    const ok = await showCustomConfirm({
+      title: 'Sportart deaktivieren',
+      message: 'Diese Sportart wirklich deaktivieren?\nAlle Gruppen, Trainer und Schüler dieser Sportart werden ebenfalls deaktiviert und für 92 Tage archiviert.',
+      confirmText: 'Deaktivieren',
+      cancelText: 'Abbrechen',
+      type: 'danger'
+    });
 
     if (!ok) {
       await loadSportManagementList();
@@ -2736,10 +2739,13 @@ async function toggleSportActive(sportId, currentStatus) {
   // Wenn Sport wieder aktiviert wird
   // Если спорт снова активируется — восстанавливаем всё
 
-const ok = confirm(
-'Diese Sportart wieder aktivieren?\n\n' +
-'Alle Gruppen, Trainer und Schüler werden ebenfalls wieder aktiviert.'
-);
+const ok = await showCustomConfirm({
+  title: 'Sportart aktivieren',
+  message: 'Diese Sportart wieder aktivieren?\nAlle Gruppen, Trainer und Schüler werden ebenfalls wieder aktiviert.',
+  confirmText: 'Aktivieren',
+  cancelText: 'Abbrechen',
+  type: 'confirm'
+});
 
 if (!ok) {
 
@@ -3945,8 +3951,10 @@ const filteredStudents = students.filter(hasSelectedSport);
 const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
 
   const groupNameMap = {};
+  const groupStatusMap = {};
   groups.forEach(g => {
-    groupNameMap[g.gruppe_id] = g.gruppenname || g.gruppe_id;
+    groupNameMap[String(g.gruppe_id)] = g.gruppenname || g.gruppe_id;
+    groupStatusMap[String(g.gruppe_id)] = String(g.aktiv || '').toUpperCase();
   });
 
   function getAgeFromStudent(student) {
@@ -3976,7 +3984,14 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
 
     if (!ids.length) return '-';
 
-    return ids.map(id => groupNameMap[id] || id).join(', ');
+    return ids.map(id => {
+      const name = escapeHtml(String(groupNameMap[id] || id));
+      const aktiv = groupStatusMap[id];
+      if (aktiv === undefined || aktiv !== 'JA') {
+        return `<span class="gruppe-geloescht-name">${name}</span> <span class="gruppe-geloescht-label">(gelöscht)</span>`;
+      }
+      return name;
+    }).join(', ');
   }
 
   function getTrainerText(student) {
@@ -4287,7 +4302,13 @@ function buildBuchhaltungStudentRow(student, showDoneButton, actionType, number)
 async function confirmBuchhaltungContract(studentId) {
   if (!studentId) return;
 
-  const ok = confirm('Vertrag für diesen Schüler als erledigt markieren?');
+  const ok = await showCustomConfirm({
+    title: 'Vertrag bestätigen',
+    message: 'Vertrag für diesen Schüler als erledigt markieren?',
+    confirmText: 'Ja, erledigt',
+    cancelText: 'Abbrechen',
+    type: 'confirm'
+  });
   if (!ok) return;
 
   const { error } = await db
@@ -4300,7 +4321,7 @@ async function confirmBuchhaltungContract(studentId) {
     .eq('id', studentId);
 
   if (error) {
-    alert('Fehler: ' + error.message);
+    showCustomMessage('Fehler: ' + error.message);
     return;
   }
 
@@ -4310,7 +4331,13 @@ async function confirmBuchhaltungContract(studentId) {
 async function confirmBuchhaltungArchived(archivId) {
   if (!archivId) return;
 
-  const ok = confirm('Archivierten Schüler als erledigt markieren?');
+  const ok = await showCustomConfirm({
+    title: 'Bestätigung',
+    message: 'Archivierten Schüler als erledigt markieren?',
+    confirmText: 'Ja, erledigt',
+    cancelText: 'Abbrechen',
+    type: 'confirm'
+  });
   if (!ok) return;
 
   const payload = {
@@ -4332,7 +4359,7 @@ async function confirmBuchhaltungArchived(archivId) {
   }
 
   if (result.error) {
-    alert('Fehler: ' + result.error.message);
+    showCustomMessage('Fehler: ' + result.error.message);
     return;
   }
 
@@ -4398,6 +4425,29 @@ function closeDeleteConfirm() {
     ?.classList
     .add('hidden');
 
+}
+
+function showCustomConfirm({ title, message, confirmText = 'OK', cancelText = 'Abbrechen', type = 'confirm' }) {
+  return new Promise((resolve) => {
+    document.getElementById('customConfirmTitle').textContent = title || 'Bestätigung';
+    document.getElementById('customConfirmText').textContent = message;
+    const okBtn = document.getElementById('customConfirmOkBtn');
+    const cancelBtn = document.getElementById('customConfirmCancelBtn');
+    okBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+    okBtn.style.background = type === 'danger'
+      ? 'linear-gradient(135deg,#8b0000,#d62828)'
+      : 'linear-gradient(135deg,#0d7c38,#085a29)';
+    okBtn.onclick = () => {
+      document.getElementById('customConfirmOverlay').classList.add('hidden');
+      resolve(true);
+    };
+    cancelBtn.onclick = () => {
+      document.getElementById('customConfirmOverlay').classList.add('hidden');
+      resolve(false);
+    };
+    document.getElementById('customConfirmOverlay').classList.remove('hidden');
+  });
 }
 
 function hideAllWorkScreens() {
@@ -4796,7 +4846,7 @@ async function saveWeights() {
   const inputs = document.querySelectorAll('.weightInput');
 
   if (!inputs || inputs.length === 0) {
-    alert('Keine Schüler gefunden.');
+    showCustomMessage('Keine Schüler gefunden.');
     return;
   }
 
@@ -4822,7 +4872,7 @@ async function saveWeights() {
 
     if (updateError) {
       console.error(updateError);
-      alert('Fehler beim Speichern: ' + updateError.message);
+      showCustomMessage('Fehler beim Speichern: ' + updateError.message);
       return;
     }
 
@@ -4843,7 +4893,7 @@ async function saveWeights() {
 
     if (logError) {
       console.error(logError);
-      alert('Fehler beim Weight Log: ' + logError.message);
+      showCustomMessage('Fehler beim Weight Log: ' + logError.message);
       return;
     }
 
@@ -5143,7 +5193,7 @@ async function saveAttendance() {
   const checks = document.querySelectorAll('.attendanceCheck');
 
   if (!checks || checks.length === 0) {
-    alert('Keine Schüler zum Speichern gefunden.');
+    showCustomMessage('Keine Schüler zum Speichern gefunden.');
     return;
   }
 
@@ -5160,7 +5210,7 @@ async function saveAttendance() {
 
   if (groupError) {
     console.error(groupError);
-    alert('Fehler beim Laden der Sportart: ' + groupError.message);
+    showCustomMessage('Fehler beim Laden der Sportart: ' + groupError.message);
     return;
   }
 
@@ -5174,7 +5224,7 @@ async function saveAttendance() {
 
   if (attendanceLoadError) {
     console.error(attendanceLoadError);
-    alert('Fehler beim Laden der Anwesenheit: ' + attendanceLoadError.message);
+    showCustomMessage('Fehler beim Laden der Anwesenheit: ' + attendanceLoadError.message);
     return;
   }
 
@@ -5202,7 +5252,7 @@ async function saveAttendance() {
 
         if (error) {
           console.error(error);
-          alert('Fehler beim Speichern: ' + error.message);
+          showCustomMessage('Fehler beim Speichern: ' + error.message);
           return;
         }
       }
@@ -5238,7 +5288,7 @@ async function saveAttendance() {
 
     if (result.error) {
       console.error(result.error);
-      alert('Fehler beim Speichern: ' + result.error.message);
+      showCustomMessage('Fehler beim Speichern: ' + result.error.message);
       return;
     }
 
@@ -5884,6 +5934,27 @@ function getStudentLastAttendanceInfoFromRows(possibleIds, data) {
   return { lastDate, daysSince };
 }
 
+function buildGroupsHtml(groups, requestedIds) {
+  const foundIds = new Set(groups.map(g => String(g.gruppe_id)));
+  const parts = groups.map(g => {
+    const name = escapeHtml(String(g.gruppenname || g.gruppe_id));
+    if (String(g.aktiv || '').toUpperCase() !== 'JA') {
+      return `<span class="gruppe-geloescht-name">${name}</span> <span class="gruppe-geloescht-label">(gelöscht)</span>`;
+    }
+    return name;
+  });
+  (requestedIds || []).forEach(id => {
+    if (!foundIds.has(String(id))) {
+      parts.push(`<span class="gruppe-geloescht-name">${escapeHtml(String(id))}</span> <span class="gruppe-geloescht-label">(gelöscht)</span>`);
+    }
+  });
+  return parts.join(', ') || '-';
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 async function getStudentFullData(studentId, externalGroupData, externalStudentData){
 
 let student;
@@ -5950,7 +6021,7 @@ if (externalGroupData) {
 
 const { data: groupData, error: groupDataError } = await db
 .from('groups')
-.select('gruppe_id, gruppenname')
+.select('gruppe_id, gruppenname, aktiv')
 .in('gruppe_id', groupIds);
 
 if (groupDataError) {
@@ -5981,6 +6052,7 @@ calculatedRating,
 lastAttendanceDate: lastAttendanceInfo.lastDate,
 daysSinceLastAttendance: lastAttendanceInfo.daysSince,
 groupsText: groups.map(g => g.gruppenname || g.gruppe_id).join(', ') || '-',
+groupsHtml: buildGroupsHtml(groups, groupIds),
 trainersText: trainers.join(', ') || '-'
 };
 
@@ -6059,7 +6131,7 @@ return `
         <span class="student-badge badge-blue">Alter: ${student.alter || '-'}</span>
         ${cfg.showGraduation ? `<span class="student-badge badge-purple">${cfg.graduationLabel}: ${student.kyu_grad || '-'}</span>` : ''}
         ${cfg.showBelt       ? `<span class="student-badge badge-green">${cfg.beltLabel}: ${student.guertelfarbe || '-'}</span>` : ''}
-        <span class="student-badge badge-green">Gruppe: ${student.groupsText || '-'}</span>
+        <span class="student-badge badge-green">Gruppe: ${student.groupsHtml || student.groupsText || '-'}</span>
         <span class="student-badge badge-orange">Trainer: ${student.trainersText || '-'}</span>
       </div>
 
@@ -6186,7 +6258,7 @@ const { data: student, error } = await db
 .single();
 
 if(error || !student){
-alert('Schüler nicht gefunden');
+showCustomMessage('Schüler nicht gefunden');
 return;
 }
 
@@ -7115,7 +7187,7 @@ function buildBirthDateForSupabase(day, month, year) {
   }
 
   if (!day || !month || !year) {
-    alert('Bitte Geburtsdatum vollständig eingeben: Tag, Monat und Jahr.');
+    showCustomMessage('Bitte Geburtsdatum vollständig eingeben: Tag, Monat und Jahr.');
     throw new Error('Geburtsdatum unvollständig');
   }
 
@@ -7134,7 +7206,7 @@ async function saveNewStudent(groupId) {
     document.getElementById('newNachname')?.value?.trim() || '';
 
   if (!vorname || !nachname) {
-    alert('Bitte Vorname und Nachname eingeben.');
+    showCustomMessage('Bitte Vorname und Nachname eingeben.');
     return;
   }
 
@@ -7146,14 +7218,14 @@ async function saveNewStudent(groupId) {
 
   if (groupError) {
     console.error(groupError);
-    alert('Fehler beim Laden der Sportart der Gruppe.');
+    showCustomMessage('Fehler beim Laden der Sportart der Gruppe.');
     return;
   }
 
   const sportId = groupData?.sport_id || '';
 
   if (!sportId) {
-    alert('Diese Gruppe hat keine Sportart. Bitte zuerst sport_id bei der Gruppe prüfen.');
+    showCustomMessage('Diese Gruppe hat keine Sportart. Bitte zuerst sport_id bei der Gruppe prüfen.');
     return;
   }
 
@@ -7211,7 +7283,7 @@ async function saveNewStudent(groupId) {
 
   if (error) {
     console.error(error);
-    alert('Fehler beim Speichern: ' + error.message);
+    showCustomMessage('Fehler beim Speichern: ' + error.message);
     return;
   }
 
@@ -8417,7 +8489,7 @@ async function openEditSelectedTrainer() {
   const trainerId = select?.value || '';
 
   if (!trainerId) {
-    alert('Bitte zuerst Trainer auswählen.');
+    showCustomMessage('Bitte zuerst Trainer auswählen.');
     return;
   }
 
@@ -8428,7 +8500,7 @@ async function openEditSelectedTrainer() {
   ]);
 
   if (trainerResult.error) {
-    alert('Fehler Trainer laden: ' + trainerResult.error.message);
+    showCustomMessage('Fehler Trainer laden: ' + trainerResult.error.message);
     return;
   }
 
@@ -8584,7 +8656,7 @@ async function saveEditedTrainer() {
   const name = (nachname + ' ' + vorname).trim();
 
   if (!trainerId || !name || !pin) {
-    alert('Bitte Name und PIN eingeben.');
+    showCustomMessage('Bitte Name und PIN eingeben.');
     return;
   }
 
@@ -8601,7 +8673,7 @@ async function saveEditedTrainer() {
     .eq('trainer_id', trainerId);
 
   if (trainerError) {
-    alert('Fehler beim Speichern: ' + trainerError.message);
+    showCustomMessage('Fehler beim Speichern: ' + trainerError.message);
     return;
   }
 
@@ -8611,7 +8683,7 @@ async function saveEditedTrainer() {
     .eq('trainer_id', trainerId);
 
   if (deleteTrainerGroupsError) {
-    alert('Fehler beim Entfernen der Gruppenverbindungen: ' + deleteTrainerGroupsError.message);
+    showCustomMessage('Fehler beim Entfernen der Gruppenverbindungen: ' + deleteTrainerGroupsError.message);
     return;
   }
 
@@ -8632,7 +8704,7 @@ async function saveEditedTrainer() {
       .insert(rows);
 
     if (linkError) {
-      alert('Trainer gespeichert, aber Gruppenfehler: ' + linkError.message);
+      showCustomMessage('Trainer gespeichert, aber Gruppenfehler: ' + linkError.message);
       return;
     }
   }
@@ -9091,7 +9163,7 @@ async function openEditGroup(groupId) {
     .single();
 
   if (error || !group) {
-    alert('Gruppe nicht gefunden.');
+    showCustomMessage('Gruppe nicht gefunden.');
     return;
   }
 
@@ -9189,7 +9261,7 @@ async function saveEditedGroup() {
   const trainingszeit = document.getElementById('editGroupTrainingszeitNew')?.value?.trim() || '';
 
   if (!groupId || !gruppenname) {
-    alert('Bitte Gruppenname eingeben.');
+    showCustomMessage('Bitte Gruppenname eingeben.');
     return;
   }
 
@@ -9216,7 +9288,7 @@ async function saveEditedGroup() {
     .eq('gruppe_id', groupId);
 
   if (groupError) {
-    alert('Fehler beim Speichern: ' + groupError.message);
+    showCustomMessage('Fehler beim Speichern: ' + groupError.message);
     return;
   }
 
@@ -9226,7 +9298,7 @@ async function saveEditedGroup() {
     .eq('gruppe_id', groupId);
 
   if (deleteGroupLinksError) {
-    alert('Fehler beim Entfernen der Trainer-Zuordnungen: ' + deleteGroupLinksError.message);
+    showCustomMessage('Fehler beim Entfernen der Trainer-Zuordnungen: ' + deleteGroupLinksError.message);
     return;
   }
 
@@ -9243,7 +9315,7 @@ async function saveEditedGroup() {
       .insert(rows);
 
     if (linkError) {
-      alert('Gruppe gespeichert, aber Trainer-Zuordnung Fehler: ' + linkError.message);
+      showCustomMessage('Gruppe gespeichert, aber Trainer-Zuordnung Fehler: ' + linkError.message);
       return;
     }
   }
@@ -9306,7 +9378,7 @@ return;
     .eq('gruppe_id', groupId);
 
   if (groupError) {
-    alert('Fehler beim Deaktivieren: ' + groupError.message);
+    showCustomMessage('Fehler beim Deaktivieren: ' + groupError.message);
     return;
   }
 
@@ -9315,7 +9387,7 @@ return;
     .delete()
     .eq('gruppe_id', groupId);
 
-  alert('Gruppe wurde deaktiviert.');
+  showCustomMessage('Gruppe wurde deaktiviert.');
 
   await showGroupOverviewScreen();
 }
@@ -9533,13 +9605,14 @@ async function loadAdminAttendanceTrainersSupabase() {
 async function loadAdminStatistikFilters() {
   const selectedSport = getSelectedClubSport();
 
-  const [groupsResult, trainersResult, linksResult] = await Promise.all([
+  const [groupsResult, trainersResult, linksResult, sportsResult] = await Promise.all([
     db.from('groups').select('*').eq('aktiv', 'JA').order('gruppenname', { ascending: true }),
     db.from('trainers').select('*').eq('aktiv', 'JA').order('name', { ascending: true }),
-    db.from('trainer_groups').select('*')
+    db.from('trainer_groups').select('*'),
+    db.from('sports').select('sport_id, name').eq('aktiv', 'JA')
   ]);
 
-  if (groupsResult.error || trainersResult.error || linksResult.error) {
+  if (groupsResult.error || trainersResult.error || linksResult.error || sportsResult.error) {
     document.getElementById('mainStatus').textContent =
       'Fehler beim Laden der Filter.';
     return;
@@ -9567,6 +9640,7 @@ async function loadAdminStatistikFilters() {
   window.adminStatGroupsSupabase = groups;
   window.adminStatTrainersSupabase = trainers;
   window.adminStatTrainerGroupsSupabase = linksResult.data || [];
+  window.adminStatSportsSupabase = sportsResult.data || [];
 
   rebuildAdminStatGroupSelectSupabase();
   rebuildAdminStatTrainerSelectSupabase();
@@ -9728,6 +9802,16 @@ async function loadAdminAttendanceStatisticsSupabase() {
       group.gruppenname || group.gruppe_id;
   });
 
+  const sportNameMap = {};
+  (window.adminStatSportsSupabase || []).forEach(sport => {
+    sportNameMap[String(sport.sport_id)] = sport.name || '-';
+  });
+
+  const groupSportMap = {};
+  (window.adminStatGroupsSupabase || []).forEach(group => {
+    groupSportMap[String(group.gruppe_id)] = String(group.sport_id || '');
+  });
+
   const resultMap = {};
 
   rows.forEach(row => {
@@ -9739,10 +9823,12 @@ async function loadAdminAttendanceStatisticsSupabase() {
     const key = dateKey + '|' + groupKey;
 
     if (!resultMap[key]) {
+      const sportId = groupSportMap[groupKey] || '';
       resultMap[key] = {
         dateKey,
         datum: dateKey.split('-').reverse().join('.'),
         gruppeName: groupMap[groupKey] || groupKey,
+        sportName: sportNameMap[sportId] || '-',
         trainer: row.trainer || '-',
         students: {}
       };
@@ -9810,6 +9896,11 @@ async function loadAdminAttendanceStatisticsSupabase() {
     dateRows.forEach(row => {
       html += `
         <div class="attendance-date-row">
+          <div>
+            <b>Sportart</b><br>
+            ${row.sportName}
+          </div>
+
           <div>
             <b>Gruppe</b><br>
             ${row.gruppeName}
@@ -10723,12 +10814,12 @@ const iconFile =
 imageSelect?.value || '';
 
 if(!sportName){
-alert('Bitte Sportart Name eingeben.');
+showCustomMessage('Bitte Sportart Name eingeben.');
 return;
 }
 
 if(!iconFile){
-alert('Bitte Bild auswählen.');
+showCustomMessage('Bitte Bild auswählen.');
 return;
 }
 
@@ -10755,7 +10846,7 @@ sort_order:999
 
 if(error){
 console.error(error);
-alert('Sport konnte nicht gespeichert werden: ' + error.message);
+showCustomMessage('Sport konnte nicht gespeichert werden: ' + error.message);
 return;
 }
 

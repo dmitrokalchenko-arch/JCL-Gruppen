@@ -1766,7 +1766,7 @@ Alle Gruppen
 
       <div
         class="club-stat-card club-purple"
-        onclick="showAdminStatistikScreen()"
+        onclick="showAdminStatistikCenter()"
         style="cursor:pointer;"
       >
         <div class="club-stat-icon">📅</div>
@@ -2631,6 +2631,21 @@ Abbrechen
 
 </div>
 
+</div>
+
+<div id="customConfirmOverlay" class="custom-message-overlay hidden">
+  <div class="custom-message-box">
+    <div class="custom-message-icon" id="customConfirmIcon">⚠</div>
+    <div class="custom-message-title" id="customConfirmTitle">Bestätigung</div>
+    <div id="customConfirmText" class="custom-message-text"></div>
+    <div style="display:flex; gap:12px; margin-top:8px;">
+      <button class="custom-message-button" id="customConfirmOkBtn">OK</button>
+      <button class="custom-message-button" id="customConfirmCancelBtn"
+        style="background:rgba(255,255,255,.10); color:rgba(255,255,255,.80);">
+        Abbrechen
+      </button>
+    </div>
+  </div>
 </div>
 
 </body>

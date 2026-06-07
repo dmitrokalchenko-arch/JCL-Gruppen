@@ -5173,18 +5173,21 @@ transform:scale(1.05);
 }
 
 @media (max-width: 1100px) {
+  /* Сводные карточки — в один столбец */
   .buch-summary-grid {
     grid-template-columns: 1fr;
   }
 
-  .buch-row {
-    grid-template-columns: 1fr;
-    gap: 6px;
-    padding: 14px;
+  /* Таблица скроллится горизонтально — строки сохраняют десктопный grid */
+  .buch-table {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 0 10px 0 !important;
   }
 
-  .buch-row.buch-head {
-    display: none;
+  /* Строки не сжимаются — горизонтальный скролл внутри .buch-table */
+  .buch-row {
+    min-width: 860px !important;
   }
 }
 
@@ -6524,6 +6527,21 @@ body:has(#adminStudentScreen:not(.hidden)) #appBox{
   }
 }
 
+@media(max-width:600px){
+  #adminStudentScreen .admin-sport-filter-grid{
+    display:grid !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:10px !important;
+  }
+
+  #adminStudentScreen .admin-sport-filter-card{
+    width:100% !important;
+    min-width:0 !important;
+    height:auto !important;
+    aspect-ratio:1.5 / 1 !important;
+  }
+}
+
 /* =====================================================
    ADMIN SCHÜLERLISTE — PAGE WIDTH FIX
 ===================================================== */
@@ -6607,6 +6625,23 @@ box-sizing:border-box !important;
 #adminStudentScreen .admin-sport-filter-grid{
   align-items:center !important;
   gap:18px !important;
+}
+
+/* ── Мобильный portrait: 2 колонки ─────────────────── */
+@media(max-width:600px){
+  #adminStudentScreen .admin-sport-filter-grid{
+    display:grid !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:10px !important;
+    align-items:stretch !important;
+  }
+
+  #adminStudentScreen .admin-sport-filter-card{
+    width:100% !important;
+    min-width:0 !important;
+    height:auto !important;
+    aspect-ratio:1.5 / 1 !important;
+  }
 }
 
 /* ===================================
@@ -9050,6 +9085,23 @@ opacity:1 !important;
   display:none !important;
 }
 
+/* ── Мобильный portrait: 2 колонки ─────────────────── */
+@media(max-width:600px){
+  #orphanStudentsScreen .admin-sport-filter-grid{
+    display:grid !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:10px !important;
+    align-items:stretch !important;
+  }
+
+  #orphanStudentsScreen .admin-sport-filter-card{
+    width:100% !important;
+    min-width:0 !important;
+    height:auto !important;
+    aspect-ratio:1.5 / 1 !important;
+  }
+}
+
 /* ==========================================
 ORPHAN STUDENTS TABLE - JCL DESIGN
 ========================================== */
@@ -9611,6 +9663,57 @@ transparent !important;
   color: #ffd54a !important;
 }
 
+@media (max-width: 600px) {
+  #deleteCandidatesScreen .club-stat-card {
+    grid-template-columns: 54px 1fr !important;
+    min-height: 72px !important;
+    padding: 12px 10px !important;
+    gap: 10px !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+  #deleteCandidatesScreen .club-stat-icon,
+  #deleteCandidatesScreen .trainer-overview-icon {
+    width: 44px !important;
+    height: 44px !important;
+    font-size: 20px !important;
+    flex-shrink: 0 !important;
+  }
+  #deleteCandidatesScreen .club-stat-title {
+    font-size: clamp(12px, 3.5vw, 15px) !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    margin-bottom: 3px !important;
+  }
+  #deleteCandidatesScreen .club-stat-number {
+    font-size: clamp(20px, 6vw, 28px) !important;
+  }
+  #deleteCandidatesScreen .trainer-overview-card {
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@media (max-width: 950px) and (orientation: landscape) {
+  #deleteCandidatesScreen .club-stat-card {
+    grid-template-columns: 60px 1fr !important;
+    padding: 12px !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+  #deleteCandidatesScreen .club-stat-title {
+    font-size: clamp(13px, 2.5vw, 16px) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+  #deleteCandidatesScreen .club-stat-number {
+    font-size: clamp(22px, 4vw, 30px) !important;
+  }
+}
+
 /* ===== CLUB STATISTIK DARK DESIGN ===== */
 
 #clubStatistikScreen .club-stat-card {
@@ -10151,6 +10254,51 @@ transparent !important;
   drop-shadow(0 0 16px rgba(255,170,0,.45)) !important;
 }
 
+/* ── Trainer-Übersicht логотип: телефон вертикальный ≤600px ── */
+@media (max-width: 600px) {
+
+  #trainerAdminScreen .trainer-overview-logo {
+    width: 75px !important;
+    height: 75px !important;
+    right: 10px !important;
+    top: 10px !important;
+    transform: none !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+    opacity: 0.85 !important;
+  }
+
+  #trainerAdminScreen select,
+  #trainerAdminScreen button,
+  #trainerAdminScreen .trainer-select-action-row,
+  #trainerAdminScreen .club-stat-card {
+    position: relative;
+    z-index: 3;
+  }
+}
+
+/* ── Trainer-Übersicht логотип: телефон горизонтальный ≤950px landscape ── */
+@media (max-width: 950px) and (orientation: landscape) {
+
+  #trainerAdminScreen .trainer-overview-logo {
+    width: 65px !important;
+    height: 65px !important;
+    right: 10px !important;
+    top: 10px !important;
+    transform: none !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+  }
+
+  #trainerAdminScreen select,
+  #trainerAdminScreen button,
+  #trainerAdminScreen .trainer-select-action-row,
+  #trainerAdminScreen .club-stat-card {
+    position: relative;
+    z-index: 3;
+  }
+}
+
 /* ===== TRAINER ACTION BUTTONS FINAL SIZE ===== */
 
 #trainerAdminScreen .trainer-small-action-btn {
@@ -10464,10 +10612,29 @@ transparent !important;
   box-shadow:
     0 0 8px rgba(255,200,0,.14),
     inset 0 0 10px rgba(255,200,0,.04) !important;
+  /* 4 колонки: Sportart | Gruppe | Trainer | Anwesend */
+  grid-template-columns: 1fr 1.5fr 1fr 100px !important;
 }
 
 #adminStatistikScreen .attendance-date-row * {
   color: #ffffff !important;
+}
+
+/* телефон vertical: 2×2 */
+@media (max-width: 600px) {
+  #adminStatistikScreen .attendance-date-row {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px 14px !important;
+  }
+}
+
+/* телефон horizontal */
+@media (max-width: 950px) and (orientation: landscape) {
+  #adminStatistikScreen .attendance-date-row {
+    grid-template-columns: 1fr 1.5fr 1fr 90px !important;
+    gap: 10px !important;
+    font-size: 13px !important;
+  }
 }
 
 #adminStatistikScreen .attendance-date-row span:not(.attendance-date-count),
@@ -10832,7 +10999,63 @@ transparent !important;
   filter:
     drop-shadow(0 0 16px rgba(255,215,0,.45));
 
-  
+
+}
+
+@media (max-width: 600px) {
+  #addTrainerScreen .add-trainer-hero-logo {
+    position: absolute !important;
+    right: 12px !important;
+    top: 16px !important;
+    left: auto !important;
+    min-width: unset !important;
+    width: 80px !important;
+    height: 80px !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+  }
+  #addTrainerScreen .add-trainer-hero-logo img {
+    width: 80px !important;
+    height: 80px !important;
+  }
+  #addTrainerScreen .add-trainer-hero {
+    position: relative !important;
+  }
+  #addTrainerScreen .add-trainer-hero-left {
+    padding-right: 90px !important;
+  }
+  #addTrainerScreen input,
+  #addTrainerScreen select,
+  #addTrainerScreen .add-trainer-groups-box,
+  #addTrainerScreen .add-trainer-save,
+  #addTrainerScreen .add-trainer-cancel {
+    position: relative;
+    z-index: 3;
+  }
+}
+
+@media (max-width: 950px) and (orientation: landscape) {
+  #addTrainerScreen .add-trainer-hero-logo {
+    position: absolute !important;
+    right: 12px !important;
+    top: 16px !important;
+    left: auto !important;
+    min-width: unset !important;
+    width: 90px !important;
+    height: 90px !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+  }
+  #addTrainerScreen .add-trainer-hero-logo img {
+    width: 90px !important;
+    height: 90px !important;
+  }
+  #addTrainerScreen .add-trainer-hero {
+    position: relative !important;
+  }
+  #addTrainerScreen .add-trainer-hero-left {
+    padding-right: 100px !important;
+  }
 }
 
 /* ===== SPONSOR MANAGEMENT SCREEN ===== */
@@ -11164,6 +11387,72 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   font-size:16px;
   font-weight:700;
   color:#ffd54a;
+}
+
+/* ── Club Statistik: телефон вертикальный ≤600px ── */
+@media (max-width: 600px) {
+
+  /* Заголовки верхних карточек — перенос и уменьшение шрифта */
+  #clubStatistikScreen .club-stat-title {
+    font-size: clamp(12px, 3.5vw, 15px) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Карточка не обрезает содержимое */
+  #clubStatistikScreen .club-stat-card {
+    overflow: hidden !important;
+    align-items: flex-start !important;
+  }
+
+  /* Sport Stat Row: компактнее, допускаем перенос */
+  .sport-stat-row {
+    gap: 10px !important;
+    padding: 10px 12px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .sport-stat-icon-box {
+    min-width: 64px !important;
+  }
+
+  .sport-stat-icon {
+    width: 100px !important;
+    height: 64px !important;
+  }
+
+  /* Значения Gruppen/Trainer/Schüler — мельче, с переносом */
+  .sport-stat-values {
+    gap: 6px 12px !important;
+    font-size: 13px !important;
+    flex-wrap: wrap !important;
+  }
+}
+
+/* ── Club Statistik: телефон горизонтальный ≤950px landscape ── */
+@media (max-width: 950px) and (orientation: landscape) {
+
+  #clubStatistikScreen .club-stat-title {
+    font-size: clamp(11px, 1.8vw, 15px) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    line-height: 1.2 !important;
+  }
+
+  #clubStatistikScreen .club-stat-card {
+    overflow: hidden !important;
+  }
+
+  .sport-stat-values {
+    gap: 8px 16px !important;
+    font-size: 14px !important;
+  }
+
+  .sport-stat-icon {
+    width: 120px !important;
+    height: 70px !important;
+  }
 }
 
 /* ===== CLUB STUDENT STATS SCREEN DARK STYLE ===== */
@@ -12274,10 +12563,17 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
     padding: 8px 12px !important;
   }
 
-  /* Фильтр видов спорта: карточки чуть меньше */
+  /* Фильтр видов спорта: 2 колонки на телефоне */
+  .buch-sport-filter-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
   .buch-sport-filter-card {
-    width: 100px !important;
-    height: 76px !important;
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 1.3 / 1 !important;
   }
 
   .buch-sport-filter-box {
@@ -13919,13 +14215,17 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
 
 @media (max-width: 480px) {
   .zr-sport-grid {
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .zr-sport-card {
-    width: 82px;
-    height: 70px;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1.2 / 1;
     border-radius: 12px;
+    flex-shrink: unset;
   }
 
   .zr-sport-card img {
@@ -14351,4 +14651,19 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   .zr-gesamt-activity-delta {
     font-size: 16px;
   }
+}
+
+/* ── Gelöschte / inaktive Gruppen ── */
+.gruppe-geloescht-name {
+  color: #ff4b4b;
+  font-weight: 700;
+}
+.gruppe-geloescht-label {
+  color: #ff4b4b;
+  font-weight: 800;
+  font-size: .85em;
+}
+#adminStatistikScreen .gruppe-geloescht-name,
+#adminStatistikScreen .gruppe-geloescht-label {
+  color: #ff6b6b !important;
 }

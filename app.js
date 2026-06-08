@@ -1,6 +1,143 @@
 console.log('app.js gestartet');
 console.log('Supabase client:', db);
 
+// =========================================================
+// WHITE LABEL — CLUB SETTINGS
+// Загрузка настроек клуба из таблицы clubs.
+// Если Supabase недоступен или запись не найдена —
+// сайт полностью работает через FALLBACK_CLUB (JCL).
+// =========================================================
+
+let currentClub = null;
+const DEFAULT_CLUB_ID = 'jcl';
+
+const FALLBACK_CLUB = {
+  club_id:                     'jcl',
+  club_name:                   'Judo Club Langenfeld e.V.',
+  club_short_name:             'JCL',
+  logo_url:                    'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_JCL_logo.png',
+  start_logo_url:              'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_JCL_logo.png',
+  background_image_url:        'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_Fon.png',
+  background_mobile_image_url: 'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Startseite_1/1_Fon.png',
+  background_overlay_color:    'rgba(0,0,0,0.45)',
+  background_overlay_opacity:   0.45,
+  primary_color:               '#1a2332',
+  secondary_color:             '#2d4a6e',
+  accent_color:                '#4fc3f7',
+  theme_variant:               'dark',
+};
+
+function getCurrentClubId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('club') || DEFAULT_CLUB_ID;
+}
+
+async function loadCurrentClubSettings() {
+  const clubId = getCurrentClubId();
+  try {
+    const { data, error } = await db
+      .from('clubs')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('active', true)
+      .maybeSingle();
+
+    if (error || !data) {
+      console.warn('[Club] Kein Eintrag oder Fehler — Fallback aktiv:', error);
+      currentClub = FALLBACK_CLUB;
+    } else {
+      currentClub = data;
+      console.log('[Club] Einstellungen geladen:', currentClub.club_short_name);
+    }
+  } catch (e) {
+    console.warn('[Club] Netzwerkfehler — Fallback aktiv:', e);
+    currentClub = FALLBACK_CLUB;
+  }
+  applyClubSettings();
+}
+
+function applyClubSettings() {
+  if (!currentClub) return;
+  const cfg = currentClub;
+  const root = document.documentElement;
+
+  // Заголовок вкладки браузера
+  if (cfg.club_short_name) {
+    document.title = cfg.club_short_name + ' Gruppen';
+  }
+
+  // Favicon — всегда устанавливаем: favicon_url → logo_url → fallback
+  const faviconUrl = cfg.favicon_url || cfg.logo_url || FALLBACK_CLUB.logo_url;
+  let faviconLink = document.querySelector("link[rel~='icon']");
+  if (!faviconLink) {
+    faviconLink = document.createElement('link');
+    faviconLink.rel = 'icon';
+    document.head.appendChild(faviconLink);
+  }
+  faviconLink.href = faviconUrl;
+
+  // CSS Variables — фон, цвета, логотип
+  const bgUrl    = cfg.background_image_url        || FALLBACK_CLUB.background_image_url;
+  const bgMobUrl = cfg.background_mobile_image_url || bgUrl;
+  const overlay  = cfg.background_overlay_color    || FALLBACK_CLUB.background_overlay_color;
+
+  const bgDash = cfg.dashboard_background_url || FALLBACK_CLUB.background_image_url;
+
+  root.style.setProperty('--club-background-image',            `url("${bgUrl}")`);
+  root.style.setProperty('--club-mobile-background-image',     `url("${bgMobUrl}")`);
+  root.style.setProperty('--club-dashboard-background-image',  `url("${bgDash}")`);
+  root.style.setProperty('--club-overlay-color',                overlay);
+  root.style.setProperty('--club-primary-color',   cfg.primary_color   || FALLBACK_CLUB.primary_color);
+  root.style.setProperty('--club-secondary-color', cfg.secondary_color || FALLBACK_CLUB.secondary_color);
+  root.style.setProperty('--club-accent-color',    cfg.accent_color    || FALLBACK_CLUB.accent_color);
+  root.style.setProperty('--club-logo-url',        `url("${getClubLogoUrl()}")`);
+
+  // Логотипы в DOM — все известные img-элементы с логотипом клуба
+  const logoUrl = getClubLogoUrl();
+  [
+    'clubRoundLogo', 'st2ClubLogo', 'adminTopClubLogo',
+    'adminHomeClubLogo', 'trainerHomeClubLogo', 'sportAdminClubLogo',
+    'adminBuchTopClubLogo', 'editTrainerTopClubLogo', 'addTrainerHeroLogo',
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.tagName === 'IMG') el.src = logoUrl;
+  });
+
+  // Тексты с названием клуба — обновляем после загрузки currentClub
+  const short = cfg.club_short_name || FALLBACK_CLUB.club_short_name;
+  const full  = cfg.club_name       || FALLBACK_CLUB.club_name;
+
+  // Стартовая страница — большая аббревиатура и заголовок
+  const mainLogo = document.querySelector('.sport-start-main-logo');
+  if (mainLogo) mainLogo.textContent = short;
+
+  const welcomeH1 = document.querySelector('.sport-start-header h1');
+  if (welcomeH1) welcomeH1.textContent = 'Willkommen beim ' + short;
+
+  const welcomeSub = document.querySelector('.sport-start-header p');
+  if (welcomeSub) welcomeSub.textContent = full;
+
+  // Footer стартовой страницы
+  const footerStrong = document.querySelector('.sport-start-footer strong');
+  if (footerStrong) footerStrong.textContent = short;
+
+  const footerSpan = document.querySelector('.sport-start-footer span');
+  if (footerSpan) footerSpan.textContent = full;
+
+  // Главный заголовок приложения (видимый после логина)
+  const topH1 = document.querySelector('.top-title-block h1');
+  if (topH1) topH1.textContent = short + '-Gruppen';
+
+  // Login экран — аббревиатура и полное название
+  const st2Logo = document.querySelector('.st2-main-logo');
+  if (st2Logo) st2Logo.textContent = short;
+
+  const st2Name = document.querySelector('.st2-club-name');
+  if (st2Name) st2Name.textContent = full;
+
+  console.log('[Club] Einstellungen angewendet:', cfg.club_short_name);
+}
+
 let currentTrainer = null;
 let screenHistory=[];
 
@@ -45,6 +182,9 @@ let previousScreenBeforeEditStudent = null;
 let promoTransitionActive = false;
 let promoTransitionFileNames = [];
 let promoSequenceIndex = 0;
+let currentPromoSettings = { mode: 'random', duration: 3, fixed_image: null };
+let promoActiveSlides    = [];
+let sponsorsCache        = {};
 let previousView = null;
 let currentView = null;
 let adminSelectedSport = '';
@@ -70,34 +210,73 @@ function getSelectedClubSport() {
 }
 let adminAvailableSports = [];
 
+async function loadCurrentPromoSettings() {
+  const { data: settings } = await db
+    .from('promo_settings')
+    .select('*')
+    .eq('club_id', currentClub.club_id)
+    .maybeSingle();
+
+  if (settings) {
+    currentPromoSettings = {
+      mode:        settings.mode        || 'random',
+      duration:    settings.duration    || 3,
+      fixed_image: settings.fixed_image || null,
+    };
+  }
+
+  const { data: slides } = await db
+    .from('promo_media')
+    .select('file_name, file_path')
+    .eq('club_id', currentClub.club_id)
+    .eq('aktiv', true)
+    .order('sort_order', { ascending: true });
+
+  promoActiveSlides = slides || [];
+}
+
+async function loadSponsorsCache() {
+  const { data } = await db
+    .from('sponsors')
+    .select('file_name, aktiv, aktiv_von, aktiv_bis')
+    .eq('club_id', currentClub.club_id);
+
+  sponsorsCache = {};
+  (data || []).forEach(s => {
+    sponsorsCache[s.file_name] = {
+      aktiv:     s.aktiv,
+      aktiv_von: s.aktiv_von || '',
+      aktiv_bis: s.aktiv_bis || '',
+    };
+  });
+}
+
 function getPromoImageUrl() {
   const PROMO_BASE =
-    'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo%20transition/';
+    'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo-transition/';
 
-  const active = promoTransitionFileNames.filter(
-    name => localStorage.getItem('popup_active_' + name) === 'JA'
-  );
+  const active = promoActiveSlides;
 
-  if (active.length === 0) return CLUB_LOGO;
+  if (active.length === 0) return getClubLogoUrl();
 
-  const mode = localStorage.getItem('popup_mode') || 'random';
+  const { mode, fixed_image } = currentPromoSettings;
 
   if (mode === 'fixed') {
-    const fixed = localStorage.getItem('popup_fixed_image') || '';
-    const match = active.find(n => n === fixed);
-    return PROMO_BASE + encodeURIComponent(match || active[0]);
+    const match = active.find(s => s.file_name === fixed_image);
+    const path  = (match || active[0]).file_path;
+    return PROMO_BASE + path.split('/').map(encodeURIComponent).join('/');
   }
 
   if (mode === 'sequence') {
     promoSequenceIndex = promoSequenceIndex % active.length;
-    const name = active[promoSequenceIndex];
+    const slide = active[promoSequenceIndex];
     promoSequenceIndex = (promoSequenceIndex + 1) % active.length;
-    return PROMO_BASE + encodeURIComponent(name);
+    return PROMO_BASE + slide.file_path.split('/').map(encodeURIComponent).join('/');
   }
 
   // random
-  const name = active[Math.floor(Math.random() * active.length)];
-  return PROMO_BASE + encodeURIComponent(name);
+  const slide = active[Math.floor(Math.random() * active.length)];
+  return PROMO_BASE + slide.file_path.split('/').map(encodeURIComponent).join('/');
 }
 
 async function showPromoTransition(callback) {
@@ -128,7 +307,7 @@ async function showPromoTransition(callback) {
 
   overlay.classList.add('promo-running');
 
-  const duration = parseInt(localStorage.getItem('popup_duration') || '3', 10);
+  const duration = currentPromoSettings.duration || 3;
   await new Promise(resolve => setTimeout(resolve, duration * 1000));
 
   try {
@@ -290,7 +469,7 @@ function showLoginScreenForContext(context){
 
   const clubLogo = document.getElementById('st2ClubLogo');
   if(clubLogo){
-    clubLogo.src = STARTSEITE_URL + '1_JCL_logo.png';
+    clubLogo.src = getClubLogoUrl();
   }
 
   const sportIcon = document.getElementById('st2SportIcon');
@@ -348,6 +527,7 @@ function togglePinVisibility(){
 }
 
 window.onload = async function () {
+  await loadCurrentClubSettings();
   showSportStartScreen();
 };
 
@@ -357,7 +537,7 @@ function showSportStartScreen() {
 
   const logo = document.getElementById('clubRoundLogo');
   if (logo) {
-    logo.src = STARTSEITE_URL + '1_JCL_logo.png';
+    logo.src = getClubLogoUrl();
   }
 
   loadSportStartCards();
@@ -373,6 +553,7 @@ async function loadSportStartCards() {
     .from('sports')
     .select('sport_id, name, icon_file, aktiv, sort_order')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order', { ascending: true });
 
   if (error) {
@@ -499,6 +680,7 @@ async function loadTrainerLoginList() {
     .from('trainers')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('name', { ascending: true });
 
   if(error){
@@ -600,6 +782,7 @@ async function login() {
     .select('*')
     .eq('trainer_id', trainerId)
     .eq('pin', pin)
+    .eq('club_id', currentClub.club_id)
     .maybeSingle();
 
   if (error || !data) {
@@ -611,6 +794,8 @@ async function login() {
   currentTrainer = data;
   currentTrainer.role = data.rolle;
   currentTrainer.trainerId = data.trainer_id;
+
+  await loadCurrentPromoSettings();
 
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('mainScreen').classList.remove('hidden');
@@ -960,9 +1145,8 @@ return;
 }
 
 function getClubLogoUrl() {
-
-  return CLUB_LOGO;
-
+  if (currentClub && currentClub.logo_url) return currentClub.logo_url;
+  return FALLBACK_CLUB.logo_url;
 }
 
 function cancelStudentEditForm(){
@@ -1004,7 +1188,8 @@ async function getActiveTrainerNamesForStudent(student, externalTrainersMap) {
   const { data: links, error: linksError } = await db
     .from('trainer_groups')
     .select('trainer_id, trainer_name, gruppe_id')
-    .in('gruppe_id', groupIds);
+    .in('gruppe_id', groupIds)
+    .eq('club_id', currentClub.club_id);
 
   if (linksError || !links || links.length === 0) {
     return '-';
@@ -1032,7 +1217,8 @@ async function getActiveTrainerNamesForStudent(student, externalTrainersMap) {
       .from('trainers')
       .select('trainer_id, name, aktiv')
       .in('trainer_id', trainerIds)
-      .eq('aktiv', 'JA');
+      .eq('aktiv', 'JA')
+      .eq('club_id', currentClub.club_id);
 
     if (trainersError || !trainers || trainers.length === 0) {
       return '-';
@@ -1049,7 +1235,8 @@ async function getStudentsWithoutGroupOrTrainer() {
   const { data: students, error: studentsError } = await db
     .from('students')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   if (studentsError) {
     console.error(studentsError);
@@ -1058,7 +1245,8 @@ async function getStudentsWithoutGroupOrTrainer() {
 
   const { data: groups, error: groupsError } = await db
     .from('groups')
-    .select('gruppe_id, gruppenname, aktiv');
+    .select('gruppe_id, gruppenname, aktiv')
+    .eq('club_id', currentClub.club_id);
 
   if (groupsError) {
     console.error(groupsError);
@@ -1072,7 +1260,8 @@ async function getStudentsWithoutGroupOrTrainer() {
 
   const { data: trainerGroups, error: trainerGroupsError } = await db
     .from('trainer_groups')
-    .select('trainer_id, trainer_name, gruppe_id');
+    .select('trainer_id, trainer_name, gruppe_id')
+    .eq('club_id', currentClub.club_id);
 
   if (trainerGroupsError) {
     console.error(trainerGroupsError);
@@ -1169,6 +1358,7 @@ if (logoImg) {
       .from('groups')
       .select('*')
       .eq('aktiv', 'JA')
+      .eq('club_id', currentClub.club_id)
       .order('gruppenname', { ascending: true });
 
     if (error) {
@@ -1183,6 +1373,7 @@ if (logoImg) {
       .from('trainer_groups')
       .select('*')
       .eq('trainer_id', currentTrainer.trainerId)
+      .eq('club_id', currentClub.club_id)
       .order('gruppenname', { ascending: true });
 
     if (error) {
@@ -1249,7 +1440,8 @@ async function loadStudents() {
   const { data, error } = await db
     .from('students')
     .select('*')
-    .eq('aktiv','JA');
+    .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id);
 
   if(error){
 
@@ -1280,7 +1472,8 @@ async function loadStudents() {
       .eq(
         'trainer_id',
         currentTrainer.trainerId
-      );
+      )
+      .eq('club_id', currentClub.club_id);
 
       const allowedIds =
       (trainerGroups||[])
@@ -1352,7 +1545,8 @@ async function applyGroupFilter() {
   const { data: trainerGroups, error: groupError } = await db
     .from('trainer_groups')
     .select('gruppe_id')
-    .eq('trainer_id', currentTrainer.trainerId);
+    .eq('trainer_id', currentTrainer.trainerId)
+    .eq('club_id', currentClub.club_id);
 
   if (groupError) {
     console.error(groupError);
@@ -1525,7 +1719,8 @@ async function getTrainerStudentsForStatFilter() {
   const { data: students, error } = await db
     .from('students')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   if (error) {
     console.error(error);
@@ -1551,7 +1746,8 @@ async function getTrainerStudentsForStatFilter() {
   const { data: trainerGroups, error: groupError } = await db
     .from('trainer_groups')
     .select('gruppe_id')
-    .eq('trainer_id', currentTrainer.trainerId);
+    .eq('trainer_id', currentTrainer.trainerId)
+    .eq('club_id', currentClub.club_id);
 
   if (groupError) {
     console.error(groupError);
@@ -1714,6 +1910,7 @@ async function showGroupStudentNameSuggestions() {
     .from('students')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('nachname', { ascending: true });
 
   if (error) {
@@ -1733,7 +1930,8 @@ async function showGroupStudentNameSuggestions() {
     const { data: trainerGroups, error: groupError } = await db
       .from('trainer_groups')
       .select('gruppe_id')
-      .eq('trainer_id', currentTrainer.trainerId);
+      .eq('trainer_id', currentTrainer.trainerId)
+      .eq('club_id', currentClub.club_id);
 
     if (groupError) {
       console.error(groupError);
@@ -1828,7 +2026,8 @@ async function renderStudentTableUniversal(students, options = {}) {
   const { data: allTrainers } = await db
     .from('trainers')
     .select('trainer_id, name')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   const trainersMap = {};
   (allTrainers || []).forEach(t => {
@@ -2019,6 +2218,8 @@ async function showSponsorManagementScreen(){
   document.getElementById('currentGroupInfo').textContent =
     'Aktuelle Seite: Werbung / Sponsoren';
 
+  await loadSponsorsCache();
+  await loadCurrentPromoSettings();
   await loadSponsorLogos();
   await updateTopSponsorLogos();
   await loadPromoTransitionImages();
@@ -2031,15 +2232,14 @@ async function loadSponsorLogos(){
 
   if(!box)return;
 
-  deactivateExpiredSponsors();
+  await deactivateExpiredSponsors();
+  await loadSponsorsCache();
 
   box.innerHTML = 'Sponsorenlogos werden geladen...';
 
   const {data,error}=await db.storage
     .from('promo_slides')
-    .list('',{
-      limit:100
-    });
+    .list(currentClub.club_id, { limit: 100 });
 
   if(error){
     console.error(error);
@@ -2064,12 +2264,13 @@ async function loadSponsorLogos(){
 
   box.innerHTML = files.map(file => {
 
+    const filePath = `${currentClub.club_id}/${file.name}`;
     const url =
       'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo_slides/' +
-      file.name;
+      filePath;
 
-      const isActive =
-  localStorage.getItem('sponsor_active_' + file.name) === 'JA';
+    const sp       = sponsorsCache[file.name] || {};
+    const isActive = sp.aktiv === true;
 
     return `
      <div class="
@@ -2100,7 +2301,7 @@ async function loadSponsorLogos(){
   <input
     type="date"
     id="sponsorDateFrom_${file.name}"
-    value="${localStorage.getItem('sponsor_from_' + file.name) || ''}"
+    value="${sp.aktiv_von || ''}"
     onchange="updateSponsorDateFrom('${file.name}', this.value)"
   >
 </label>
@@ -2110,7 +2311,7 @@ async function loadSponsorLogos(){
   <input
     type="date"
     id="sponsorDateTo_${file.name}"
-    value="${localStorage.getItem('sponsor_to_' + file.name) || ''}"
+    value="${sp.aktiv_bis || ''}"
     onchange="updateSponsorDateTo('${file.name}', this.value)"
   >
 </label>
@@ -2130,9 +2331,16 @@ async function loadPromoTransitionImages() {
 
   box.innerHTML = 'Popup-Bilder werden geladen...';
 
-  const { data, error } = await db.storage
-    .from('promo transition')
-    .list('', { limit: 100 });
+  const [storageResult, dbResult] = await Promise.all([
+    db.storage.from('promo-transition').list(currentClub.club_id, { limit: 100 }),
+    db.from('promo_media')
+      .select('file_name, aktiv')
+      .eq('club_id', currentClub.club_id),
+  ]);
+
+  const { data, error } = storageResult;
+  const dbMap = {};
+  (dbResult.data || []).forEach(r => { dbMap[r.file_name] = r.aktiv; });
 
   if (error) {
     console.error(error);
@@ -2159,12 +2367,14 @@ async function loadPromoTransitionImages() {
     return;
   }
 
+  const PROMO_BASE =
+    'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo-transition/';
+
   box.innerHTML = '<div class="popup-image-grid">' +
     files.map(file => {
 
-    const url =
-      'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo%20transition/' +
-      encodeURIComponent(file.name);
+    const filePath = `${currentClub.club_id}/${file.name}`;
+    const url = PROMO_BASE + filePath.split('/').map(encodeURIComponent).join('/');
 
     const safeName = file.name
       .replace(/&/g, '&amp;')
@@ -2172,8 +2382,7 @@ async function loadPromoTransitionImages() {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-    const isActive =
-      localStorage.getItem('popup_active_' + file.name) === 'JA';
+    const isActive = dbMap[file.name] === true;
 
     return `
       <div class="popup-image-card ${isActive ? 'popup-card-active' : 'popup-card-inactive'}">
@@ -2199,8 +2408,11 @@ async function loadPromoTransitionImages() {
 
   }).join('') + '</div>';
 
-  promoTransitionFileNames = files.map(f => f.name);
-  loadPopupTransitionSettings(promoTransitionFileNames);
+  promoActiveSlides = (dbResult.data || [])
+    .filter(r => r.aktiv)
+    .map(r => ({ file_name: r.file_name, file_path: `${currentClub.club_id}/${r.file_name}` }));
+
+  loadPopupTransitionSettings(files.map(f => f.name));
 }
 
 async function uploadSponsorLogo(event){
@@ -2217,9 +2429,11 @@ async function uploadSponsorLogo(event){
       .replace(/\s+/g, '_')
       .replace(/[^\w.\-]/g, '');
 
+  const filePath = `${currentClub.club_id}/${fileName}`;
+
   const { error } = await db.storage
     .from('promo_slides')
-    .upload(fileName, file, {
+    .upload(filePath, file, {
       cacheControl: '3600',
       upsert: true
     });
@@ -2231,6 +2445,14 @@ async function uploadSponsorLogo(event){
     );
     return;
   }
+
+  await db.from('sponsors').upsert({
+    club_id:    currentClub.club_id,
+    file_name:  fileName,
+    file_path:  filePath,
+    aktiv:      false,
+    sort_order: 0,
+  });
 
   event.target.value = '';
 
@@ -2255,9 +2477,11 @@ async function uploadPromoTransitionImage(event) {
       .replace(/\s+/g, '_')
       .replace(/[^\w.\-]/g, '');
 
+  const filePath = `${currentClub.club_id}/${fileName}`;
+
   const { error } = await db.storage
-    .from('promo transition')
-    .upload(fileName, file, {
+    .from('promo-transition')
+    .upload(filePath, file, {
       cacheControl: '3600',
       upsert: true
     });
@@ -2271,6 +2495,14 @@ async function uploadPromoTransitionImage(event) {
     return;
   }
 
+  await db.from('promo_media').upsert({
+    club_id:    currentClub.club_id,
+    file_name:  fileName,
+    file_path:  filePath,
+    aktiv:      false,
+    sort_order: 0,
+  });
+
   event.target.value = '';
 
   await loadPromoTransitionImages();
@@ -2280,14 +2512,26 @@ async function uploadPromoTransitionImage(event) {
   );
 }
 
-function togglePopupImageActive(checkbox) {
+async function togglePopupImageActive(checkbox) {
   const fileName = checkbox.dataset.filename || '';
   if (!fileName) return;
 
-  localStorage.setItem(
-    'popup_active_' + fileName,
-    checkbox.checked ? 'JA' : 'NEIN'
-  );
+  await db
+    .from('promo_media')
+    .update({ aktiv: checkbox.checked })
+    .eq('club_id', currentClub.club_id)
+    .eq('file_name', fileName);
+
+  if (checkbox.checked) {
+    if (!promoActiveSlides.find(s => s.file_name === fileName)) {
+      promoActiveSlides.push({
+        file_name: fileName,
+        file_path: `${currentClub.club_id}/${fileName}`,
+      });
+    }
+  } else {
+    promoActiveSlides = promoActiveSlides.filter(s => s.file_name !== fileName);
+  }
 
   markPopupDirty();
 
@@ -2331,7 +2575,7 @@ function selectPopupMode(mode) {
   markPopupDirty();
 }
 
-function savePopupTransitionSettings() {
+async function savePopupTransitionSettings() {
   const selectedCard = document.querySelector('.popup-mode-card.popup-mode-selected');
   const mode = selectedCard ? selectedCard.dataset.mode : 'random';
 
@@ -2341,9 +2585,20 @@ function savePopupTransitionSettings() {
   const fixedImage =
     document.getElementById('popupFixedImageSelect')?.value || '';
 
-  localStorage.setItem('popup_mode', mode);
-  localStorage.setItem('popup_duration', duration);
-  localStorage.setItem('popup_fixed_image', fixedImage);
+  await db
+    .from('promo_settings')
+    .upsert({
+      club_id:     currentClub.club_id,
+      mode,
+      duration:    parseInt(duration, 10),
+      fixed_image: fixedImage || null,
+    });
+
+  currentPromoSettings = {
+    mode,
+    duration: parseInt(duration, 10),
+    fixed_image: fixedImage || null,
+  };
 
   const fixedRow = document.getElementById('popupFixedImageRow');
   if (fixedRow) {
@@ -2358,14 +2613,9 @@ function savePopupTransitionSettings() {
 }
 
 function loadPopupTransitionSettings(fileNames) {
-  const mode =
-    localStorage.getItem('popup_mode') || 'random';
-
-  const duration =
-    localStorage.getItem('popup_duration') || '3';
-
-  const fixedImage =
-    localStorage.getItem('popup_fixed_image') || '';
+  const mode       = currentPromoSettings.mode        || 'random';
+  const duration   = String(currentPromoSettings.duration || 3);
+  const fixedImage = currentPromoSettings.fixed_image  || '';
 
   document.querySelectorAll('.popup-mode-card').forEach(card => {
     if (card.dataset.mode === mode) {
@@ -2404,12 +2654,17 @@ function loadPopupTransitionSettings(fileNames) {
   }
 }
 
-function toggleSponsorActive(fileName, checkbox){
+async function toggleSponsorActive(fileName, checkbox){
 
-  localStorage.setItem(
-    'sponsor_active_' + fileName,
-    checkbox.checked ? 'JA' : 'NEIN'
-  );
+  await db
+    .from('sponsors')
+    .update({ aktiv: checkbox.checked })
+    .eq('club_id', currentClub.club_id)
+    .eq('file_name', fileName);
+
+  if (sponsorsCache[fileName]) {
+    sponsorsCache[fileName].aktiv = checkbox.checked;
+  }
 
   const card =
     checkbox.closest('.sponsor-logo-card');
@@ -2430,56 +2685,48 @@ function toggleSponsorActive(fileName, checkbox){
   updateTopSponsorLogos();
 }
 
-function updateSponsorDateFrom(fileName, value){
+async function updateSponsorDateFrom(fileName, value){
 
-  localStorage.setItem(
-    'sponsor_from_' + fileName,
-    value || ''
-  );
-}
+  await db
+    .from('sponsors')
+    .update({ aktiv_von: value || null })
+    .eq('club_id', currentClub.club_id)
+    .eq('file_name', fileName);
 
-function updateSponsorDateTo(fileName, value){
-
-  localStorage.setItem(
-    'sponsor_to_' + fileName,
-    value || ''
-  );
-
-  const today = todayBerlin();
-
-  if(value && value < today){
-
-    localStorage.setItem(
-      'sponsor_active_' + fileName,
-      'NEIN'
-    );
-
-    loadSponsorLogos();
+  if (sponsorsCache[fileName]) {
+    sponsorsCache[fileName].aktiv_von = value || '';
   }
 }
 
-function deactivateExpiredSponsors(){
+async function updateSponsorDateTo(fileName, value){
+
+  const today   = todayBerlin();
+  const expired = value && value < today;
+
+  await db
+    .from('sponsors')
+    .update({ aktiv_bis: value || null, ...(expired ? { aktiv: false } : {}) })
+    .eq('club_id', currentClub.club_id)
+    .eq('file_name', fileName);
+
+  if (sponsorsCache[fileName]) {
+    sponsorsCache[fileName].aktiv_bis = value || '';
+    if (expired) sponsorsCache[fileName].aktiv = false;
+  }
+
+  if (expired) loadSponsorLogos();
+}
+
+async function deactivateExpiredSponsors(){
 
   const today = todayBerlin();
 
-  Object.keys(localStorage).forEach(key => {
-
-    if(!key.startsWith('sponsor_to_')) return;
-
-    const fileName =
-      key.replace('sponsor_to_', '');
-
-    const dateTo =
-      localStorage.getItem(key);
-
-    if(dateTo && dateTo < today){
-
-      localStorage.setItem(
-        'sponsor_active_' + fileName,
-        'NEIN'
-      );
-    }
-  });
+  await db
+    .from('sponsors')
+    .update({ aktiv: false })
+    .eq('club_id', currentClub.club_id)
+    .not('aktiv_bis', 'is', null)
+    .lt('aktiv_bis', today);
 }
 
 async function updateTopSponsorLogos(){
@@ -2487,52 +2734,32 @@ async function updateTopSponsorLogos(){
   const box = document.getElementById('topSponsorLogos');
   if(!box)return;
 
-  const {data,error}=await db.storage
-    .from('promo_slides')
-    .list('',{ limit:100 });
+  const today = todayBerlin();
 
-  if(error){
+  const { data, error } = await db
+    .from('sponsors')
+    .select('file_name, aktiv_von, aktiv_bis')
+    .eq('club_id', currentClub.club_id)
+    .eq('aktiv', true);
+
+  if (error) {
     console.error(error);
     box.innerHTML = '';
     return;
   }
 
-  const today = todayBerlin();
-
-  const activeFiles = (data || []).filter(file => {
-
-    if(!/\.(png|jpg|jpeg|webp)$/i.test(file.name))return false;
-
-    const active =
-      localStorage.getItem('sponsor_active_' + file.name) === 'JA';
-
-    const from =
-      localStorage.getItem('sponsor_from_' + file.name) || '';
-
-    const to =
-      localStorage.getItem('sponsor_to_' + file.name) || '';
-
-    if(!active)return false;
-    if(from && from > today)return false;
-    if(to && to < today)return false;
-
+  const activeSponsors = (data || []).filter(s => {
+    if (s.aktiv_von && s.aktiv_von > today) return false;
+    if (s.aktiv_bis && s.aktiv_bis < today) return false;
     return true;
   });
 
-  box.innerHTML = activeFiles.map(file => {
+  const SPONSOR_BASE =
+    'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo_slides/';
 
-    const url =
-      'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/promo_slides/' +
-      file.name;
-
-    return `
-      <img
-        class="top-sponsor-logo"
-        src="${url}"
-        alt="${file.name}"
-      >
-    `;
-  }).join('');
+  box.innerHTML = activeSponsors.map(s =>
+    `<img class="top-sponsor-logo" src="${SPONSOR_BASE}${currentClub.club_id}/${encodeURIComponent(s.file_name)}" alt="${s.file_name}">`
+  ).join('');
 }
 
 async function loadSportManagementList(){
@@ -2547,7 +2774,7 @@ const logo =
 document.getElementById('sportAdminClubLogo');
 
 if(logo){
-logo.src = CLUB_LOGO;
+logo.src = getClubLogoUrl();
 }
 
 if(!grid)return;
@@ -2557,6 +2784,7 @@ grid.innerHTML = 'Sportarten werden geladen...';
 const {data,error}=await db
 .from('sports')
 .select('*')
+.eq('club_id', currentClub.club_id)
 .order('sort_order',{ascending:true});
 
 if(error){
@@ -3009,6 +3237,7 @@ async function loadAdminBuchhaltungUsers() {
     .from('trainers')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('name', { ascending: true });
 
   if (error) {
@@ -3213,7 +3442,7 @@ const topLogo =
 document.getElementById('adminTopClubLogo');
 
 if(topLogo){
-topLogo.src = CLUB_LOGO;
+topLogo.src = getClubLogoUrl();
 }
 
 await applyAdminStudentFilter();
@@ -3231,6 +3460,7 @@ const {data,error}=await db
 .from('sports')
 .select('sport_id, name, icon_file, aktiv, sort_order')
 .eq('aktiv','JA')
+.eq('club_id', currentClub.club_id)
 .order('sort_order',{ascending:true});
 
 if(error){
@@ -3354,6 +3584,7 @@ let query = db
 .from('groups')
 .select('*')
 .eq('aktiv','JA')
+.eq('club_id', currentClub.club_id)
 .order('gruppenname',{ascending:true});
 
 if(adminSelectedSport){
@@ -3401,7 +3632,8 @@ const groupId = select?.value || '';
 const {data,error}=await db
 .from('students')
 .select('*')
-.eq('aktiv','JA');
+.eq('aktiv','JA')
+.eq('club_id', currentClub.club_id);
 
 if(error){
 console.error(error);
@@ -3596,6 +3828,7 @@ const {data,error}=await db
 .from('students')
 .select('*')
 .eq('aktiv','JA')
+.eq('club_id', currentClub.club_id)
 .order('nachname',{ascending:true});
 
 if(error){
@@ -3678,6 +3911,7 @@ async function showTrainerStudentNameSuggestions(){
     .from('students')
     .select('*')
     .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id)
     .order('nachname',{ascending:true});
 
   if(error){
@@ -3693,7 +3927,8 @@ async function showTrainerStudentNameSuggestions(){
     const {data: links} = await db
       .from('trainer_groups')
       .select('gruppe_id')
-      .eq('trainer_id', trainerId);
+      .eq('trainer_id', trainerId)
+      .eq('club_id', currentClub.club_id);
 
     allowedGroupIds = (links || [])
       .map(x => x.gruppe_id)
@@ -3773,7 +4008,8 @@ select?.value || '';
 const {data,error}=await db
 .from('students')
 .select('*')
-.eq('aktiv','JA');
+.eq('aktiv','JA')
+.eq('club_id', currentClub.club_id);
 
 if(error){
 console.error(error);
@@ -3871,14 +4107,15 @@ async function loadBuchhaltungData() {
 
   const [studentsResult, archivResult, attendanceResult, groupsResult, trainerGroupsResult, sportsResult] =
     await Promise.all([
-      db.from('students').select('*'),
-      db.from('archiv').select('*'),
-      db.from('attendance').select('*').eq('anwesenheit', 'JA'),
-      db.from('groups').select('*'),
-      db.from('trainer_groups').select('*'),
+      db.from('students').select('*').eq('club_id', currentClub.club_id),
+      db.from('archiv').select('*').eq('club_id', currentClub.club_id),
+      db.from('attendance').select('*').eq('anwesenheit', 'JA').eq('club_id', currentClub.club_id),
+      db.from('groups').select('*').eq('club_id', currentClub.club_id),
+      db.from('trainer_groups').select('*').eq('club_id', currentClub.club_id),
       db.from('sports')
         .select('sport_id, name, icon_file, aktiv, sort_order')
         .eq('aktiv', 'JA')
+        .eq('club_id', currentClub.club_id)
         .order('sort_order', { ascending: true })
     ]);
 
@@ -4101,15 +4338,8 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
           <div>Finanzen, Verträge und Schülerstatus verwalten</div>
         </div>
         <img
-  class="buch-modern-logo"
-  src="${CLUB_LOGO}"
-  style="
-    width:190px;
-    height:190px;
-    object-fit:contain;
-    filter:drop-shadow(0 0 18px rgba(255,215,0,.95))
-           drop-shadow(0 0 38px rgba(255,170,0,.75));
-  "
+  class="buch-modern-logo buch-page-logo"
+  src="${getClubLogoUrl()}"
 >
       </div>
       <div class="buch-selected-sport-card">
@@ -4543,6 +4773,7 @@ const {data,error}=await db
 .from('sports')
 .select('sport_id, name, icon_file, aktiv, sort_order')
 .eq('aktiv','JA')
+.eq('club_id', currentClub.club_id)
 .order('sort_order',{ascending:true});
 
 if(error){
@@ -4732,6 +4963,7 @@ async function renderWeight(groupId) {
     .from('students')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('nachname', { ascending:true });
 
   if (error) {
@@ -4888,7 +5120,8 @@ async function saveWeights() {
         trainer: trainerName,
         vorname: input.dataset.vorname || '',
         nachname: input.dataset.nachname || '',
-        kommentar: 'Wiegung'
+        kommentar: 'Wiegung',
+        club_id: currentClub.club_id
       }]);
 
     if (logError) {
@@ -4959,6 +5192,7 @@ async function loadStudentsListForAttendance(groupId) {
     .from('students')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('nachname', { ascending: true });
 
   if (error) {
@@ -5270,7 +5504,8 @@ async function saveAttendance() {
       entschuldigt: 'NEIN',
       kommentar: '',
       trainer: trainerName,
-      sport_id: sportId
+      sport_id: sportId,
+      club_id: currentClub.club_id
     };
 
     let result;
@@ -5505,7 +5740,8 @@ async function archiveStudentConfirmed(id, student, archivGrund, archivKommentar
     foto_url: student.foto_url || '',
     archiv_datum: today,
     archiv_grund: archivGrund,
-    buchhaltung_datum: student.buchhaltung_datum || null
+    buchhaltung_datum: student.buchhaltung_datum || null,
+    club_id: currentClub.club_id
   };
 
   const {error: archivError} = await db
@@ -5703,7 +5939,8 @@ const archivPayload = {
   foto_url: student.foto_url || '',
   archiv_datum: today,
   archiv_grund: archivGrund,
-  buchhaltung_datum: student.buchhaltung_datum || null
+  buchhaltung_datum: student.buchhaltung_datum || null,
+  club_id: currentClub.club_id
 };
 
 const { error: archivError } = await db
@@ -5998,7 +6235,8 @@ const possibleIds = [...new Set([
 const { data: attendanceRows } = await db
   .from('attendance')
   .select('student_id, gruppe_id, datum, anwesenheit')
-  .in('student_id', possibleIds);
+  .in('student_id', possibleIds)
+  .eq('club_id', currentClub.club_id);
 
 const calculatedRating =
   calculateStudentRatingFromRows(possibleIds, attendanceRows || []);
@@ -6022,7 +6260,8 @@ if (externalGroupData) {
 const { data: groupData, error: groupDataError } = await db
 .from('groups')
 .select('gruppe_id, gruppenname, aktiv')
-.in('gruppe_id', groupIds);
+.in('gruppe_id', groupIds)
+.eq('club_id', currentClub.club_id);
 
 if (groupDataError) {
   console.error('getStudentFullData groups error:', groupDataError);
@@ -6033,7 +6272,8 @@ groups = groupData || [];
 const { data: trainerData, error: trainerDataError } = await db
 .from('trainer_groups')
 .select('trainer_name')
-.in('gruppe_id', groupIds);
+.in('gruppe_id', groupIds)
+.eq('club_id', currentClub.club_id);
 
 if (trainerDataError) {
   console.error('getStudentFullData trainer_groups error:', trainerDataError);
@@ -7274,7 +7514,8 @@ async function saveNewStudent(groupId) {
     probetraining_status: 'AKTIV',
     eintrittsdatum: today,
     probetraining_start: today,
-    buchhaltung_relevant: 'JA'
+    buchhaltung_relevant: 'JA',
+    club_id: currentClub.club_id
   };
 
   const { error } = await db
@@ -7519,6 +7760,7 @@ async function loadClubSportFilter() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order',{ascending:true});
 
   if(error){
@@ -7558,6 +7800,7 @@ async function loadClubStudentSportFilter() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order',{ascending:true});
 
   if(error){
@@ -7653,6 +7896,7 @@ async function loadSportStatsOverview() {
     .from('sports')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('name', { ascending: true });
 
   if (selectedSport) {
@@ -7664,17 +7908,20 @@ async function loadSportStatsOverview() {
   const { data: trainers } = await db
     .from('trainers')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   const { data: groups } = await db
     .from('groups')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   const { data: students } = await db
     .from('students')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   const sportStats = (sports || []).map(sport => {
 
@@ -7751,17 +7998,20 @@ async function loadClubStatisticsSupabase() {
 let trainersQuery = db
   .from('trainers')
   .select('*')
-  .eq('aktiv', 'JA');
+  .eq('aktiv', 'JA')
+  .eq('club_id', currentClub.club_id);
 
 let groupsQuery = db
   .from('groups')
   .select('*')
-  .eq('aktiv', 'JA');
+  .eq('aktiv', 'JA')
+  .eq('club_id', currentClub.club_id);
 
 let studentsQuery = db
   .from('students')
   .select('*')
-  .eq('aktiv', 'JA');
+  .eq('aktiv', 'JA')
+  .eq('club_id', currentClub.club_id);
 
 if (selectedSport) {
   trainersQuery = trainersQuery.eq('sport_id', selectedSport);
@@ -7837,7 +8087,8 @@ async function getClubFilteredStudents() {
   const { data, error } = await db
     .from('students')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   if (error) {
     console.error(error);
@@ -7935,6 +8186,7 @@ async function loadTrainerAdminOverview() {
     .select('*')
     .eq('aktiv', 'JA')
     .eq('rolle', 'Trainer')
+    .eq('club_id', currentClub.club_id)
     .order('name', { ascending: true });
 
   if (error) {
@@ -8019,21 +8271,26 @@ async function showAllTrainersStatistics() {
       .select('*')
       .eq('aktiv', 'JA')
       .eq('rolle', 'Trainer')
+      .eq('club_id', currentClub.club_id)
       .order('name', { ascending: true }),
 
     db.from('groups')
       .select('*')
-      .eq('aktiv', 'JA'),
+      .eq('aktiv', 'JA')
+      .eq('club_id', currentClub.club_id),
 
     db.from('trainer_groups')
-      .select('*'),
+      .select('*')
+      .eq('club_id', currentClub.club_id),
 
     db.from('students')
       .select('*')
-      .eq('aktiv', 'JA'),
+      .eq('aktiv', 'JA')
+      .eq('club_id', currentClub.club_id),
 
     db.from('sports')
       .select('sport_id, name')
+      .eq('club_id', currentClub.club_id)
 
   ]);
 
@@ -8099,11 +8356,11 @@ async function showTrainerAdmin() {
 
   const [trainersResult, groupsResult, linksResult, studentsResult, sportsResult] =
     await Promise.all([
-      db.from('trainers').select('*').eq('trainer_id', trainerId),
-      db.from('groups').select('*').eq('aktiv', 'JA'),
-      db.from('trainer_groups').select('*').eq('trainer_id', trainerId),
-      db.from('students').select('*').eq('aktiv', 'JA'),
-      db.from('sports').select('sport_id, name')
+      db.from('trainers').select('*').eq('trainer_id', trainerId).eq('club_id', currentClub.club_id),
+      db.from('groups').select('*').eq('aktiv', 'JA').eq('club_id', currentClub.club_id),
+      db.from('trainer_groups').select('*').eq('trainer_id', trainerId).eq('club_id', currentClub.club_id),
+      db.from('students').select('*').eq('aktiv', 'JA').eq('club_id', currentClub.club_id),
+      db.from('sports').select('sport_id, name').eq('club_id', currentClub.club_id)
     ]);
 
   if (trainersResult.error || groupsResult.error || linksResult.error || studentsResult.error) {
@@ -8266,7 +8523,8 @@ async function applyTrainerFilters() {
   const { data: students, error } = await db
     .from('students')
     .select('*')
-    .eq('aktiv', 'JA');
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   if (error) {
     console.error(error);
@@ -8280,7 +8538,8 @@ async function applyTrainerFilters() {
     const { data: links } = await db
       .from('trainer_groups')
       .select('gruppe_id')
-      .eq('trainer_id', trainerId);
+      .eq('trainer_id', trainerId)
+      .eq('club_id', currentClub.club_id);
 
     allowedGroupIds = (links || []).map(x => x.gruppe_id);
   }
@@ -8494,9 +8753,9 @@ async function openEditSelectedTrainer() {
   }
 
   const [trainerResult, groupsResult, trainerGroupsResult] = await Promise.all([
-    db.from('trainers').select('*').eq('trainer_id', trainerId).single(),
-    db.from('groups').select('*').eq('aktiv', 'JA').order('gruppenname', { ascending: true }),
-    db.from('trainer_groups').select('*').eq('trainer_id', trainerId)
+    db.from('trainers').select('*').eq('trainer_id', trainerId).eq('club_id', currentClub.club_id).single(),
+    db.from('groups').select('*').eq('aktiv', 'JA').eq('club_id', currentClub.club_id).order('gruppenname', { ascending: true }),
+    db.from('trainer_groups').select('*').eq('trainer_id', trainerId).eq('club_id', currentClub.club_id)
   ]);
 
   if (trainerResult.error) {
@@ -8695,7 +8954,8 @@ async function saveEditedTrainer() {
     trainer_id: trainerId,
     trainer_name: name,
     gruppe_id: cb.value,
-    gruppenname: cb.dataset.name || ''
+    gruppenname: cb.dataset.name || '',
+    club_id: currentClub.club_id
   }));
 
   if (rows.length > 0) {
@@ -8822,6 +9082,7 @@ async function showGroupOverviewScreen() {
     .from('groups')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('gruppe_id', { ascending: true });
 
   if (selectedSport) {
@@ -8836,10 +9097,10 @@ async function showGroupOverviewScreen() {
     sportsResult
   ] = await Promise.all([
     groupsQuery,
-    db.from('students').select('*').eq('aktiv', 'JA'),
-    db.from('trainer_groups').select('*'),
-    db.from('attendance').select('*').eq('anwesenheit', 'JA'),
-    db.from('sports').select('sport_id, name')
+    db.from('students').select('*').eq('aktiv', 'JA').eq('club_id', currentClub.club_id),
+    db.from('trainer_groups').select('*').eq('club_id', currentClub.club_id),
+    db.from('attendance').select('*').eq('anwesenheit', 'JA').eq('club_id', currentClub.club_id),
+    db.from('sports').select('sport_id, name').eq('club_id', currentClub.club_id)
   ]);
 
   if (
@@ -9009,6 +9270,7 @@ async function loadGroupOverviewSportFilter() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order',{ascending:true});
 
   if(error){
@@ -9089,6 +9351,7 @@ async function loadTrainerOverviewSportFilter() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order',{ascending:true});
 
   if(error){
@@ -9128,6 +9391,7 @@ async function loadAttendanceStatSportFilter() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv','JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order',{ascending:true});
 
   if(error){
@@ -9191,8 +9455,8 @@ async function loadEditGroupTrainerCheckboxes(groupId, groupSportId) {
   if (!box || !text) return;
 
   const [trainersResult, linksResult] = await Promise.all([
-    db.from('trainers').select('*').eq('aktiv', 'JA').eq('rolle', 'Trainer').order('name', { ascending: true }),
-    db.from('trainer_groups').select('*').eq('gruppe_id', groupId)
+    db.from('trainers').select('*').eq('aktiv', 'JA').eq('rolle', 'Trainer').eq('club_id', currentClub.club_id).order('name', { ascending: true }),
+    db.from('trainer_groups').select('*').eq('gruppe_id', groupId).eq('club_id', currentClub.club_id)
   ]);
 
   const allTrainers = (trainersResult.data || []).filter(trainer => {
@@ -9306,7 +9570,8 @@ async function saveEditedGroup() {
     trainer_id: cb.value,
     trainer_name: cb.dataset.name || '',
     gruppe_id: groupId,
-    gruppenname
+    gruppenname,
+    club_id: currentClub.club_id
   }));
 
   if (rows.length > 0) {
@@ -9606,10 +9871,10 @@ async function loadAdminStatistikFilters() {
   const selectedSport = getSelectedClubSport();
 
   const [groupsResult, trainersResult, linksResult, sportsResult] = await Promise.all([
-    db.from('groups').select('*').eq('aktiv', 'JA').order('gruppenname', { ascending: true }),
-    db.from('trainers').select('*').eq('aktiv', 'JA').order('name', { ascending: true }),
-    db.from('trainer_groups').select('*'),
-    db.from('sports').select('sport_id, name').eq('aktiv', 'JA')
+    db.from('groups').select('*').eq('aktiv', 'JA').eq('club_id', currentClub.club_id).order('gruppenname', { ascending: true }),
+    db.from('trainers').select('*').eq('aktiv', 'JA').eq('club_id', currentClub.club_id).order('name', { ascending: true }),
+    db.from('trainer_groups').select('*').eq('club_id', currentClub.club_id),
+    db.from('sports').select('sport_id, name').eq('aktiv', 'JA').eq('club_id', currentClub.club_id)
   ]);
 
   if (groupsResult.error || trainersResult.error || linksResult.error || sportsResult.error) {
@@ -9749,7 +10014,8 @@ async function loadAdminAttendanceStatisticsSupabase() {
   let query = db
     .from('attendance')
     .select('*')
-    .eq('anwesenheit', 'JA');
+    .eq('anwesenheit', 'JA')
+    .eq('club_id', currentClub.club_id);
 
   if (dateFrom) {
     query = query.gte('datum', dateFrom);
@@ -9972,6 +10238,7 @@ async function loadSportsForNewGroup() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order', { ascending: true });
 
   if (error) {
@@ -10021,6 +10288,7 @@ let query = db
   .select('*')
   .eq('aktiv', 'JA')
   .eq('rolle', 'Trainer')
+  .eq('club_id', currentClub.club_id)
   .order('name', { ascending: true });
 
 if (selectedSport) {
@@ -10222,7 +10490,8 @@ async function saveNewGroup() {
       trainer: trainerNames,
       notizen,
       sport_id: sportId,
-      aktiv: 'JA'
+      aktiv: 'JA',
+      club_id: currentClub.club_id
     }]);
 
   if (groupError) {
@@ -10237,7 +10506,8 @@ async function saveNewGroup() {
     trainer_id: cb.value,
     trainer_name: cb.dataset.name || '',
     gruppe_id: gruppeId,
-    gruppenname
+    gruppenname,
+    club_id: currentClub.club_id
   }));
 
   if (rows.length > 0) {
@@ -10457,6 +10727,7 @@ async function loadSportsForNewTrainer() {
     .from('sports')
     .select('sport_id, name')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order', { ascending: true });
 
   if (error) {
@@ -10550,6 +10821,7 @@ let query = db
   .from('groups')
   .select('*')
   .eq('aktiv', 'JA')
+  .eq('club_id', currentClub.club_id)
   .order('gruppenname', { ascending: true });
 
 if (selectedSport) {
@@ -10614,7 +10886,8 @@ async function saveNewTrainer() {
       pin,
       rolle,
       sport_id: sportId,
-      aktiv: 'JA'
+      aktiv: 'JA',
+      club_id: currentClub.club_id
     }]);
 
   if (trainerError) {
@@ -10630,7 +10903,8 @@ async function saveNewTrainer() {
     trainer_id: trainerId,
     trainer_name: name,
     gruppe_id: cb.value,
-    gruppenname: cb.dataset.name || ''
+    gruppenname: cb.dataset.name || '',
+    club_id: currentClub.club_id
   }));
 
   if (rows.length > 0) {
@@ -10841,7 +11115,8 @@ sport_id:sportId,
 name:sportName,
 icon_file:iconFile,
 aktiv:'JA',
-sort_order:999
+sort_order:999,
+club_id:currentClub.club_id
 }]);
 
 if(error){
@@ -10947,6 +11222,7 @@ async function loadZeitraumSportFilter() {
     .from('sports')
     .select('*')
     .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
     .order('sort_order', { ascending: true });
 
   if (error || !data || data.length === 0) {
@@ -10964,7 +11240,7 @@ async function loadZeitraumSportFilter() {
       onclick="toggleZrSport(this)"
       title="Alle Sportarten"
     >
-      <img src="${CLUB_LOGO}" alt="Alle Sportarten" class="zr-alle-logo">
+      <img src="${getClubLogoUrl()}" alt="Alle Sportarten" class="zr-alle-logo">
       <div class="zr-sport-card-name">Alle Sportarten</div>
       <div class="zr-sport-card-check" aria-hidden="true">✓</div>
     </button>
@@ -11185,6 +11461,7 @@ async function loadZrAvailableYears() {
   const { data, error } = await db
     .from('club_yearly_snapshots')
     .select('year')
+    .eq('club_id', currentClub.club_id)
     .order('year', { ascending: false });
 
   if (error || !data || data.length === 0) {
@@ -11398,7 +11675,8 @@ async function zrLoadYearlySnapshots(sportIds, selectedYears) {
   let query = db
     .from('club_yearly_snapshots')
     .select('*')
-    .in('sport_id', sportIds);
+    .in('sport_id', sportIds)
+    .eq('club_id', currentClub.club_id);
 
   if (selectedYears && selectedYears.length > 0) {
     query = query.in('year', selectedYears);
@@ -11424,6 +11702,7 @@ async function zrLoadMonthlyStats(sportIds, monthKeys) {
     .from('club_monthly_stats')
     .select('*')
     .in('sport_id', sportIds)
+    .eq('club_id', currentClub.club_id)
     .in('year', years)
     .in('month', months)
     .order('year', { ascending: true })

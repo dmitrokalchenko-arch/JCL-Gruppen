@@ -49,6 +49,12 @@
       <span>Judo Club Langenfeld e.V.</span>
     </footer>
 
+    <button
+      id="superAdminTrigger"
+      class="sa-trigger-btn"
+      onclick="openSuperAdminLogin()"
+      title="System">⚙</button>
+
   </div>
 </section>
 
@@ -2646,6 +2652,827 @@ Abbrechen
         Abbrechen
       </button>
     </div>
+  </div>
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — LOGIN MODAL
+========================================================= -->
+<div id="superAdminLoginModal" class="sa-modal hidden">
+  <div class="sa-modal-overlay" onclick="closeSuperAdminLogin()"></div>
+  <div class="sa-modal-panel">
+    <div class="sa-modal-header">
+      <span class="sa-modal-icon">⚙</span>
+      <span class="sa-modal-title">System Login</span>
+    </div>
+    <div class="sa-modal-body">
+      <label class="sa-label">Benutzername</label>
+      <input id="saUsername" class="sa-input" type="text" placeholder="Benutzername" autocomplete="off">
+      <label class="sa-label">PIN-Code</label>
+      <input id="saPin" class="sa-input" type="password" placeholder="PIN" autocomplete="off"
+             onkeydown="if(event.key==='Enter') superAdminLogin()">
+      <div id="saLoginStatus" class="sa-status"></div>
+    </div>
+    <div class="sa-modal-footer">
+      <button class="sa-btn-cancel" onclick="closeSuperAdminLogin()">Abbrechen</button>
+      <button class="sa-btn-login" onclick="superAdminLogin()">Anmelden</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — DASHBOARD SCREEN
+========================================================= -->
+<div id="superAdminScreen" class="sa-screen hidden">
+  <div class="sa-screen-header">
+    <div class="sa-screen-title-block">
+      <div class="sa-screen-badge">SYSTEM</div>
+      <h1 class="sa-screen-title">Super Admin Control Center</h1>
+      <div id="saWelcomeName" class="sa-screen-subtitle"></div>
+    </div>
+    <button class="sa-logout-btn" onclick="superAdminLogout()">← Verlassen</button>
+  </div>
+
+  <div class="sa-dashboard-grid">
+
+    <button class="sa-dash-card sa-dash-active" onclick="showSAClubsScreen()">
+      <div class="sa-dash-icon">🏢</div>
+      <div class="sa-dash-title">Clubs Management</div>
+      <div class="sa-dash-text">Clubs ansehen, erstellen, bearbeiten</div>
+      <div class="sa-dash-soon">In Entwicklung</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-active" onclick="showSATarifScreen()">
+      <div class="sa-dash-icon">💰</div>
+      <div class="sa-dash-title">Tarifpakete / Preise</div>
+      <div class="sa-dash-text">Pakete, Grenzen und Preise verwalten</div>
+      <div class="sa-dash-soon">In Entwicklung</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-active" onclick="showSAZahlungenScreen()">
+      <div class="sa-dash-icon">💳</div>
+      <div class="sa-dash-title">Zahlungen / Abo</div>
+      <div class="sa-dash-text">Ohlungen registrieren, Abos verlängern</div>
+      <div class="sa-dash-soon">In Entwicklung</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-disabled" disabled>
+      <div class="sa-dash-icon">👥</div>
+      <div class="sa-dash-title">Users / Rollen</div>
+      <div class="sa-dash-text">Benutzer und Rollen verwalten</div>
+      <div class="sa-dash-soon">Kommt später</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-disabled" disabled>
+      <div class="sa-dash-icon">🎨</div>
+      <div class="sa-dash-title">White Label</div>
+      <div class="sa-dash-text">Logos, Farben, Hintergrund</div>
+      <div class="sa-dash-soon">Kommt später</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-disabled" disabled>
+      <div class="sa-dash-icon">📢</div>
+      <div class="sa-dash-title">Logos / Sponsor / Werbung</div>
+      <div class="sa-dash-text">Sponsoren und Werbematerial</div>
+      <div class="sa-dash-soon">Kommt später</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-disabled" disabled>
+      <div class="sa-dash-icon">🏅</div>
+      <div class="sa-dash-title">Sportarten</div>
+      <div class="sa-dash-text">Sportarten global verwalten</div>
+      <div class="sa-dash-soon">Kommt später</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-disabled" disabled>
+      <div class="sa-dash-icon">🗄</div>
+      <div class="sa-dash-title">System Archiv</div>
+      <div class="sa-dash-text">Kandidaten zur Löschung</div>
+      <div class="sa-dash-soon">Kommt später</div>
+    </button>
+
+    <button class="sa-dash-card sa-dash-disabled" disabled>
+      <div class="sa-dash-icon">🔒</div>
+      <div class="sa-dash-title">RLS / Security</div>
+      <div class="sa-dash-text">Sicherheitsvorbereitung</div>
+      <div class="sa-dash-soon">Kommt später</div>
+    </button>
+
+  </div>
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — NEUER CLUB SCREEN
+========================================================= -->
+<div id="saNewClubScreen" class="sa-clubs-screen sa-form-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSANewClubScreen()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">NEUER CLUB</div>
+        <h2 class="sa-clubs-title">Club erstellen</h2>
+      </div>
+    </div>
+    <button class="sa-new-club-btn" onclick="saveSANewClub()">✓ Speichern</button>
+  </div>
+
+  <div class="sa-form-wrapper">
+
+    <!-- Abschnitt 1: Club-Daten -->
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">🏢 Club-Daten</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Vereinsname *</label>
+          <input id="saNewClubName" class="sa-input" type="text"
+                 placeholder="z.B. Judo Club Musterstadt e.V."
+                 oninput="saAutoSuggestClubId(this.value)">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Kurzname / Kürzel *</label>
+          <input id="saNewClubShortName" class="sa-input" type="text"
+                 placeholder="z.B. JCM" maxlength="12">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Club-ID * <span class="sa-label-hint">(nur Kleinbuchstaben, Zahlen, Bindestrich)</span></label>
+          <input id="saNewClubId" class="sa-input" type="text"
+                 placeholder="z.B. judo-musterstadt"
+                 oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,''); saCheckClubIdAvailable(this.value)">
+          <div id="saClubIdHint" class="sa-field-hint"></div>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Aktiv von</label>
+          <input id="saNewClubAktivVon" class="sa-input" type="date">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Aktiv bis</label>
+          <input id="saNewClubAktivBis" class="sa-input" type="date">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Telefon</label>
+          <input id="saNewClubPhone" class="sa-input" type="text" placeholder="+49 ...">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">E-Mail</label>
+          <input id="saNewClubEmail" class="sa-input" type="email" placeholder="info@club.de">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field sa-form-field-full">
+          <label class="sa-label">Website</label>
+          <input id="saNewClubWebsite" class="sa-input" type="text" placeholder="https://...">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Zahlungsart <span class="sa-label-hint">(Abrechnungszyklus)</span></label>
+          <select id="saNewClubBillingCycle" class="sa-input sa-select">
+            <option value="trial">Testperiode</option>
+            <option value="monthly">Monatlich</option>
+            <option value="quarterly">Quartalsweise</option>
+            <option value="yearly">Jährlich</option>
+          </select>
+          <span class="sa-field-hint">Tarif wird automatisch anhand der Schülerzahl bestimmt</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Abschnitt 2: Erster Administrator -->
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">👤 Erster Administrator</div>
+      <div class="sa-form-section-sub">Wird mit Rolle "Admin" in der Trainertabelle angelegt und kann sich sofort einloggen.</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Nachname *</label>
+          <input id="saNewAdminNachname" class="sa-input" type="text" placeholder="Nachname">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Vorname</label>
+          <input id="saNewAdminVorname" class="sa-input" type="text" placeholder="Vorname">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Telefon</label>
+          <input id="saNewAdminTelefon" class="sa-input" type="text" placeholder="+49 ...">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">E-Mail</label>
+          <input id="saNewAdminEmail" class="sa-input" type="email" placeholder="admin@club.de">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">PIN-Code * <span class="sa-label-hint">(mind. 4 Zeichen)</span></label>
+          <input id="saNewAdminPin" class="sa-input" type="password" placeholder="PIN">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Rolle</label>
+          <div class="sa-role-badge">Admin</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Abschnitt 3: White Label / Design -->
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">🎨 White Label / Design <span class="sa-label-hint">(optional — kann später über Bearbeiten geändert werden)</span></div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Logo hochladen</label>
+          <div class="sa-file-upload-area">
+            <input id="saNewClubLogoFile" type="file" accept="image/*" class="sa-file-input"
+                   onchange="saPreviewFile(this,'saNewClubLogoPreview')">
+            <label for="saNewClubLogoFile" class="sa-file-label">📁 Datei wählen</label>
+            <span class="sa-file-name">Keine Datei</span>
+          </div>
+          <div id="saNewClubLogoPreview" class="sa-file-preview-box hidden"></div>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Hintergrund hochladen</label>
+          <div class="sa-file-upload-area">
+            <input id="saNewClubBgFile" type="file" accept="image/*" class="sa-file-input"
+                   onchange="saPreviewFile(this,'saNewClubBgPreview')">
+            <label for="saNewClubBgFile" class="sa-file-label">📁 Datei wählen</label>
+            <span class="sa-file-name">Keine Datei</span>
+          </div>
+          <div id="saNewClubBgPreview" class="sa-file-preview-box hidden"></div>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Favicon <span class="sa-label-hint">(.png / .ico, optional)</span></label>
+          <div class="sa-file-upload-area">
+            <input id="saNewClubFaviconFile" type="file" accept="image/*,.ico" class="sa-file-input"
+                   onchange="saPreviewFile(this,'saNewClubFaviconPreview')">
+            <label for="saNewClubFaviconFile" class="sa-file-label">📁 Datei wählen</label>
+            <span class="sa-file-name">Keine Datei</span>
+          </div>
+          <div id="saNewClubFaviconPreview" class="sa-file-preview-box hidden"></div>
+        </div>
+        <div class="sa-form-field"></div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Primärfarbe</label>
+          <div class="sa-color-row">
+            <input type="color" id="saNewClubPrimaryColor" value="#1a2332" class="sa-color-picker"
+                   oninput="document.getElementById('saNewClubPrimaryColorText').value=this.value">
+            <input type="text" id="saNewClubPrimaryColorText" class="sa-input sa-color-text" value="#1a2332"
+                   oninput="saColorTextSync('saNewClubPrimaryColorText','saNewClubPrimaryColor')">
+          </div>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Sekundärfarbe</label>
+          <div class="sa-color-row">
+            <input type="color" id="saNewClubSecondaryColor" value="#2d4a6e" class="sa-color-picker"
+                   oninput="document.getElementById('saNewClubSecondaryColorText').value=this.value">
+            <input type="text" id="saNewClubSecondaryColorText" class="sa-input sa-color-text" value="#2d4a6e"
+                   oninput="saColorTextSync('saNewClubSecondaryColorText','saNewClubSecondaryColor')">
+          </div>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Akzentfarbe</label>
+          <div class="sa-color-row">
+            <input type="color" id="saNewClubAccentColor" value="#4fc3f7" class="sa-color-picker"
+                   oninput="document.getElementById('saNewClubAccentColorText').value=this.value">
+            <input type="text" id="saNewClubAccentColorText" class="sa-input sa-color-text" value="#4fc3f7"
+                   oninput="saColorTextSync('saNewClubAccentColorText','saNewClubAccentColor')">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="saNewClubError" class="sa-form-error"></div>
+
+    <div class="sa-form-actions">
+      <button class="sa-btn-cancel" onclick="hideSANewClubScreen()">Abbrechen</button>
+      <button class="sa-btn-login sa-btn-save" onclick="saveSANewClub()">✓ Club erstellen</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — CLUB BEARBEITEN SCREEN
+========================================================= -->
+<div id="saEditClubScreen" class="sa-clubs-screen sa-form-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSAEditClubScreen()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">BEARBEITEN</div>
+        <h2 class="sa-clubs-title">Club bearbeiten</h2>
+      </div>
+    </div>
+    <button class="sa-new-club-btn" onclick="saveSAEditClub()">✓ Speichern</button>
+  </div>
+
+  <div class="sa-form-wrapper">
+    <input type="hidden" id="saEditClubIdHidden">
+
+    <!-- Abschnitt 1: Club-Daten -->
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">🏢 Club-Daten</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Vereinsname *</label>
+          <input id="saEditClubName" class="sa-input" type="text" placeholder="Vereinsname">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Kurzname *</label>
+          <input id="saEditClubShortName" class="sa-input" type="text" maxlength="12">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Club-ID <span class="sa-label-hint">(nicht änderbar)</span></label>
+          <input id="saEditClubIdDisplay" class="sa-input" type="text" disabled>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Status</label>
+          <select id="saEditClubActive" class="sa-input sa-select">
+            <option value="true">Aktiv</option>
+            <option value="false">Inaktiv</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Aktiv von</label>
+          <input id="saEditClubAktivVon" class="sa-input" type="date">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Aktiv bis</label>
+          <input id="saEditClubAktivBis" class="sa-input" type="date">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Telefon</label>
+          <input id="saEditClubPhone" class="sa-input" type="text">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">E-Mail</label>
+          <input id="saEditClubEmail" class="sa-input" type="email">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field sa-form-field-full">
+          <label class="sa-label">Website</label>
+          <input id="saEditClubWebsite" class="sa-input" type="text">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Zahlungsart <span class="sa-label-hint">(Abrechnungszyklus)</span></label>
+          <select id="saEditClubBillingCycle" class="sa-input sa-select">
+            <option value="trial">Testperiode</option>
+            <option value="monthly">Monatlich</option>
+            <option value="quarterly">Quartalsweise</option>
+            <option value="yearly">Jährlich</option>
+          </select>
+          <span class="sa-field-hint">Tarif wird automatisch anhand der Schülerzahl bestimmt</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Abschnitt 2: White Label / Design -->
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">🎨 White Label / Design</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Logo</label>
+          <div id="saEditClubLogoThumb" class="sa-current-thumb hidden"></div>
+          <div class="sa-file-upload-area">
+            <input id="saEditClubLogoFile" type="file" accept="image/*" class="sa-file-input"
+                   onchange="saPreviewFile(this,'saEditClubLogoPreview')">
+            <label for="saEditClubLogoFile" class="sa-file-label">📁 Ersetzen</label>
+            <span class="sa-file-name">Keine Änderung</span>
+          </div>
+          <div id="saEditClubLogoPreview" class="sa-file-preview-box hidden"></div>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Hintergrund</label>
+          <div id="saEditClubBgThumb" class="sa-current-thumb hidden"></div>
+          <div class="sa-file-upload-area">
+            <input id="saEditClubBgFile" type="file" accept="image/*" class="sa-file-input"
+                   onchange="saPreviewFile(this,'saEditClubBgPreview')">
+            <label for="saEditClubBgFile" class="sa-file-label">📁 Ersetzen</label>
+            <span class="sa-file-name">Keine Änderung</span>
+          </div>
+          <div id="saEditClubBgPreview" class="sa-file-preview-box hidden"></div>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Favicon <span class="sa-label-hint">(optional)</span></label>
+          <div id="saEditClubFaviconThumb" class="sa-current-thumb hidden"></div>
+          <div class="sa-file-upload-area">
+            <input id="saEditClubFaviconFile" type="file" accept="image/*,.ico" class="sa-file-input"
+                   onchange="saPreviewFile(this,'saEditClubFaviconPreview')">
+            <label for="saEditClubFaviconFile" class="sa-file-label">📁 Ersetzen</label>
+            <span class="sa-file-name">Keine Änderung</span>
+          </div>
+          <div id="saEditClubFaviconPreview" class="sa-file-preview-box hidden"></div>
+        </div>
+        <div class="sa-form-field"></div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Primärfarbe</label>
+          <div class="sa-color-row">
+            <input type="color" id="saEditClubPrimaryColor" value="#1a2332" class="sa-color-picker"
+                   oninput="document.getElementById('saEditClubPrimaryColorText').value=this.value">
+            <input type="text" id="saEditClubPrimaryColorText" class="sa-input sa-color-text" value="#1a2332"
+                   oninput="saColorTextSync('saEditClubPrimaryColorText','saEditClubPrimaryColor')">
+          </div>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Sekundärfarbe</label>
+          <div class="sa-color-row">
+            <input type="color" id="saEditClubSecondaryColor" value="#2d4a6e" class="sa-color-picker"
+                   oninput="document.getElementById('saEditClubSecondaryColorText').value=this.value">
+            <input type="text" id="saEditClubSecondaryColorText" class="sa-input sa-color-text" value="#2d4a6e"
+                   oninput="saColorTextSync('saEditClubSecondaryColorText','saEditClubSecondaryColor')">
+          </div>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Akzentfarbe</label>
+          <div class="sa-color-row">
+            <input type="color" id="saEditClubAccentColor" value="#4fc3f7" class="sa-color-picker"
+                   oninput="document.getElementById('saEditClubAccentColorText').value=this.value">
+            <input type="text" id="saEditClubAccentColorText" class="sa-input sa-color-text" value="#4fc3f7"
+                   oninput="saColorTextSync('saEditClubAccentColorText','saEditClubAccentColor')">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sektion 3: Hauptadministrator -->
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">
+        Hauptadministrator
+        <span id="saEditAdminBadge" class="sa-role-badge hidden">Vorhanden</span>
+        <span id="saEditAdminMissingBadge" class="sa-role-badge sa-badge-warning hidden">Kein Admin</span>
+      </div>
+      <input type="hidden" id="saEditAdminTrainerId">
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Nachname</label>
+          <input id="saEditAdminNachname" class="sa-input" type="text" placeholder="Mustermann">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Vorname</label>
+          <input id="saEditAdminVorname" class="sa-input" type="text" placeholder="Max">
+        </div>
+      </div>
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Telefon</label>
+          <input id="saEditAdminTelefon" class="sa-input" type="text" placeholder="+49 ...">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">E-Mail</label>
+          <input id="saEditAdminEmail" class="sa-input" type="email" placeholder="admin@club.de">
+        </div>
+      </div>
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">PIN-Code <span class="sa-label-hint">(min. 4 Zeichen)</span></label>
+          <input id="saEditAdminPin" class="sa-input" type="text" placeholder="Neuer PIN (leer = unverändert)" autocomplete="off">
+          <span class="sa-field-hint">Leer lassen = PIN bleibt unverändert</span>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Rolle</label>
+          <input class="sa-input" type="text" value="Admin" disabled>
+        </div>
+      </div>
+    </div>
+
+    <div id="saEditClubError" class="sa-form-error"></div>
+    <div class="sa-form-actions">
+      <button class="sa-btn-cancel" onclick="hideSAEditClubScreen()">Abbrechen</button>
+      <button class="sa-btn-login sa-btn-save" onclick="saveSAEditClub()">✓ Änderungen speichern</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — TARIFPAKETE SCREEN
+========================================================= -->
+<div id="saTarifScreen" class="sa-clubs-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSATarifScreen()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">TARIFE</div>
+        <h2 class="sa-clubs-title">Tarifpakete / Preise</h2>
+      </div>
+    </div>
+    <button class="sa-new-club-btn" onclick="showSATarifFormNew()">+ Neuer Tarif</button>
+  </div>
+
+  <div id="saTarifLoadingMsg" class="sa-clubs-loading">Tarife werden geladen…</div>
+  <div id="saTarifList" class="sa-clubs-list"></div>
+
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — TARIF FORM SCREEN
+   ========================================================= -->
+<div id="saTarifFormScreen" class="sa-clubs-screen sa-form-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSATarifForm()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">TARIFE</div>
+        <h2 id="saTarifFormTitle" class="sa-clubs-title">Neuer Tarif</h2>
+      </div>
+    </div>
+  </div>
+
+  <div class="sa-form-wrapper">
+    <input type="hidden" id="saTarifFormId">
+
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">Paketdaten</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Paketname <span class="sa-label-hint">*</span></label>
+          <input id="saTarifName" class="sa-input" type="text" placeholder="z.B. Starter">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Status</label>
+          <select id="saTarifAktiv" class="sa-input sa-select">
+            <option value="JA">Aktiv</option>
+            <option value="NEIN">Inaktiv</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Schüler von <span class="sa-label-hint">*</span></label>
+          <input id="saTarifMin" class="sa-input" type="number" min="0" placeholder="0">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Schüler bis <span class="sa-label-hint">(leer = unbegrenzt)</span></label>
+          <input id="saTarifMax" class="sa-input" type="number" min="0" placeholder="∞">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Währung</label>
+          <input id="saTarifCurrency" class="sa-input" type="text" maxlength="5" placeholder="EUR" value="EUR">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Sortierung <span class="sa-label-hint">(Reihenfolge)</span></label>
+          <input id="saTarifSort" class="sa-input" type="number" min="0" placeholder="10">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field sa-form-field-full">
+          <label class="sa-label">Beschreibung <span class="sa-label-hint">(optional)</span></label>
+          <input id="saTarifDesc" class="sa-input" type="text" placeholder="Kurze Beschreibung des Pakets">
+        </div>
+      </div>
+    </div>
+
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">Preisoptionen</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Monatlich <span class="sa-label-hint">(pro Monat)</span></label>
+          <input id="saTarifPriceMonthly" class="sa-input" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Quartalsweise <span class="sa-label-hint">(pro Quartal)</span></label>
+          <input id="saTarifPriceQuarterly" class="sa-input" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Jährlich <span class="sa-label-hint">(pro Jahr)</span></label>
+          <input id="saTarifPriceYearly" class="sa-input" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+    </div>
+
+    <div id="saTarifFormError" class="sa-form-error"></div>
+    <div class="sa-form-actions">
+      <button class="sa-btn-cancel" onclick="hideSATarifForm()">Abbrechen</button>
+      <button class="sa-btn-login sa-btn-save" onclick="saveSATarif()">✓ Speichern</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — CLUBS MANAGEMENT SCREEN
+========================================================= -->
+<!-- =========================================================
+   SUPER ADMIN — ZAHLUNGEN / ABO-VERWALTUNG LIST
+   ========================================================= -->
+<div id="saZahlungenScreen" class="sa-clubs-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSAZahlungenScreen()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">ZAHLUNGEN</div>
+        <h2 class="sa-clubs-title">Zahlungen / Abo-Verwaltung</h2>
+      </div>
+    </div>
+  </div>
+
+  <div class="sa-clubs-search-bar">
+    <div class="sa-clubs-search-wrap">
+      <span class="sa-clubs-search-icon">🔍</span>
+      <input
+        id="saZahlSearchInput"
+        class="sa-clubs-search-input"
+        type="text"
+        placeholder="Club suchen… (Name, Kurzname, ID, Admin)"
+        oninput="saZahlFilterInput()"
+        autocomplete="off"
+      >
+      <button id="saZahlSearchClear" class="sa-clubs-search-clear hidden" onclick="saZahlFilterReset()">✕</button>
+    </div>
+    <div id="saZahlSuggestions" class="sa-clubs-suggestions hidden"></div>
+    <div id="saZahlFilterInfo" class="sa-clubs-filter-info hidden">
+      <span id="saZahlFilterLabel"></span>
+      <button class="sa-clubs-filter-reset-btn" onclick="saZahlFilterReset()">Filter zurücksetzen</button>
+    </div>
+  </div>
+
+  <div id="saZahlungenLoadingMsg" class="sa-clubs-loading">Clubs werden geladen…</div>
+  <div id="saZahlungenList" class="sa-clubs-list sa-pay-list"></div>
+
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — ZAHLUNG HINZUFÜGEN FORM
+   ========================================================= -->
+<div id="saZahlungFormScreen" class="sa-clubs-screen sa-form-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSAZahlungForm()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">ZAHLUNG</div>
+        <h2 class="sa-clubs-title">Zahlung hinzufügen</h2>
+      </div>
+    </div>
+  </div>
+
+  <div class="sa-form-wrapper">
+    <input type="hidden" id="saZahlungClubId">
+
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">Club-Info</div>
+      <div class="sa-pay-club-info-box" id="saZahlungClubInfoBox"></div>
+    </div>
+
+    <div class="sa-form-section">
+      <div class="sa-form-section-title">Zahlungsdetails</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Zahlungsart</label>
+          <select id="saZahlungCycle" class="sa-input sa-select" onchange="saZahlungUpdatePeriod()">
+            <option value="monthly">Monatlich</option>
+            <option value="quarterly">Quartalsweise</option>
+            <option value="yearly">Jährlich</option>
+          </select>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Zahlungsdatum</label>
+          <input id="saZahlungDate" class="sa-input" type="date">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Betrag</label>
+          <input id="saZahlungAmount" class="sa-input" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Währung</label>
+          <input id="saZahlungCurrency" class="sa-input" type="text" maxlength="5" value="EUR">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Periode von</label>
+          <input id="saZahlungPeriodStart" class="sa-input" type="date">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Periode bis</label>
+          <input id="saZahlungPeriodEnd" class="sa-input" type="date">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field sa-form-field-full">
+          <label class="sa-label">Kommentar / Notiz <span class="sa-label-hint">(optional)</span></label>
+          <input id="saZahlungNote" class="sa-input" type="text" placeholder="z.B. Überweisung, PayPal, Rechnung Nr. …">
+        </div>
+      </div>
+    </div>
+
+    <div id="saZahlungFormError" class="sa-form-error"></div>
+    <div class="sa-form-actions">
+      <button class="sa-btn-cancel" onclick="hideSAZahlungForm()">Abbrechen</button>
+      <button class="sa-btn-login sa-btn-save" onclick="saveSAZahlung()">✓ Zahlung speichern</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="saClubsScreen" class="sa-clubs-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSAClubsScreen()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">CLUBS</div>
+        <h2 class="sa-clubs-title">Clubs Management</h2>
+      </div>
+    </div>
+    <button class="sa-new-club-btn" onclick="showSANewClubScreen()">+ Neuer Club</button>
+  </div>
+
+  <div class="sa-clubs-search-bar">
+    <div class="sa-clubs-search-wrap">
+      <span class="sa-clubs-search-icon">🔍</span>
+      <input
+        id="saClubsSearchInput"
+        class="sa-clubs-search-input"
+        type="text"
+        placeholder="Club suchen… (Name, Kurzname, ID, Admin)"
+        oninput="saClubsFilterInput()"
+        autocomplete="off"
+      >
+      <button id="saClubsSearchClear" class="sa-clubs-search-clear hidden" onclick="saClubsFilterReset()">✕</button>
+    </div>
+    <div id="saClubsSuggestions" class="sa-clubs-suggestions hidden"></div>
+    <div id="saClubsFilterInfo" class="sa-clubs-filter-info hidden">
+      <span id="saClubsFilterLabel"></span>
+      <button class="sa-clubs-filter-reset-btn" onclick="saClubsFilterReset()">Filter zurücksetzen</button>
+    </div>
+  </div>
+
+  <div id="saClubsLoadingMsg" class="sa-clubs-loading">Clubs werden geladen…</div>
+
+  <div id="saClubsList" class="sa-clubs-list"></div>
+
+</div>
+
+<!-- Super Admin Impersonation Badge (floating, visible only in SA mode) -->
+<div id="saImpersonationBadge" class="sa-impersonation-badge hidden">
+  <div class="sa-imp-row1">
+    <span class="sa-imp-icon">🛡</span>
+    <span class="sa-imp-label">SUPER ADMIN MODE</span>
+    <span id="saImpClubName" class="sa-imp-club"></span>
+  </div>
+  <div class="sa-imp-row2">
+    <button class="sa-imp-back-btn" onclick="saExitImpersonation()">← Zurück zum Super Admin</button>
   </div>
 </div>
 

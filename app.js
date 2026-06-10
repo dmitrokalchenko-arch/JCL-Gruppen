@@ -11,6 +11,10 @@ console.log('Supabase client:', db);
 let currentClub = null;
 const DEFAULT_CLUB_ID = 'jcl';
 
+let superAdminSession    = null;
+let isSuperAdminAccess   = false;
+let _saClubsCache        = [];   // { club, studentCount, adminTrainer, tarifRows } — заполняется при loadAndRenderSAClubs
+
 const FALLBACK_CLUB = {
   club_id:                     'jcl',
   club_name:                   'Judo Club Langenfeld e.V.',
@@ -770,25 +774,40 @@ async function login() {
     return;
   }
 
-  if (!pin) {
-    status.textContent = 'Bitte PIN eingeben.';
-    return;
-  }
-
-  status.textContent = 'Login wird geprüft...';
-
-  const { data, error } = await db
-    .from('trainers')
-    .select('*')
-    .eq('trainer_id', trainerId)
-    .eq('pin', pin)
-    .eq('club_id', currentClub.club_id)
-    .maybeSingle();
-
-  if (error || !data) {
-    if (error) console.error(error);
-    status.textContent = 'Falsche PIN oder Trainer nicht gefunden.';
-    return;
+  // Im Super Admin Impersonation Mode PIN-Prüfung überspringen
+  if (isSuperAdminAccess) {
+    status.textContent = 'SA-Zugriff wird geprüft...';
+    const { data: saData, error: saErr } = await db
+      .from('trainers')
+      .select('*')
+      .eq('trainer_id', trainerId)
+      .eq('club_id', currentClub.club_id)
+      .maybeSingle();
+    if (saErr || !saData) {
+      status.textContent = 'Trainer nicht gefunden.';
+      return;
+    }
+    // Direkt einloggen ohne PIN
+    var data = saData;
+    var error = null;
+  } else {
+    if (!pin) {
+      status.textContent = 'Bitte PIN eingeben.';
+      return;
+    }
+    status.textContent = 'Login wird geprüft...';
+    var { data, error } = await db
+      .from('trainers')
+      .select('*')
+      .eq('trainer_id', trainerId)
+      .eq('pin', pin)
+      .eq('club_id', currentClub.club_id)
+      .maybeSingle();
+    if (error || !data) {
+      if (error) console.error(error);
+      status.textContent = 'Falsche PIN oder Trainer nicht gefunden.';
+      return;
+    }
   }
 
   currentTrainer = data;
@@ -5744,35 +5763,50 @@ async function archiveStudentConfirmed(id, student, archivGrund, archivKommentar
     club_id: currentClub.club_id
   };
 
-  const {error: archivError} = await db
+  const { error: archivError } = await db
     .from('archiv')
     .insert([archivPayload]);
 
-  if(archivError){
-    console.error(archivError);
-    showCustomMessage('Fehler beim Archiv: ' + archivError.message);
-    return;
+  if (archivError) {
+    console.error('[Archive] Archiv INSERT fehlgeschlagen:', archivError);
+    // Weiter mit students-Update trotzdem — damit Deaktivierung nicht blockiert wird
+    showCustomMessage('Warnung: Archiv-Eintrag fehlgeschlagen (' + archivError.message + '). Schüler wird trotzdem deaktiviert.');
   }
 
-  const {error: updateError} = await db
+  const { data: updatedRows, error: updateError } = await db
     .from('students')
     .update({
       aktiv: 'NEIN',
       kommentar: kommentarText
     })
-    .eq('id', student.id);
+    .eq('id', student.id)
+    .select('id');
 
-  if(updateError){
-    console.error(updateError);
-    showCustomMessage('Fehler beim Aktualisieren: ' + updateError.message);
+  if (updateError) {
+    console.error('[Archive] students UPDATE fehlgeschlagen:', updateError);
+    showCustomMessage('Fehler beim Deaktivieren: ' + updateError.message);
+    return;
+  }
+
+  if (!updatedRows || updatedRows.length === 0) {
+    console.warn('[Archive] students UPDATE hat 0 Zeilen geändert — RLS aktiv oder id nicht gefunden?');
+    showCustomMessage('Fehler: Schüler konnte nicht deaktiviert werden (0 Zeilen). Bitte SQL-RLS prüfen.');
     return;
   }
 
   closeArchivePanel(id);
 
-  await applyTrainerFilters();
+  // Beide möglichen Schülerlisten aktualisieren (Admin- und Trainer-View)
+  const adminContainer   = document.getElementById('adminStudentStatsResult');
+  const trainerContainer = document.getElementById('trainerStudentsList');
 
-  showCustomMessage('Schüler wurde archiviert.');
+  if (adminContainer) {
+    await applyAdminStudentFilter();
+    await loadAdminStudentCount();   // Gesamt-Schüler-Counter sofort aktualisieren
+  }
+  if (trainerContainer) await applyTrainerFilters();
+
+  showCustomMessage('Schüler wurde archiviert und deaktiviert.');
 }
 
 async function loadTodayAttendanceCount(groupId) {
@@ -12143,4 +12177,1415 @@ function zrDeltaAktuell(val) {
   if (val > 0) return `<span class="zr-pos">▲ +${val} aktuell</span>`;
   if (val < 0) return `<span class="zr-neg">▼ ${val} aktuell</span>`;
   return `<span class="zr-neutral">0 aktuell</span>`;
+}
+
+// =========================================================
+// SUPER ADMIN
+// =========================================================
+
+function openSuperAdminLogin() {
+  const modal = document.getElementById('superAdminLoginModal');
+  if (!modal) return;
+  document.getElementById('saUsername').value = '';
+  document.getElementById('saPin').value = '';
+  document.getElementById('saLoginStatus').textContent = '';
+  modal.classList.remove('hidden');
+  setTimeout(() => document.getElementById('saUsername').focus(), 50);
+}
+
+function closeSuperAdminLogin() {
+  const modal = document.getElementById('superAdminLoginModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function superAdminLogin() {
+  const username = document.getElementById('saUsername').value.trim();
+  const pin      = document.getElementById('saPin').value.trim();
+  const status   = document.getElementById('saLoginStatus');
+
+  if (!username || !pin) {
+    status.textContent = 'Bitte Benutzername und PIN eingeben.';
+    return;
+  }
+
+  status.textContent = 'Wird geprüft…';
+
+  const { data, error } = await db
+    .from('super_admins')
+    .select('id, username, name, pin')
+    .eq('username', username)
+    .maybeSingle();
+
+  if (error || !data || data.pin !== pin) {
+    status.textContent = 'Falscher Benutzername oder PIN.';
+    return;
+  }
+
+  superAdminSession = { id: data.id, username: data.username, name: data.name };
+  closeSuperAdminLogin();
+  showSuperAdminDashboard();
+}
+
+function showSuperAdminDashboard() {
+  document.getElementById('superAdminScreen').classList.remove('hidden');
+  const nameEl = document.getElementById('saWelcomeName');
+  if (nameEl) nameEl.textContent = 'Angemeldet als: ' + (superAdminSession?.name || superAdminSession?.username || '');
+}
+
+function superAdminLogout() {
+  superAdminSession  = null;
+  isSuperAdminAccess = false;
+  document.getElementById('superAdminScreen').classList.add('hidden');
+  document.getElementById('saImpersonationBadge')?.classList.add('hidden');
+  document.body.classList.remove('sa-imp-active');
+}
+
+// =========================================================
+// SUPER ADMIN — CLUBS MANAGEMENT
+// =========================================================
+
+function saTarifLabel(count) {
+  if (count <= 30) return { label: 'Starter', cls: 'sa-tarif-starter' };
+  if (count <= 80) return { label: 'Basic',   cls: 'sa-tarif-basic'   };
+  return                  { label: 'Pro',     cls: 'sa-tarif-pro'     };
+}
+
+function saFormatDate(val) {
+  if (!val) return '—';
+  try { return new Date(val).toLocaleDateString('de-DE'); } catch { return val; }
+}
+
+function saExitImpersonation() {
+  isSuperAdminAccess = false;
+  document.getElementById('saImpersonationBadge')?.classList.add('hidden');
+  document.body.classList.remove('sa-imp-active');
+
+  // Скрыть клубский UI (стартовый экран / appBox)
+  document.getElementById('sportStartScreen')?.classList.add('hidden');
+  document.getElementById('appBox')?.classList.add('hidden');
+
+  // Вернуться в SA Dashboard → Clubs Management
+  document.getElementById('superAdminScreen')?.classList.remove('hidden');
+  showSAClubsScreen();
+}
+
+async function showSAClubsScreen() {
+  document.getElementById('saClubsScreen').classList.remove('hidden');
+  document.getElementById('saClubsLoadingMsg').classList.remove('hidden');
+  document.getElementById('saClubsList').innerHTML = '';
+  await loadAndRenderSAClubs();
+}
+
+function hideSAClubsScreen() {
+  document.getElementById('saClubsScreen').classList.add('hidden');
+}
+
+async function loadAndRenderSAClubs() {
+  const loadingEl = document.getElementById('saClubsLoadingMsg');
+  const listEl    = document.getElementById('saClubsList');
+
+  // Загружаем все клубы (без фильтра active — SA видит все)
+  const { data: clubs, error } = await db
+    .from('clubs')
+    .select('club_id, club_name, club_short_name, active, aktiv_von, aktiv_bis, last_payment_date, created_at, phone, email, website, logo_url, background_image_url, favicon_url, primary_color, secondary_color, accent_color, billing_cycle')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    loadingEl.textContent = 'Fehler beim Laden: ' + error.message;
+    return;
+  }
+
+  // Активные ученики
+  const { data: studentRows } = await db
+    .from('students')
+    .select('club_id')
+    .eq('aktiv', 'JA');
+
+  const countMap = {};
+  (studentRows || []).forEach(r => {
+    countMap[r.club_id] = (countMap[r.club_id] || 0) + 1;
+  });
+
+  // Hauptadministratoren (по одному на клуб, rolle='Admin')
+  const { data: adminRows } = await db
+    .from('trainers')
+    .select('club_id, name, email, telefon')
+    .eq('rolle', 'Admin')
+    .eq('aktiv', 'JA');
+
+  const adminMap = {};
+  (adminRows || []).forEach(r => {
+    if (!adminMap[r.club_id]) adminMap[r.club_id] = r;
+  });
+
+  // Активные тарифы из таблицы (для динамического lookup)
+  const { data: tarifRows } = await db
+    .from('tariff_packages')
+    .select('name, min_students, max_students, price, price_monthly, price_quarterly, price_yearly, currency')
+    .eq('aktiv', 'JA')
+    .order('sort_order', { ascending: true });
+
+  // Сохраняем в кэш для фильтрации без перезагрузки
+  _saClubsCache = clubs.map(c => ({
+    club:         c,
+    studentCount: countMap[c.club_id] || 0,
+    adminTrainer: adminMap[c.club_id] || null,
+    tarifRows:    tarifRows || [],
+  }));
+
+  loadingEl.classList.add('hidden');
+  saClubsRenderVisible(_saClubsCache);
+  saClubsFilterReset();
+}
+
+function renderSAClubCard(club, studentCount, adminTrainer, tarifRows) {
+  // Динамический lookup тарифа + billing_cycle
+  const cycle = club.billing_cycle || 'trial';
+  const matchedTarif = (tarifRows || []).find(t =>
+    studentCount >= t.min_students &&
+    (t.max_students == null || studentCount <= t.max_students)
+  );
+
+  const cycleLabels = { trial: 'Testperiode', monthly: 'Monatlich', quarterly: 'Quartalsweise', yearly: 'Jährlich' };
+  const cycleLabel  = cycleLabels[cycle] || cycle;
+
+  let tarifPill;
+  if (cycle === 'trial') {
+    tarifPill = `<span class="sa-tarif-pill sa-tarif-trial">${cycleLabel} · 0 EUR</span>`;
+  } else if (matchedTarif) {
+    const priceMap  = { monthly: matchedTarif.price_monthly, quarterly: matchedTarif.price_quarterly, yearly: matchedTarif.price_yearly };
+    const rawPrice  = priceMap[cycle];
+    const priceStr  = (rawPrice != null && rawPrice > 0) ? `${rawPrice} ${matchedTarif.currency}` : '—';
+    const suffix    = { monthly: '/ Monat', quarterly: '/ Quartal', yearly: '/ Jahr' }[cycle] || '';
+    tarifPill = `<span class="sa-tarif-pill">${matchedTarif.name} · ${priceStr} ${suffix}</span>`;
+  } else {
+    tarifPill = `<span class="sa-tarif-pill sa-tarif-none">Kein Tarif</span>`;
+  }
+
+  const isActive = club.active;
+  const cardCls  = isActive ? '' : ' sa-club-inactive';
+  const statusCls  = isActive ? 'sa-status-aktiv'   : 'sa-status-inaktiv';
+  const statusText = isActive ? 'Aktiv'             : 'Inaktiv';
+  const toggleBtn  = isActive
+    ? `<button class="sa-club-btn sa-club-btn-deactivate" onclick="saToggleClubActive('${club.club_id}', true)">Deaktivieren</button>`
+    : `<button class="sa-club-btn sa-club-btn-activate"   onclick="saToggleClubActive('${club.club_id}', false)">Aktivieren</button>`;
+
+  // White Label preview
+  const hasLogo = !!club.logo_url;
+  const hasBg   = !!club.background_image_url;
+  const hasWL   = hasLogo || hasBg || !!club.primary_color;
+
+  const logoThumb = hasLogo
+    ? `<img class="sa-club-logo-thumb" src="${club.logo_url}" alt="Logo" title="Logo">`
+    : `<div class="sa-club-logo-thumb" title="Kein Logo" style="display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0.3">🖼</div>`;
+
+  const bgThumb = hasBg
+    ? `<img class="sa-club-bg-thumb" src="${club.background_image_url}" alt="BG" title="Hintergrund">`
+    : '';
+
+  const swatches = [club.primary_color, club.secondary_color, club.accent_color]
+    .filter(Boolean)
+    .map(c => `<span class="sa-color-swatch" style="background:${c}" title="${c}"></span>`)
+    .join('');
+
+  const wlBadge = hasWL
+    ? `<span class="sa-wl-badge sa-wl-ok">✓ White Label</span>`
+    : `<span class="sa-wl-badge sa-wl-missing">○ Kein Design</span>`;
+
+  return `
+<div class="sa-club-card${cardCls}" id="sa-card-${club.club_id}">
+  <div class="sa-club-card-top">
+    <div>
+      <div class="sa-club-card-name">${club.club_name || club.club_id}</div>
+      <div class="sa-club-card-id">club_id: ${club.club_id}</div>
+    </div>
+    <span class="sa-status-badge ${statusCls}">${statusText}</span>
+  </div>
+
+  <div class="sa-club-card-meta">
+    <div class="sa-club-meta-item">
+      <span class="sa-club-meta-label">Aktiv von:</span>
+      <span class="sa-club-meta-value">${saFormatDate(club.aktiv_von)}</span>
+    </div>
+    <div class="sa-club-meta-item">
+      <span class="sa-club-meta-label">Aktiv bis:</span>
+      <span class="sa-club-meta-value">${saFormatDate(club.aktiv_bis)}</span>
+    </div>
+    <div class="sa-club-meta-item">
+      <span class="sa-club-meta-label">Schüler (aktiv):</span>
+      <span class="sa-club-meta-value">${studentCount}</span>
+    </div>
+    <div class="sa-club-meta-item">
+      <span class="sa-club-meta-label">Tarif:</span>
+      ${tarifPill}
+    </div>
+    <div class="sa-club-meta-item">
+      <span class="sa-club-meta-label">Letzte Zahlung:</span>
+      <span class="sa-club-meta-value">${saFormatDate(club.last_payment_date)}</span>
+    </div>
+    <div class="sa-club-meta-item">
+      <span class="sa-club-meta-label">Erstellt:</span>
+      <span class="sa-club-meta-value">${saFormatDate(club.created_at)}</span>
+    </div>
+  </div>
+
+  <div class="sa-club-wl-row">
+    ${logoThumb}
+    ${bgThumb}
+    ${swatches}
+    ${wlBadge}
+  </div>
+
+  ${adminTrainer ? `
+  <div class="sa-club-admin-row">
+    <span class="sa-club-admin-name">${adminTrainer.name || '—'}</span>
+    ${adminTrainer.email ? `<span class="sa-club-admin-sep">·</span><span>${adminTrainer.email}</span>` : ''}
+    ${adminTrainer.telefon ? `<span class="sa-club-admin-sep">·</span><span>${adminTrainer.telefon}</span>` : ''}
+  </div>` : `
+  <div class="sa-club-admin-row" style="color:rgba(255,107,107,0.6)">⚠ Kein Administrator</div>`}
+
+  <div class="sa-club-card-actions">
+    <button class="sa-club-btn sa-club-btn-edit" onclick="showSAEditClubScreen('${club.club_id}')">Bearbeiten</button>
+    <button class="sa-club-btn sa-club-btn-open" onclick="saOpenClub('${club.club_id}')">Öffnen</button>
+    ${toggleBtn}
+  </div>
+</div>`;
+}
+
+async function saToggleClubActive(clubId, currentActive) {
+  const newActive = !currentActive;
+  const action    = newActive ? 'aktivieren' : 'deaktivieren';
+  if (!confirm(`Club "${clubId}" wirklich ${action}?`)) return;
+
+  const { data, error } = await db
+    .from('clubs')
+    .update({ active: newActive })
+    .eq('club_id', clubId)
+    .select();
+
+  if (error) {
+    console.error('[SA] Toggle club error:', error);
+    alert('Fehler beim Update: ' + error.message);
+    return;
+  }
+  if (!data || data.length === 0) {
+    alert('Update nicht ausgeführt — möglicherweise RLS aktiv oder club_id nicht gefunden.');
+    return;
+  }
+  await loadAndRenderSAClubs();
+}
+
+async function saOpenClub(clubId) {
+  if (!superAdminSession) return;
+
+  // Клуб загружается напрямую (без проверки active=true, SA видит всё)
+  const { data: club, error } = await db
+    .from('clubs')
+    .select('*')
+    .eq('club_id', clubId)
+    .maybeSingle();
+
+  if (error || !club) { alert('Club nicht gefunden.'); return; }
+
+  // Применяем тему клуба
+  currentClub = club;
+  applyClubSettings();
+
+  // Устанавливаем SA-режим
+  isSuperAdminAccess = true;
+
+  // Скрываем все SA-экраны
+  document.getElementById('superAdminScreen')?.classList.add('hidden');
+  document.getElementById('saClubsScreen')?.classList.add('hidden');
+  document.getElementById('saEditClubScreen')?.classList.add('hidden');
+  document.getElementById('saNewClubScreen')?.classList.add('hidden');
+  document.getElementById('saTarifScreen')?.classList.add('hidden');
+
+  // Показываем бейдж
+  const badge = document.getElementById('saImpersonationBadge');
+  if (badge) badge.classList.remove('hidden');
+  const clubNameEl = document.getElementById('saImpClubName');
+  if (clubNameEl) clubNameEl.textContent = '— ' + (club.club_name || clubId);
+  document.body.classList.add('sa-imp-active');
+
+  // Показываем стартовый экран клуба
+  showSportStartScreen();
+}
+
+// =========================================================
+// SUPER ADMIN — NEUER CLUB
+// =========================================================
+
+function showSANewClubScreen() {
+  ['saNewClubName','saNewClubShortName','saNewClubId','saNewClubAktivVon',
+   'saNewClubAktivBis','saNewClubPhone','saNewClubEmail','saNewClubWebsite',
+   'saNewAdminNachname','saNewAdminVorname','saNewAdminTelefon',
+   'saNewAdminEmail','saNewAdminPin'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  // Сбросить file inputs и превью
+  ['saNewClubLogoFile','saNewClubBgFile','saNewClubFaviconFile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+    const nameSpan = el?.closest('.sa-file-upload-area')?.querySelector('.sa-file-name');
+    if (nameSpan) nameSpan.textContent = 'Keine Datei';
+  });
+  ['saNewClubLogoPreview','saNewClubBgPreview','saNewClubFaviconPreview'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('hidden'); el.innerHTML = ''; }
+  });
+  // Сбросить Zahlungsart на trial
+  const bcNew = document.getElementById('saNewClubBillingCycle');
+  if (bcNew) bcNew.value = 'trial';
+
+  // Сбросить цвета на дефолтные
+  saSetColorPair('saNewClubPrimaryColor',   'saNewClubPrimaryColorText',   '#1a2332');
+  saSetColorPair('saNewClubSecondaryColor', 'saNewClubSecondaryColorText', '#2d4a6e');
+  saSetColorPair('saNewClubAccentColor',    'saNewClubAccentColorText',    '#4fc3f7');
+
+  const hint = document.getElementById('saClubIdHint');
+  if (hint) { hint.textContent = ''; hint.className = 'sa-field-hint'; }
+  const err = document.getElementById('saNewClubError');
+  if (err) err.textContent = '';
+  document.getElementById('saNewClubScreen').classList.remove('hidden');
+  setTimeout(() => document.getElementById('saNewClubName')?.focus(), 60);
+}
+
+function hideSANewClubScreen() {
+  document.getElementById('saNewClubScreen').classList.add('hidden');
+}
+
+// Авто-подсказка club_id из названия клуба (только если поле ещё пустое)
+function saAutoSuggestClubId(name) {
+  const idField = document.getElementById('saNewClubId');
+  if (!idField || idField.value.trim()) return;
+  const slug = name.toLowerCase()
+    .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
+    .replace(/\s+/g,'-')
+    .replace(/[^a-z0-9-]/g,'')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'');
+  idField.value = slug;
+}
+
+// Проверка уникальности club_id в реальном времени (debounced)
+let _saClubIdTimer = null;
+function saCheckClubIdAvailable(value) {
+  const hint = document.getElementById('saClubIdHint');
+  if (!hint) return;
+  clearTimeout(_saClubIdTimer);
+  if (!value) { hint.textContent = ''; hint.className = 'sa-field-hint'; return; }
+  hint.textContent = 'Wird geprüft…';
+  hint.className = 'sa-field-hint sa-hint-check';
+  _saClubIdTimer = setTimeout(async () => {
+    const { data } = await db.from('clubs').select('club_id').eq('club_id', value).maybeSingle();
+    if (data) {
+      hint.textContent = '✗ Club-ID bereits vergeben';
+      hint.className = 'sa-field-hint sa-hint-error';
+    } else {
+      hint.textContent = '✓ Club-ID verfügbar';
+      hint.className = 'sa-field-hint sa-hint-ok';
+    }
+  }, 500);
+}
+
+async function saveSANewClub() {
+  const clubName      = document.getElementById('saNewClubName')?.value.trim()      || '';
+  const clubShortName = document.getElementById('saNewClubShortName')?.value.trim() || '';
+  const clubId        = document.getElementById('saNewClubId')?.value.trim()         || '';
+  const aktivVon      = document.getElementById('saNewClubAktivVon')?.value          || null;
+  const aktivBis      = document.getElementById('saNewClubAktivBis')?.value          || null;
+  const phone         = document.getElementById('saNewClubPhone')?.value.trim()      || null;
+  const email         = document.getElementById('saNewClubEmail')?.value.trim()      || null;
+  const website       = document.getElementById('saNewClubWebsite')?.value.trim()    || null;
+  const billingCycle  = document.getElementById('saNewClubBillingCycle')?.value      || 'trial';
+
+  const adminNachname = document.getElementById('saNewAdminNachname')?.value.trim() || '';
+  const adminVorname  = document.getElementById('saNewAdminVorname')?.value.trim()  || '';
+  const adminTelefon  = document.getElementById('saNewAdminTelefon')?.value.trim()  || null;
+  const adminEmail    = document.getElementById('saNewAdminEmail')?.value.trim()    || null;
+  const adminPin      = document.getElementById('saNewAdminPin')?.value.trim()      || '';
+
+  const errEl = document.getElementById('saNewClubError');
+  const setError = (msg) => { if (errEl) errEl.textContent = msg; };
+  if (errEl) errEl.textContent = '';
+
+  // Validierung
+  if (!clubName)      return setError('Vereinsname ist Pflichtfeld.');
+  if (!clubShortName) return setError('Kurzname ist Pflichtfeld.');
+  if (!clubId)        return setError('Club-ID ist Pflichtfeld.');
+  if (!/^[a-z0-9-]+$/.test(clubId))
+    return setError('Club-ID: nur Kleinbuchstaben, Zahlen und Bindestriche.');
+  if (!adminNachname) return setError('Nachname des Administrators ist Pflichtfeld.');
+  if (!adminPin || adminPin.length < 4)
+    return setError('PIN muss mindestens 4 Zeichen haben.');
+
+  // Club-ID Eindeutigkeit prüfen
+  const { data: existing } = await db
+    .from('clubs').select('club_id').eq('club_id', clubId).maybeSingle();
+  if (existing) return setError('Club-ID "' + clubId + '" ist bereits vergeben.');
+
+  // 1. INSERT clubs
+  const { error: clubError } = await db
+    .from('clubs')
+    .insert([{
+      club_id:         clubId,
+      club_name:       clubName,
+      club_short_name: clubShortName,
+      active:          true,
+      aktiv_von:       aktivVon || null,
+      aktiv_bis:       aktivBis || null,
+      phone,
+      email,
+      website,
+      billing_cycle:   billingCycle,
+      created_at:      new Date().toISOString()
+    }]);
+  if (clubError) return setError('Fehler beim Erstellen des Clubs: ' + clubError.message);
+
+  // 2. INSERT promo_settings (non-fatal)
+  await db.from('promo_settings').upsert(
+    [{ club_id: clubId, mode: 'random', duration: 3 }],
+    { onConflict: 'club_id' }
+  );
+
+  // 3. Загрузка White Label файлов и цветов
+  const logoFile    = document.getElementById('saNewClubLogoFile')?.files[0];
+  const bgFile      = document.getElementById('saNewClubBgFile')?.files[0];
+  const faviconFile = document.getElementById('saNewClubFaviconFile')?.files[0];
+  const primaryColor   = document.getElementById('saNewClubPrimaryColorText')?.value || '#1a2332';
+  const secondaryColor = document.getElementById('saNewClubSecondaryColorText')?.value || '#2d4a6e';
+  const accentColor    = document.getElementById('saNewClubAccentColorText')?.value    || '#4fc3f7';
+
+  const wlUpdate = { primary_color: primaryColor, secondary_color: secondaryColor, accent_color: accentColor };
+
+  if (logoFile) {
+    const url = await saUploadClubFile(clubId, logoFile, '_logo');
+    if (url) { wlUpdate.logo_url = url; wlUpdate.start_logo_url = url; }
+  }
+  if (bgFile) {
+    const url = await saUploadClubFile(clubId, bgFile, '_bg');
+    if (url) wlUpdate.background_image_url = url;
+  }
+  if (faviconFile) {
+    const url = await saUploadClubFile(clubId, faviconFile, '_favicon');
+    if (url) wlUpdate.favicon_url = url;
+  }
+
+  await db.from('clubs').update(wlUpdate).eq('club_id', clubId);
+
+  // 4. INSERT erster Admin in trainers
+  const adminName      = (adminNachname + ' ' + adminVorname).trim();
+  const adminTrainerId = 'TR-' + Date.now().toString().slice(-6);
+
+  const { error: trainerError } = await db
+    .from('trainers')
+    .insert([{
+      trainer_id: adminTrainerId,
+      name:       adminName,
+      telefon:    adminTelefon,
+      email:      adminEmail,
+      pin:        adminPin,
+      rolle:      'Admin',
+      aktiv:      'JA',
+      club_id:    clubId
+    }]);
+
+  if (trainerError) {
+    setError('Club erstellt ✓, aber Admin konnte nicht angelegt werden: ' + trainerError.message);
+    return;
+  }
+
+  // Erfolg
+  hideSANewClubScreen();
+  await loadAndRenderSAClubs();
+}
+
+// =========================================================
+// SUPER ADMIN — TARIFPAKETE
+// =========================================================
+
+async function showSATarifScreen() {
+  document.getElementById('saTarifScreen').classList.remove('hidden');
+  document.getElementById('saTarifLoadingMsg').classList.remove('hidden');
+  document.getElementById('saTarifList').innerHTML = '';
+  await loadAndRenderSATarife();
+}
+
+function hideSATarifScreen() {
+  document.getElementById('saTarifScreen').classList.add('hidden');
+}
+
+async function loadAndRenderSATarife() {
+  const loadingEl = document.getElementById('saTarifLoadingMsg');
+  const listEl    = document.getElementById('saTarifList');
+
+  const { data: tarife, error } = await db
+    .from('tariff_packages')
+    .select('*')
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    loadingEl.textContent = 'Fehler beim Laden: ' + error.message;
+    return;
+  }
+
+  loadingEl.classList.add('hidden');
+  listEl.innerHTML = tarife.map(t => renderSATarifCard(t)).join('');
+}
+
+function renderSATarifCard(tarif) {
+  const isActive  = tarif.aktiv === 'JA';
+  const cardCls   = isActive ? '' : ' sa-tarif-inactive';
+  const statusCls = isActive ? 'sa-status-aktiv' : 'sa-status-inaktiv';
+  const statusTxt = isActive ? 'Aktiv' : 'Inaktiv';
+
+  const maxLabel = tarif.max_students != null ? tarif.max_students : '∞';
+  const cur      = tarif.currency || 'EUR';
+
+  const fmtPrice = (val, suffix) => val > 0
+    ? `<div class="sa-tarif-price-item">
+         <span class="sa-tarif-price-val">${val} ${cur}</span>
+         <span class="sa-tarif-price-lbl">${suffix}</span>
+       </div>`
+    : `<div class="sa-tarif-price-item sa-tarif-price-empty">
+         <span class="sa-tarif-price-val">—</span>
+         <span class="sa-tarif-price-lbl">${suffix}</span>
+       </div>`;
+
+  const priceHtml = `
+    ${fmtPrice(tarif.price_monthly   || 0, 'pro Monat')}
+    ${fmtPrice(tarif.price_quarterly || 0, 'pro Quartal')}
+    ${fmtPrice(tarif.price_yearly    || 0, 'pro Jahr')}`;
+
+  const toggleBtn = isActive
+    ? `<button class="sa-club-btn sa-club-btn-deactivate" onclick="saToggleTarifActive('${tarif.id}', true)">Deaktivieren</button>`
+    : `<button class="sa-club-btn sa-club-btn-activate"   onclick="saToggleTarifActive('${tarif.id}', false)">Aktivieren</button>`;
+
+  return `
+<div class="sa-tarif-card${cardCls}" id="sa-tarif-${tarif.id}">
+  <div class="sa-tarif-name-badge">${tarif.name}</div>
+
+  <div class="sa-tarif-info">
+    <div class="sa-tarif-range">
+      Schüler: <strong>${tarif.min_students} – ${maxLabel}</strong>
+    </div>
+    <div class="sa-tarif-prices-grid">${priceHtml}</div>
+  </div>
+
+  <span class="sa-status-badge ${statusCls}">${statusTxt}</span>
+
+  <div class="sa-tarif-actions">
+    <button class="sa-club-btn sa-club-btn-edit" onclick="showSATarifFormEdit('${tarif.id}')">Bearbeiten</button>
+    ${toggleBtn}
+  </div>
+</div>`;
+}
+
+async function saToggleTarifActive(tarifId, currentActive) {
+  const newAktiv = currentActive ? 'NEIN' : 'JA';
+  const action   = currentActive ? 'deaktivieren' : 'aktivieren';
+  if (!confirm(`Tarif wirklich ${action}?`)) return;
+
+  const { data, error } = await db
+    .from('tariff_packages')
+    .update({ aktiv: newAktiv })
+    .eq('id', tarifId)
+    .select();
+
+  if (error) { alert('Fehler: ' + error.message); return; }
+  if (!data || data.length === 0) {
+    alert('Update nicht ausgeführt — RLS möglicherweise aktiv.');
+    return;
+  }
+  await loadAndRenderSATarife();
+}
+
+function showSATarifFormNew() {
+  document.getElementById('saTarifFormTitle').textContent = 'Neuer Tarif';
+  document.getElementById('saTarifFormId').value              = '';
+  document.getElementById('saTarifName').value                = '';
+  document.getElementById('saTarifAktiv').value               = 'JA';
+  document.getElementById('saTarifMin').value                 = '0';
+  document.getElementById('saTarifMax').value                 = '';
+  document.getElementById('saTarifCurrency').value            = 'EUR';
+  document.getElementById('saTarifDesc').value                = '';
+  document.getElementById('saTarifSort').value                = '10';
+  document.getElementById('saTarifPriceMonthly').value        = '';
+  document.getElementById('saTarifPriceQuarterly').value      = '';
+  document.getElementById('saTarifPriceYearly').value         = '';
+  const err = document.getElementById('saTarifFormError');
+  if (err) err.textContent = '';
+  document.getElementById('saTarifFormScreen').classList.remove('hidden');
+}
+
+async function showSATarifFormEdit(tarifId) {
+  const { data: t, error } = await db
+    .from('tariff_packages')
+    .select('*')
+    .eq('id', tarifId)
+    .maybeSingle();
+
+  if (error || !t) { alert('Tarif nicht gefunden.'); return; }
+
+  document.getElementById('saTarifFormTitle').textContent = 'Tarif bearbeiten';
+  document.getElementById('saTarifFormId').value              = t.id;
+  document.getElementById('saTarifName').value                = t.name          || '';
+  document.getElementById('saTarifAktiv').value               = t.aktiv         || 'JA';
+  document.getElementById('saTarifMin').value                 = t.min_students  ?? 0;
+  document.getElementById('saTarifMax').value                 = t.max_students  != null ? t.max_students : '';
+  document.getElementById('saTarifCurrency').value            = t.currency      || 'EUR';
+  document.getElementById('saTarifDesc').value                = t.description   || '';
+  document.getElementById('saTarifSort').value                = t.sort_order    ?? 10;
+  document.getElementById('saTarifPriceMonthly').value        = t.price_monthly   ?? '';
+  document.getElementById('saTarifPriceQuarterly').value      = t.price_quarterly ?? '';
+  document.getElementById('saTarifPriceYearly').value         = t.price_yearly    ?? '';
+  const err = document.getElementById('saTarifFormError');
+  if (err) err.textContent = '';
+  document.getElementById('saTarifFormScreen').classList.remove('hidden');
+}
+
+function hideSATarifForm() {
+  document.getElementById('saTarifFormScreen').classList.add('hidden');
+}
+
+async function saveSATarif() {
+  const id        = document.getElementById('saTarifFormId').value.trim();
+  const name      = document.getElementById('saTarifName').value.trim();
+  const aktiv     = document.getElementById('saTarifAktiv').value;
+  const minVal    = document.getElementById('saTarifMin').value;
+  const maxVal    = document.getElementById('saTarifMax').value.trim();
+  const currency  = document.getElementById('saTarifCurrency').value.trim() || 'EUR';
+  const desc      = document.getElementById('saTarifDesc').value.trim()     || null;
+  const sort      = document.getElementById('saTarifSort').value;
+  const priceM    = document.getElementById('saTarifPriceMonthly').value;
+  const priceQ    = document.getElementById('saTarifPriceQuarterly').value;
+  const priceY    = document.getElementById('saTarifPriceYearly').value;
+
+  const errEl    = document.getElementById('saTarifFormError');
+  const setError = msg => { if (errEl) errEl.textContent = msg; };
+  if (errEl) errEl.textContent = '';
+
+  if (!name)     return setError('Paketname ist Pflichtfeld.');
+  if (minVal === '') return setError('Schüler von ist Pflichtfeld.');
+
+  const monthlyPrice = priceM !== '' ? parseFloat(priceM) : 0;
+
+  const payload = {
+    name,
+    aktiv,
+    min_students:    parseInt(minVal, 10),
+    max_students:    maxVal !== '' ? parseInt(maxVal, 10) : null,
+    price:           monthlyPrice,          // обратная совместимость
+    price_monthly:   monthlyPrice,
+    price_quarterly: priceQ !== '' ? parseFloat(priceQ) : 0,
+    price_yearly:    priceY !== '' ? parseFloat(priceY) : 0,
+    currency,
+    description:     desc,
+    sort_order:      parseInt(sort, 10) || 0,
+  };
+
+  if (id) {
+    const { error } = await db.from('tariff_packages').update(payload).eq('id', id);
+    if (error) return setError('Fehler beim Speichern: ' + error.message);
+  } else {
+    const { error } = await db.from('tariff_packages').insert([payload]);
+    if (error) return setError('Fehler beim Erstellen: ' + error.message);
+  }
+
+  hideSATarifForm();
+  await loadAndRenderSATarife();
+}
+
+// =========================================================
+// SUPER ADMIN -- CLUB BEARBEITEN
+// =========================================================
+
+async function showSAEditClubScreen(clubId) {
+  const { data: club, error } = await db
+    .from('clubs')
+    .select('*')
+    .eq('club_id', clubId)
+    .maybeSingle();
+
+  if (error || !club) { alert('Club nicht gefunden: ' + (error?.message || '')); return; }
+
+  document.getElementById('saEditClubIdHidden').value  = club.club_id;
+  document.getElementById('saEditClubIdDisplay').value = club.club_id;
+  document.getElementById('saEditClubName').value       = club.club_name       || '';
+  document.getElementById('saEditClubShortName').value  = club.club_short_name || '';
+  document.getElementById('saEditClubActive').value     = club.active ? 'true' : 'false';
+  document.getElementById('saEditClubAktivVon').value   = club.aktiv_von || '';
+  document.getElementById('saEditClubAktivBis').value   = club.aktiv_bis || '';
+  document.getElementById('saEditClubPhone').value      = club.phone   || '';
+  document.getElementById('saEditClubEmail').value      = club.email   || '';
+  document.getElementById('saEditClubWebsite').value    = club.website || '';
+  const bcEdit = document.getElementById('saEditClubBillingCycle');
+  if (bcEdit) bcEdit.value = club.billing_cycle || 'trial';
+
+  const pc = club.primary_color   || '#1a2332';
+  const sc = club.secondary_color || '#2d4a6e';
+  const ac = club.accent_color    || '#4fc3f7';
+  saSetColorPair('saEditClubPrimaryColor',   'saEditClubPrimaryColorText',   pc);
+  saSetColorPair('saEditClubSecondaryColor', 'saEditClubSecondaryColorText', sc);
+  saSetColorPair('saEditClubAccentColor',    'saEditClubAccentColorText',    ac);
+
+  saSetEditThumb('saEditClubLogoThumb',    club.logo_url);
+  saSetEditThumb('saEditClubBgThumb',      club.background_image_url);
+  saSetEditThumb('saEditClubFaviconThumb', club.favicon_url);
+
+  ['saEditClubLogoFile','saEditClubBgFile','saEditClubFaviconFile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+    const nameSpan = el?.closest('.sa-file-upload-area')?.querySelector('.sa-file-name');
+    if (nameSpan) nameSpan.textContent = 'Keine Aenderung';
+  });
+  ['saEditClubLogoPreview','saEditClubBgPreview','saEditClubFaviconPreview'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('hidden'); el.innerHTML = ''; }
+  });
+
+  // Загрузить Hauptadministrator клуба
+  const { data: adminTrainer } = await db
+    .from('trainers')
+    .select('trainer_id, name, telefon, email, pin, rolle')
+    .eq('club_id', clubId)
+    .eq('rolle', 'Admin')
+    .eq('aktiv', 'JA')
+    .order('trainer_id', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const adminBadge   = document.getElementById('saEditAdminBadge');
+  const missingBadge = document.getElementById('saEditAdminMissingBadge');
+
+  if (adminTrainer) {
+    document.getElementById('saEditAdminTrainerId').value = adminTrainer.trainer_id;
+    // name = "Nachname Vorname" — разбиваем по первому пробелу
+    const parts = (adminTrainer.name || '').split(' ');
+    document.getElementById('saEditAdminNachname').value = parts[0] || '';
+    document.getElementById('saEditAdminVorname').value  = parts.slice(1).join(' ') || '';
+    document.getElementById('saEditAdminTelefon').value  = adminTrainer.telefon || '';
+    document.getElementById('saEditAdminEmail').value    = adminTrainer.email   || '';
+    document.getElementById('saEditAdminPin').value      = '';
+    if (adminBadge)   { adminBadge.textContent = adminTrainer.name; adminBadge.classList.remove('hidden'); }
+    if (missingBadge) missingBadge.classList.add('hidden');
+  } else {
+    document.getElementById('saEditAdminTrainerId').value = '';
+    document.getElementById('saEditAdminNachname').value  = '';
+    document.getElementById('saEditAdminVorname').value   = '';
+    document.getElementById('saEditAdminTelefon').value   = '';
+    document.getElementById('saEditAdminEmail').value     = '';
+    document.getElementById('saEditAdminPin').value       = '';
+    if (adminBadge)   adminBadge.classList.add('hidden');
+    if (missingBadge) missingBadge.classList.remove('hidden');
+  }
+
+  const err = document.getElementById('saEditClubError');
+  if (err) err.textContent = '';
+
+  document.getElementById('saEditClubScreen').classList.remove('hidden');
+}
+
+function hideSAEditClubScreen() {
+  document.getElementById('saEditClubScreen').classList.add('hidden');
+}
+
+async function saveSAEditClub() {
+  const clubId        = document.getElementById('saEditClubIdHidden')?.value        || '';
+  const clubName      = document.getElementById('saEditClubName')?.value.trim()      || '';
+  const clubShortName = document.getElementById('saEditClubShortName')?.value.trim() || '';
+  const activeVal     = document.getElementById('saEditClubActive')?.value === 'true';
+  const aktivVon      = document.getElementById('saEditClubAktivVon')?.value         || null;
+  const aktivBis      = document.getElementById('saEditClubAktivBis')?.value         || null;
+  const phone         = document.getElementById('saEditClubPhone')?.value.trim()     || null;
+  const email         = document.getElementById('saEditClubEmail')?.value.trim()     || null;
+  const website       = document.getElementById('saEditClubWebsite')?.value.trim()   || null;
+  const billingCycle  = document.getElementById('saEditClubBillingCycle')?.value     || 'trial';
+  const primaryColor   = document.getElementById('saEditClubPrimaryColorText')?.value  || '#1a2332';
+  const secondaryColor = document.getElementById('saEditClubSecondaryColorText')?.value || '#2d4a6e';
+  const accentColor    = document.getElementById('saEditClubAccentColorText')?.value    || '#4fc3f7';
+
+  const errEl   = document.getElementById('saEditClubError');
+  const setError = (msg) => { if (errEl) errEl.textContent = msg; };
+  if (errEl) errEl.textContent = '';
+
+  if (!clubName)      return setError('Vereinsname ist Pflichtfeld.');
+  if (!clubShortName) return setError('Kurzname ist Pflichtfeld.');
+
+  const updatePayload = {
+    club_name:       clubName,
+    club_short_name: clubShortName,
+    active:          activeVal,
+    aktiv_von:       aktivVon || null,
+    aktiv_bis:       aktivBis || null,
+    phone, email, website,
+    billing_cycle:   billingCycle,
+    primary_color:   primaryColor,
+    secondary_color: secondaryColor,
+    accent_color:    accentColor,
+  };
+
+  const logoFile    = document.getElementById('saEditClubLogoFile')?.files[0];
+  const bgFile      = document.getElementById('saEditClubBgFile')?.files[0];
+  const faviconFile = document.getElementById('saEditClubFaviconFile')?.files[0];
+
+  if (logoFile) {
+    const url = await saUploadClubFile(clubId, logoFile, '_logo');
+    if (url) { updatePayload.logo_url = url; updatePayload.start_logo_url = url; }
+  }
+  if (bgFile) {
+    const url = await saUploadClubFile(clubId, bgFile, '_bg');
+    if (url) updatePayload.background_image_url = url;
+  }
+  if (faviconFile) {
+    const url = await saUploadClubFile(clubId, faviconFile, '_favicon');
+    if (url) updatePayload.favicon_url = url;
+  }
+
+  const { error } = await db
+    .from('clubs')
+    .update(updatePayload)
+    .eq('club_id', clubId);
+
+  if (error) return setError('Fehler beim Speichern: ' + error.message);
+
+  // Hauptadministrator speichern
+  const adminTrainerId = document.getElementById('saEditAdminTrainerId')?.value || '';
+  const adminNachname  = document.getElementById('saEditAdminNachname')?.value.trim() || '';
+  const adminVorname   = document.getElementById('saEditAdminVorname')?.value.trim()  || '';
+  const adminTelefon   = document.getElementById('saEditAdminTelefon')?.value.trim()  || null;
+  const adminEmail     = document.getElementById('saEditAdminEmail')?.value.trim()    || null;
+  const adminPin       = document.getElementById('saEditAdminPin')?.value.trim()      || '';
+
+  if (adminNachname) {
+    const adminName = (adminNachname + (adminVorname ? ' ' + adminVorname : '')).trim();
+
+    if (adminTrainerId) {
+      // UPDATE bestehenden Admin
+      const adminUpdate = { name: adminName, telefon: adminTelefon, email: adminEmail };
+      if (adminPin.length >= 4) adminUpdate.pin = adminPin;
+      const { error: aErr } = await db
+        .from('trainers')
+        .update(adminUpdate)
+        .eq('trainer_id', adminTrainerId)
+        .eq('club_id', clubId);
+      if (aErr) return setError('Club gespeichert ✓, aber Admin-Update fehlgeschlagen: ' + aErr.message);
+    } else {
+      // INSERT neuen Admin
+      if (!adminPin || adminPin.length < 4)
+        return setError('Club gespeichert ✓. Für neuen Admin bitte PIN (min. 4 Zeichen) eingeben.');
+      const newTrainerId = 'TR-' + Date.now().toString().slice(-6);
+      const { error: aErr } = await db
+        .from('trainers')
+        .insert([{
+          trainer_id: newTrainerId,
+          name:       adminName,
+          telefon:    adminTelefon,
+          email:      adminEmail,
+          pin:        adminPin,
+          rolle:      'Admin',
+          aktiv:      'JA',
+          club_id:    clubId
+        }]);
+      if (aErr) return setError('Club gespeichert ✓, aber Admin konnte nicht angelegt werden: ' + aErr.message);
+    }
+  }
+
+  hideSAEditClubScreen();
+  await loadAndRenderSAClubs();
+}
+
+// =========================================================
+// SUPER ADMIN -- HELPERS
+// =========================================================
+
+async function saUploadClubFile(clubId, file, prefix) {
+  const ext      = file.name.split('.').pop().toLowerCase();
+  const filePath = clubId + '/' + prefix + '.' + ext;
+  const { error } = await db.storage
+    .from('promo_slides')
+    .upload(filePath, file, { upsert: true, contentType: file.type });
+  if (error) { console.error('[SA Upload]', filePath, error); return null; }
+  const { data } = db.storage.from('promo_slides').getPublicUrl(filePath);
+  return data?.publicUrl || null;
+}
+
+function saPreviewFile(input, previewId) {
+  const file = input.files[0];
+  const nameSpan = input.closest('.sa-file-upload-area')?.querySelector('.sa-file-name');
+  if (nameSpan) nameSpan.textContent = file ? file.name : 'Keine Datei';
+  const preview = document.getElementById(previewId);
+  if (!preview) return;
+  if (!file) { preview.classList.add('hidden'); preview.innerHTML = ''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    preview.innerHTML = '<img src="' + e.target.result + '" alt="Vorschau">';
+    preview.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+function saColorTextSync(textId, colorId) {
+  const val = document.getElementById(textId)?.value || '';
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    const picker = document.getElementById(colorId);
+    if (picker) picker.value = val;
+  }
+}
+
+function saSetColorPair(pickerId, textId, value) {
+  const picker = document.getElementById(pickerId);
+  const text   = document.getElementById(textId);
+  if (picker) picker.value = value;
+  if (text)   text.value   = value;
+}
+
+function saSetEditThumb(thumbId, url) {
+  const el = document.getElementById(thumbId);
+  if (!el) return;
+  if (url) {
+    el.innerHTML = '<img src="' + url + '" alt="">';
+    el.classList.remove('hidden');
+  } else {
+    el.innerHTML = '';
+    el.classList.add('hidden');
+  }
+}
+
+// =========================================================
+// SUPER ADMIN -- CLUBS SEARCH / FILTER
+// =========================================================
+
+// =========================================================
+// УНИВЕРСАЛЬНАЯ ФАБРИКА ФИЛЬТРАЦИИ ДЛЯ SA-ЭКРАНОВ
+// cfg = { inputId, clearId, sugBoxId, infoId, labelId,
+//         getCache, renderFn, matchFn, nameFn, selectFn }
+// =========================================================
+function saMakeFilter(cfg) {
+  function renderVisible(items) {
+    cfg.renderFn(items);
+  }
+
+  function onInput() {
+    const query    = (document.getElementById(cfg.inputId)?.value || '').trim().toLowerCase();
+    const clearBtn = document.getElementById(cfg.clearId);
+    const sugBox   = document.getElementById(cfg.sugBoxId);
+    if (clearBtn) clearBtn.classList.toggle('hidden', !query);
+    if (!query) { if (sugBox) sugBox.classList.add('hidden'); return; }
+
+    const cache   = cfg.getCache();
+    const matches = cache.filter(item => cfg.matchFn(item, query));
+    if (!sugBox) return;
+
+    if (!matches.length) {
+      sugBox.innerHTML = '<div class="sa-clubs-suggestions-empty">Keine Clubs gefunden</div>';
+      sugBox.classList.remove('hidden');
+      return;
+    }
+
+    sugBox.innerHTML = matches.slice(0, 10).map(item => {
+      const club       = item.club;
+      const logoHtml   = club.logo_url
+        ? '<img class="sa-suggestion-logo" src="' + club.logo_url + '" alt="">'
+        : '<div class="sa-suggestion-logo-placeholder">🏛</div>';
+      const statusCls  = club.active ? 'sa-suggestion-aktiv' : 'sa-suggestion-inaktiv';
+      const statusTxt  = club.active ? 'Aktiv' : 'Inaktiv';
+      const adminLine  = item.adminTrainer ? item.adminTrainer.name : '';
+      const metaTxt    = [club.club_id, adminLine].filter(Boolean).join(' · ');
+      return '<div class="sa-suggestion-item" onclick="' + cfg.selectFn + '(\'' + club.club_id + '\')">'
+        + logoHtml
+        + '<div class="sa-suggestion-info">'
+        + '<div class="sa-suggestion-name">' + (club.club_name || club.club_id) + '</div>'
+        + '<div class="sa-suggestion-meta">' + metaTxt + '</div>'
+        + '</div>'
+        + '<span class="sa-suggestion-status ' + statusCls + '">' + statusTxt + '</span>'
+        + '</div>';
+    }).join('');
+    sugBox.classList.remove('hidden');
+  }
+
+  function onSelect(clubId) {
+    const item = cfg.getCache().find(i => i.club.club_id === clubId);
+    if (!item) return;
+    const sugBox   = document.getElementById(cfg.sugBoxId);
+    if (sugBox) sugBox.classList.add('hidden');
+    const inp      = document.getElementById(cfg.inputId);
+    if (inp) inp.value = cfg.nameFn(item);
+    const clearBtn = document.getElementById(cfg.clearId);
+    if (clearBtn) clearBtn.classList.remove('hidden');
+    renderVisible([item]);
+    const info  = document.getElementById(cfg.infoId);
+    const label = document.getElementById(cfg.labelId);
+    if (label) label.textContent = 'Angezeigt: ' + cfg.nameFn(item);
+    if (info)  info.classList.remove('hidden');
+  }
+
+  function onReset() {
+    const inp      = document.getElementById(cfg.inputId);
+    if (inp) inp.value = '';
+    const clearBtn = document.getElementById(cfg.clearId);
+    if (clearBtn) clearBtn.classList.add('hidden');
+    const sugBox   = document.getElementById(cfg.sugBoxId);
+    if (sugBox) sugBox.classList.add('hidden');
+    const info     = document.getElementById(cfg.infoId);
+    if (info) info.classList.add('hidden');
+    renderVisible(cfg.getCache());
+  }
+
+  return { renderVisible, onInput, onSelect, onReset };
+}
+
+// --- Clubs Management filter ---
+const _defaultMatch = ({ club, adminTrainer }, q) =>
+  (club.club_name       || '').toLowerCase().includes(q) ||
+  (club.club_short_name || '').toLowerCase().includes(q) ||
+  (club.club_id         || '').toLowerCase().includes(q) ||
+  (adminTrainer?.name   || '').toLowerCase().includes(q);
+
+const _clubsFilter = saMakeFilter({
+  inputId:   'saClubsSearchInput',
+  clearId:   'saClubsSearchClear',
+  sugBoxId:  'saClubsSuggestions',
+  infoId:    'saClubsFilterInfo',
+  labelId:   'saClubsFilterLabel',
+  getCache:  () => _saClubsCache,
+  renderFn:  items => {
+    const listEl = document.getElementById('saClubsList');
+    if (!listEl) return;
+    listEl.innerHTML = items.length
+      ? items.map(({ club, studentCount, adminTrainer, tarifRows }) =>
+          renderSAClubCard(club, studentCount, adminTrainer, tarifRows)).join('')
+      : '<div style="padding:24px;text-align:center;color:rgba(255,255,255,0.3);font-size:14px;">Keine Clubs gefunden.</div>';
+  },
+  matchFn:   _defaultMatch,
+  nameFn:    item => item.club.club_name || item.club.club_id,
+  selectFn:  'saClubsFilterSelect',
+});
+
+function saClubsRenderVisible(items) { _clubsFilter.renderVisible(items); }
+function saClubsFilterInput()        { _clubsFilter.onInput(); }
+function saClubsFilterSelect(id)     { _clubsFilter.onSelect(id); }
+function saClubsFilterReset()        { _clubsFilter.onReset(); }
+
+// --- Zahlungen filter ---
+const _zahlFilter = saMakeFilter({
+  inputId:   'saZahlSearchInput',
+  clearId:   'saZahlSearchClear',
+  sugBoxId:  'saZahlSuggestions',
+  infoId:    'saZahlFilterInfo',
+  labelId:   'saZahlFilterLabel',
+  getCache:  () => _saZahlungenCache,
+  renderFn:  items => {
+    const listEl = document.getElementById('saZahlungenList');
+    if (!listEl) return;
+    listEl.innerHTML = items.length
+      ? items.map(item => renderSAZahlungCard(item)).join('')
+      : '<div style="padding:24px;text-align:center;color:rgba(255,255,255,0.3);font-size:14px;">Keine Clubs gefunden.</div>';
+  },
+  matchFn:   _defaultMatch,
+  nameFn:    item => item.club.club_name || item.club.club_id,
+  selectFn:  'saZahlFilterSelect',
+});
+
+function saZahlFilterInput()     { _zahlFilter.onInput(); }
+function saZahlFilterSelect(id)  { _zahlFilter.onSelect(id); }
+function saZahlFilterReset()     { _zahlFilter.onReset(); }
+
+// Скрывать подсказки при клике вне поля (оба экрана)
+document.addEventListener('click', function(e) {
+  ['saClubsSuggestions', 'saZahlSuggestions'].forEach(id => {
+    const sug  = document.getElementById(id);
+    const bars = document.querySelectorAll('.sa-clubs-search-bar');
+    if (!sug) return;
+    let inside = false;
+    bars.forEach(b => { if (b.contains(e.target)) inside = true; });
+    if (!inside) sug.classList.add('hidden');
+  });
+});
+
+// =========================================================
+// SUPER ADMIN -- ZAHLUNGEN / ABO-VERWALTUNG
+// =========================================================
+
+let _saZahlungenCache = [];   // { club, studentCount, adminTrainer, tarifRows, lastPayment }
+
+async function showSAZahlungenScreen() {
+  document.getElementById('saZahlungenScreen').classList.remove('hidden');
+  document.getElementById('saZahlungenLoadingMsg').classList.remove('hidden');
+  document.getElementById('saZahlungenList').innerHTML = '';
+  await loadAndRenderSAZahlungen();
+}
+
+function hideSAZahlungenScreen() {
+  document.getElementById('saZahlungenScreen').classList.add('hidden');
+}
+
+async function loadAndRenderSAZahlungen() {
+  const loadingEl = document.getElementById('saZahlungenLoadingMsg');
+  const listEl    = document.getElementById('saZahlungenList');
+
+  const { data: clubs, error } = await db
+    .from('clubs')
+    .select('club_id, club_name, club_short_name, active, aktiv_von, aktiv_bis, last_payment_date, billing_cycle, phone, email')
+    .order('club_name', { ascending: true });
+
+  if (error) { loadingEl.textContent = 'Fehler: ' + error.message; return; }
+
+  const { data: studentRows } = await db.from('students').select('club_id').eq('aktiv', 'JA');
+  const countMap = {};
+  (studentRows || []).forEach(r => { countMap[r.club_id] = (countMap[r.club_id] || 0) + 1; });
+
+  const { data: tarifRows } = await db
+    .from('tariff_packages')
+    .select('id, name, min_students, max_students, price_monthly, price_quarterly, price_yearly, currency')
+    .eq('aktiv', 'JA')
+    .order('sort_order', { ascending: true });
+
+  // Администраторы клубов (для поиска по имени)
+  const { data: adminRows } = await db
+    .from('trainers')
+    .select('club_id, name')
+    .eq('rolle', 'Admin')
+    .eq('aktiv', 'JA');
+
+  const adminMap = {};
+  (adminRows || []).forEach(r => { if (!adminMap[r.club_id]) adminMap[r.club_id] = r; });
+
+  // Последние оплаты по каждому клубу
+  const { data: payRows } = await db
+    .from('club_payments')
+    .select('club_id, payment_date, period_end, amount, currency, billing_cycle, tariff_name')
+    .order('payment_date', { ascending: false });
+
+  const lastPayMap = {};
+  (payRows || []).forEach(p => { if (!lastPayMap[p.club_id]) lastPayMap[p.club_id] = p; });
+
+  _saZahlungenCache = (clubs || []).map(c => ({
+    club:         c,
+    studentCount: countMap[c.club_id] || 0,
+    adminTrainer: adminMap[c.club_id] || null,
+    tarifRows:    tarifRows || [],
+    lastPayment:  lastPayMap[c.club_id] || null,
+  }));
+
+  loadingEl.classList.add('hidden');
+  _zahlFilter.onReset();
+}
+
+function saPaymentStatus(club, lastPayment) {
+  const cycle = club.billing_cycle || 'trial';
+  if (cycle === 'trial') return { cls: 'sa-pay-status-trial', txt: 'Testperiode', cardCls: 'sa-pay-trial' };
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (!club.aktiv_bis) return { cls: 'sa-pay-status-open', txt: 'Offen', cardCls: '' };
+
+  const bis = new Date(club.aktiv_bis); bis.setHours(0,0,0,0);
+  if (bis < today) return { cls: 'sa-pay-status-overdue', txt: 'Überfällig', cardCls: 'sa-pay-overdue' };
+  return { cls: 'sa-pay-status-ok', txt: 'Bezahlt', cardCls: '' };
+}
+
+function renderSAZahlungCard({ club, studentCount, tarifRows, lastPayment }) {
+  const cycle = club.billing_cycle || 'trial';
+  const cycleLabels = { trial: 'Testperiode', monthly: 'Monatlich', quarterly: 'Quartalsweise', yearly: 'Jährlich' };
+
+  const matchedTarif = (tarifRows || []).find(t =>
+    studentCount >= t.min_students &&
+    (t.max_students == null || studentCount <= t.max_students)
+  );
+  const priceMap  = { monthly: matchedTarif?.price_monthly, quarterly: matchedTarif?.price_quarterly, yearly: matchedTarif?.price_yearly };
+  const curPrice  = priceMap[cycle];
+  const priceStr  = cycle === 'trial' ? '0 EUR'
+    : (curPrice != null && curPrice > 0 ? curPrice + ' ' + (matchedTarif?.currency || 'EUR') : '—');
+
+  const status = saPaymentStatus(club, lastPayment);
+  const isActive = club.active;
+
+  const lastPayStr = lastPayment
+    ? saFormatDate(lastPayment.payment_date) + ' · ' + (lastPayment.amount || '—') + ' ' + (lastPayment.currency || 'EUR')
+    : '—';
+
+  return '<div class="sa-pay-card ' + status.cardCls + '" id="sa-pay-card-' + club.club_id + '">'
+    + '<div class="sa-pay-card-top">'
+    +   '<div>'
+    +     '<div class="sa-pay-card-name">' + (club.club_name || club.club_id) + '</div>'
+    +     '<div class="sa-pay-card-id">club_id: ' + club.club_id + '</div>'
+    +   '</div>'
+    +   '<span class="sa-pay-status ' + status.cls + '">' + status.txt + '</span>'
+    + '</div>'
+    + '<div class="sa-pay-meta">'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Status</span><span class="sa-pay-meta-value">' + (isActive ? 'Aktiv' : 'Inaktiv') + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Schüler aktiv</span><span class="sa-pay-meta-value">' + studentCount + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Tarif</span><span class="sa-pay-meta-value">' + (matchedTarif ? matchedTarif.name : '—') + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Zahlungsart</span><span class="sa-pay-meta-value">' + (cycleLabels[cycle] || cycle) + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Preis (aktuell)</span><span class="sa-pay-meta-value">' + priceStr + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Aktiv von</span><span class="sa-pay-meta-value">' + saFormatDate(club.aktiv_von) + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Aktiv bis</span><span class="sa-pay-meta-value">' + saFormatDate(club.aktiv_bis) + '</span></div>'
+    +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Letzte Zahlung</span><span class="sa-pay-meta-value">' + lastPayStr + '</span></div>'
+    + '</div>'
+    + '<div class="sa-pay-actions">'
+    +   '<button class="sa-pay-btn-add" onclick="showSAZahlungForm(\'' + club.club_id + '\')">+ Zahlung hinzufügen</button>'
+    + '</div>'
+    + '</div>';
+}
+
+// --- Форма Zahlung hinzufügen ---
+
+async function showSAZahlungForm(clubId) {
+  const item = _saZahlungenCache.find(i => i.club.club_id === clubId);
+  if (!item) return;
+
+  const { club, studentCount, tarifRows, lastPayment } = item;
+  document.getElementById('saZahlungClubId').value = clubId;
+
+  // Инфо-бокс
+  const cycle = club.billing_cycle || 'trial';
+  const matchedTarif = (tarifRows || []).find(t =>
+    studentCount >= t.min_students &&
+    (t.max_students == null || studentCount <= t.max_students)
+  );
+  const priceMap = { monthly: matchedTarif?.price_monthly, quarterly: matchedTarif?.price_quarterly, yearly: matchedTarif?.price_yearly };
+  const suggestedPrice = priceMap[cycle] || 0;
+
+  const infoBox = document.getElementById('saZahlungClubInfoBox');
+  if (infoBox) {
+    infoBox.innerHTML =
+      '<div class="sa-pay-info-item"><span class="sa-pay-info-label">Club</span><span class="sa-pay-info-value">' + (club.club_name || clubId) + '</span></div>'
+    + '<div class="sa-pay-info-item"><span class="sa-pay-info-label">Schüler aktiv</span><span class="sa-pay-info-value">' + studentCount + '</span></div>'
+    + '<div class="sa-pay-info-item"><span class="sa-pay-info-label">Tarif</span><span class="sa-pay-info-value">' + (matchedTarif ? matchedTarif.name : '—') + '</span></div>'
+    + '<div class="sa-pay-info-item"><span class="sa-pay-info-label">Aktiv bis (aktuell)</span><span class="sa-pay-info-value">' + saFormatDate(club.aktiv_bis) + '</span></div>';
+  }
+
+  // Дефолты формы
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('saZahlungDate').value     = today;
+  document.getElementById('saZahlungAmount').value   = suggestedPrice > 0 ? suggestedPrice : '';
+  document.getElementById('saZahlungCurrency').value = matchedTarif?.currency || 'EUR';
+  document.getElementById('saZahlungNote').value     = '';
+
+  // Установить billing_cycle клуба как дефолт (не trial)
+  const formCycle = (cycle === 'trial') ? 'monthly' : cycle;
+  document.getElementById('saZahlungCycle').value = formCycle;
+
+  // Вычислить период
+  saZahlungUpdatePeriod();
+
+  const err = document.getElementById('saZahlungFormError');
+  if (err) err.textContent = '';
+
+  document.getElementById('saZahlungFormScreen').classList.remove('hidden');
+}
+
+function hideSAZahlungForm() {
+  document.getElementById('saZahlungFormScreen').classList.add('hidden');
+}
+
+function saCalcPeriod(aktiv_bis, cycle) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  let start;
+
+  if (!aktiv_bis) {
+    start = new Date(today);
+  } else {
+    const bis = new Date(aktiv_bis); bis.setHours(0,0,0,0);
+    if (bis < today) {
+      start = new Date(today);
+    } else {
+      start = new Date(bis);
+      start.setDate(start.getDate() + 1);
+    }
+  }
+
+  const end = new Date(start);
+  if      (cycle === 'monthly')   end.setMonth(end.getMonth() + 1);
+  else if (cycle === 'quarterly') end.setMonth(end.getMonth() + 3);
+  else if (cycle === 'yearly')    end.setFullYear(end.getFullYear() + 1);
+  end.setDate(end.getDate() - 1);   // включительный последний день
+
+  const fmt = d => d.toISOString().split('T')[0];
+  return { start: fmt(start), end: fmt(end) };
+}
+
+function saZahlungUpdatePeriod() {
+  const clubId = document.getElementById('saZahlungClubId')?.value;
+  const cycle  = document.getElementById('saZahlungCycle')?.value || 'monthly';
+  const item   = _saZahlungenCache.find(i => i.club.club_id === clubId);
+  const aktiv_bis = item?.club.aktiv_bis || null;
+
+  const { start, end } = saCalcPeriod(aktiv_bis, cycle);
+  document.getElementById('saZahlungPeriodStart').value = start;
+  document.getElementById('saZahlungPeriodEnd').value   = end;
+
+  // Обновить suggested price при смене cycle
+  if (item) {
+    const { studentCount, tarifRows } = item;
+    const matchedTarif = (tarifRows || []).find(t =>
+      studentCount >= t.min_students &&
+      (t.max_students == null || studentCount <= t.max_students)
+    );
+    const priceMap = { monthly: matchedTarif?.price_monthly, quarterly: matchedTarif?.price_quarterly, yearly: matchedTarif?.price_yearly };
+    const price = priceMap[cycle];
+    if (price != null && price > 0) document.getElementById('saZahlungAmount').value = price;
+  }
+}
+
+async function saveSAZahlung() {
+  const clubId      = document.getElementById('saZahlungClubId')?.value || '';
+  const cycle       = document.getElementById('saZahlungCycle')?.value  || 'monthly';
+  const amount      = document.getElementById('saZahlungAmount')?.value;
+  const currency    = document.getElementById('saZahlungCurrency')?.value.trim() || 'EUR';
+  const payDate     = document.getElementById('saZahlungDate')?.value;
+  const periodStart = document.getElementById('saZahlungPeriodStart')?.value;
+  const periodEnd   = document.getElementById('saZahlungPeriodEnd')?.value;
+  const note        = document.getElementById('saZahlungNote')?.value.trim() || null;
+
+  const errEl    = document.getElementById('saZahlungFormError');
+  const setError = msg => { if (errEl) errEl.textContent = msg; };
+  if (errEl) errEl.textContent = '';
+
+  if (!clubId)      return setError('Club fehlt.');
+  if (!amount)      return setError('Betrag ist Pflichtfeld.');
+  if (!payDate)     return setError('Zahlungsdatum ist Pflichtfeld.');
+  if (!periodStart || !periodEnd) return setError('Periode ist Pflichtfeld.');
+
+  const item = _saZahlungenCache.find(i => i.club.club_id === clubId);
+  const matchedTarif = item ? (item.tarifRows || []).find(t =>
+    item.studentCount >= t.min_students &&
+    (t.max_students == null || item.studentCount <= t.max_students)
+  ) : null;
+
+  // 1. INSERT club_payments
+  const { error: payErr } = await db.from('club_payments').insert([{
+    club_id:                    clubId,
+    tariff_package_id:          matchedTarif?.id        || null,
+    tariff_name:                matchedTarif?.name      || null,
+    billing_cycle:              cycle,
+    amount:                     parseFloat(amount),
+    currency,
+    payment_date:               payDate,
+    period_start:               periodStart,
+    period_end:                 periodEnd,
+    note,
+    created_by:                 superAdminSession?.username || 'super_admin',
+    paid_tariff_min_students:   matchedTarif?.min_students  || null,
+    paid_tariff_max_students:   matchedTarif?.max_students  || null,
+    student_count_at_payment:   item?.studentCount          || 0,
+  }]);
+  if (payErr) return setError('Fehler beim Speichern der Zahlung: ' + payErr.message);
+
+  // 2. UPDATE clubs
+  const clubUpdate = {
+    active:            true,
+    billing_cycle:     cycle,
+    aktiv_bis:         periodEnd,
+    last_payment_date: payDate,
+  };
+  if (!item?.club.aktiv_von) clubUpdate.aktiv_von = periodStart;
+
+  const { error: clubErr } = await db.from('clubs').update(clubUpdate).eq('club_id', clubId);
+  if (clubErr) return setError('Zahlung gespeichert ✓, aber Club-Update fehlgeschlagen: ' + clubErr.message);
+
+  hideSAZahlungForm();
+  await loadAndRenderSAZahlungen();
 }

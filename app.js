@@ -58,6 +58,41 @@ async function loadCurrentClubSettings() {
     currentClub = FALLBACK_CLUB;
   }
   applyClubSettings();
+  updateClubPaymentWarning();
+}
+
+function updateClubPaymentWarning() {
+  const el = document.getElementById('clubPaymentWarning');
+  if (!el) return;
+
+  // SA-импersonation: данные клуба уже в currentClub
+  const club = currentClub;
+  if (!club || club === FALLBACK_CLUB) { el.classList.add('hidden'); return; }
+
+  const { payWarn, payDaysLeft, contractWarn, contractDaysLeft } = saGetClubWarningStatus(club);
+
+  let cls = '', icon = '', text = '';
+
+  if (payWarn === 'expired') {
+    cls  = 'club-pay-warning--red';
+    icon = '🔴';
+    text = 'Die Zahlung ist abgelaufen. Der Club ist derzeit nicht aktiv.';
+  } else if (payWarn === 'soon') {
+    cls  = 'club-pay-warning--orange';
+    icon = '⚠';
+    text = `Die Zahlung läuft bald ab (noch ${payDaysLeft} Tage). Bitte kontaktieren Sie den Administrator.`;
+  } else if (contractWarn) {
+    cls  = 'club-pay-warning--blue';
+    icon = '📄';
+    text = `Der Vertrag läuft bald ab (noch ${contractDaysLeft} Tage). Bitte kontaktieren Sie den Administrator.`;
+  } else {
+    el.classList.add('hidden');
+    return;
+  }
+
+  el.className = `club-pay-warning ${cls}`;
+  document.getElementById('clubPaymentWarningIcon').textContent = icon;
+  document.getElementById('clubPaymentWarningText').textContent = text;
 }
 
 function applyClubSettings() {
@@ -824,6 +859,8 @@ async function login() {
   document
 .querySelector('.login-screen-st2')
 ?.classList.add('hidden');
+
+  updateClubPaymentWarning();
 
   document.getElementById('welcome').textContent =
     'Willkommen, ' + (data.name || '-') + ' (' + (data.rolle || '-') + ')';
@@ -12230,6 +12267,16 @@ function showSuperAdminDashboard() {
   document.getElementById('superAdminScreen').classList.remove('hidden');
   const nameEl = document.getElementById('saWelcomeName');
   if (nameEl) nameEl.textContent = 'Angemeldet als: ' + (superAdminSession?.name || superAdminSession?.username || '');
+  saLoadDashboardBadges();
+}
+
+async function saLoadDashboardBadges() {
+  const { data: clubs } = await db
+    .from('clubs')
+    .select('club_id, active, billing_cycle, aktiv_bis, contract_active, contract_end, contract_auto_debit');
+  if (!clubs) return;
+  const items = clubs.map(c => ({ club: c }));
+  saUpdateZahlDashBadges(items);
 }
 
 function superAdminLogout() {
@@ -12287,7 +12334,7 @@ async function loadAndRenderSAClubs() {
   // Загружаем все клубы (без фильтра active — SA видит все)
   const { data: clubs, error } = await db
     .from('clubs')
-    .select('club_id, club_name, club_short_name, active, aktiv_von, aktiv_bis, last_payment_date, created_at, phone, email, website, logo_url, background_image_url, favicon_url, primary_color, secondary_color, accent_color, billing_cycle')
+    .select('club_id, club_name, club_short_name, active, aktiv_von, aktiv_bis, last_payment_date, created_at, phone, email, website, logo_url, background_image_url, favicon_url, primary_color, secondary_color, accent_color, billing_cycle, contract_active, contract_number, contract_start, contract_end, contract_auto_debit, contract_note')
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -12324,6 +12371,19 @@ async function loadAndRenderSAClubs() {
     .select('name, min_students, max_students, price, price_monthly, price_quarterly, price_yearly, currency')
     .eq('aktiv', 'JA')
     .order('sort_order', { ascending: true });
+
+  // Сортировка: сначала проблемные клубы, внутри группы — по ближайшей дате
+  const sortDate = c => {
+    const p = saZahlSortPriority(c);
+    if (p <= 1 && c.aktiv_bis)      return new Date(c.aktiv_bis).getTime();
+    if (p === 2 && c.contract_end)  return new Date(c.contract_end).getTime();
+    return Infinity;
+  };
+  (clubs || []).sort((a, b) => {
+    const pa = saZahlSortPriority(a), pb = saZahlSortPriority(b);
+    if (pa !== pb) return pa - pb;
+    return sortDate(a) - sortDate(b);
+  });
 
   // Сохраняем в кэш для фильтрации без перезагрузки
   _saClubsCache = clubs.map(c => ({
@@ -12366,9 +12426,10 @@ function renderSAClubCard(club, studentCount, adminTrainer, tarifRows) {
   const cardCls  = isActive ? '' : ' sa-club-inactive';
   const statusCls  = isActive ? 'sa-status-aktiv'   : 'sa-status-inaktiv';
   const statusText = isActive ? 'Aktiv'             : 'Inaktiv';
+  const clubNameEsc = (club.club_name || club.club_id).replace(/'/g, "\\'");
   const toggleBtn  = isActive
-    ? `<button class="sa-club-btn sa-club-btn-deactivate" onclick="saToggleClubActive('${club.club_id}', true)">Deaktivieren</button>`
-    : `<button class="sa-club-btn sa-club-btn-activate"   onclick="saToggleClubActive('${club.club_id}', false)">Aktivieren</button>`;
+    ? `<button class="sa-club-btn sa-club-btn-deactivate" onclick="saShowClubActionModal('${club.club_id}','${clubNameEsc}')">Deaktivieren</button>`
+    : `<button class="sa-club-btn sa-club-btn-activate"   onclick="saActivateClub('${club.club_id}')">Aktivieren</button>`;
 
   // White Label preview
   const hasLogo = !!club.logo_url;
@@ -12392,13 +12453,30 @@ function renderSAClubCard(club, studentCount, adminTrainer, tarifRows) {
     ? `<span class="sa-wl-badge sa-wl-ok">✓ White Label</span>`
     : `<span class="sa-wl-badge sa-wl-missing">○ Kein Design</span>`;
 
+  const hasContract = club.contract_active === 'JA';
+  const contractBadge = hasContract
+    ? `<div class="sa-club-contract-badge">
+        <span class="sa-club-contract-icon">📄</span>
+        <span class="sa-club-contract-text">Vertrag: ${club.contract_number ? 'Nr. ' + club.contract_number + ' · ' : ''}${saFormatDate(club.contract_start)} – ${saFormatDate(club.contract_end)}${club.contract_auto_debit === 'JA' ? ' · Auto-Abbuchung: Ja' : ''}</span>
+       </div>`
+    : `<div class="sa-club-contract-badge sa-club-contract-none">Vertrag: —</div>`;
+
+  const { payWarn, payDaysLeft, contractWarn, contractDaysLeft } = saGetClubWarningStatus(club);
+  const warnIcons = [
+    payWarn === 'expired'  ? `<span class="sa-club-warn-icon sa-club-warn--red"   title="Zahlung abgelaufen">🔴</span>` : '',
+    payWarn === 'soon'     ? `<span class="sa-club-warn-icon sa-club-warn--orange" title="Zahlung endet in ${payDaysLeft} Tagen">⚠️ ${payDaysLeft}d</span>` : '',
+    contractWarn           ? `<span class="sa-club-warn-icon sa-club-warn--blue"   title="Vertrag endet in ${contractDaysLeft} Tagen">📄⚠️ ${contractDaysLeft}d</span>` : '',
+  ].join('');
+
   return `
 <div class="sa-club-card${cardCls}" id="sa-card-${club.club_id}">
   <div class="sa-club-card-top">
-    <div>
+    <div class="sa-club-card-name-row">
       <div class="sa-club-card-name">${club.club_name || club.club_id}</div>
+      ${warnIcons ? `<div class="sa-club-warn-icons">${warnIcons}</div>` : ''}
       <div class="sa-club-card-id">club_id: ${club.club_id}</div>
     </div>
+    ${contractBadge}
     <span class="sa-status-badge ${statusCls}">${statusText}</span>
   </div>
 
@@ -12444,6 +12522,15 @@ function renderSAClubCard(club, studentCount, adminTrainer, tarifRows) {
   </div>` : `
   <div class="sa-club-admin-row" style="color:rgba(255,107,107,0.6)">⚠ Kein Administrator</div>`}
 
+  <div class="sa-club-link-row">
+    <span class="sa-club-link-label">Club-Link:</span>
+    <span class="sa-club-link-url">${window.location.origin}/?club=${club.club_id}</span>
+    <button class="sa-club-link-copy-btn" title="Link kopieren"
+            onclick="saCopyClubLink('${club.club_id}', this)">
+      <span class="sa-copy-icon">⧉</span>
+    </button>
+  </div>
+
   <div class="sa-club-card-actions">
     <button class="sa-club-btn sa-club-btn-edit" onclick="showSAEditClubScreen('${club.club_id}')">Bearbeiten</button>
     <button class="sa-club-btn sa-club-btn-open" onclick="saOpenClub('${club.club_id}')">Öffnen</button>
@@ -12452,27 +12539,147 @@ function renderSAClubCard(club, studentCount, adminTrainer, tarifRows) {
 </div>`;
 }
 
-async function saToggleClubActive(clubId, currentActive) {
-  const newActive = !currentActive;
-  const action    = newActive ? 'aktivieren' : 'deaktivieren';
-  if (!confirm(`Club "${clubId}" wirklich ${action}?`)) return;
-
+// --- Club Activate (simple, no modal needed) ---
+async function saActivateClub(clubId) {
   const { data, error } = await db
     .from('clubs')
-    .update({ active: newActive })
+    .update({ active: true })
     .eq('club_id', clubId)
     .select();
-
-  if (error) {
-    console.error('[SA] Toggle club error:', error);
-    alert('Fehler beim Update: ' + error.message);
-    return;
-  }
-  if (!data || data.length === 0) {
-    alert('Update nicht ausgeführt — möglicherweise RLS aktiv oder club_id nicht gefunden.');
-    return;
-  }
+  if (error) { alert('Fehler: ' + error.message); return; }
+  if (!data || data.length === 0) { alert('Update nicht ausgeführt.'); return; }
   await loadAndRenderSAClubs();
+}
+
+// --- Club Action Modal state ---
+let _saActionClubId   = null;
+let _saActionClubName = null;
+
+function saShowClubActionModal(clubId, clubName) {
+  _saActionClubId   = clubId;
+  _saActionClubName = clubName || clubId;
+  document.getElementById('saClubActionSubtitle').textContent =
+    `${_saActionClubName}  ·  club_id: ${_saActionClubId}`;
+  document.getElementById('saDeleteConfirmClubId').value = '';
+  document.getElementById('saDeleteConfirmPin').value    = '';
+  document.getElementById('saDeleteError').textContent   = '';
+  document.getElementById('saDeleteConfirmBtn').disabled = true;
+  saShowActionStep1();
+  document.getElementById('saClubActionModal').classList.remove('hidden');
+}
+
+function closeSAClubActionModal() {
+  document.getElementById('saClubActionModal').classList.add('hidden');
+  _saActionClubId = _saActionClubName = null;
+}
+
+function saShowActionStep1() {
+  document.getElementById('saClubActionStep1').classList.remove('hidden');
+  document.getElementById('saClubActionStep2').classList.add('hidden');
+}
+
+function saShowDeleteStep() {
+  document.getElementById('saClubDeleteSubtitle').textContent =
+    `${_saActionClubName}  ·  club_id: ${_saActionClubId}`;
+  document.getElementById('saClubActionStep1').classList.add('hidden');
+  document.getElementById('saClubActionStep2').classList.remove('hidden');
+  setTimeout(() => document.getElementById('saDeleteConfirmClubId').focus(), 50);
+}
+
+function saUpdateDeleteBtn() {
+  const clubIdVal = document.getElementById('saDeleteConfirmClubId').value.trim();
+  const pinVal    = document.getElementById('saDeleteConfirmPin').value.trim();
+  document.getElementById('saDeleteConfirmBtn').disabled =
+    !(clubIdVal === _saActionClubId && pinVal.length > 0);
+}
+
+async function saConfirmDeactivate() {
+  if (!_saActionClubId) return;
+  const { data, error } = await db
+    .from('clubs')
+    .update({ active: false })
+    .eq('club_id', _saActionClubId)
+    .select();
+  closeSAClubActionModal();
+  if (error) { alert('Fehler: ' + error.message); return; }
+  if (!data || data.length === 0) { alert('Update nicht ausgeführt.'); return; }
+  await loadAndRenderSAClubs();
+}
+
+async function saExecuteClubDelete() {
+  const clubIdVal = document.getElementById('saDeleteConfirmClubId').value.trim();
+  const pinVal    = document.getElementById('saDeleteConfirmPin').value.trim();
+  const errEl     = document.getElementById('saDeleteError');
+
+  if (clubIdVal !== _saActionClubId) {
+    errEl.textContent = 'Club-ID stimmt nicht überein.';
+    return;
+  }
+
+  // PIN gegen DB prüfen
+  errEl.textContent = 'PIN wird geprüft…';
+  const { data: sa, error: saErr } = await db
+    .from('super_admins')
+    .select('pin')
+    .eq('username', superAdminSession.username)
+    .maybeSingle();
+
+  if (saErr || !sa || sa.pin !== pinVal) {
+    errEl.textContent = 'Falscher PIN. Löschung abgebrochen.';
+    return;
+  }
+
+  errEl.textContent = 'Daten werden gelöscht…';
+  document.getElementById('saDeleteConfirmBtn').disabled = true;
+
+  const tables = [
+    'attendance', 'archiv', 'weight_log', 'delete_candidates',
+    'club_monthly_stats', 'club_yearly_snapshots',
+    'trainer_groups', 'trainers', 'students', 'groups',
+    'club_payments', 'promo_slides', 'promo_media', 'promo_settings', 'sponsors',
+  ];
+
+  for (const table of tables) {
+    const { error } = await db.from(table).delete().eq('club_id', _saActionClubId);
+    if (error) console.warn(`[SA] Delete ${table}:`, error.message);
+  }
+
+  const { error: clubErr } = await db
+    .from('clubs')
+    .delete()
+    .eq('club_id', _saActionClubId);
+
+  closeSAClubActionModal();
+
+  if (clubErr) {
+    alert('Fehler beim Löschen des Clubs: ' + clubErr.message);
+    return;
+  }
+
+  await loadAndRenderSAClubs();
+}
+
+function saCopyClubLink(clubId, btn) {
+  const url = `${window.location.origin}/?club=${clubId}`;
+  navigator.clipboard.writeText(url).then(() => {
+    const icon = btn.querySelector('.sa-copy-icon');
+    if (icon) {
+      icon.textContent = '✅';
+      setTimeout(() => { icon.textContent = '⧉'; }, 2000);
+    }
+  });
+}
+
+function saCopyClubLinkFromInput(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input || !input.value) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    const icon = btn.querySelector('.sa-copy-icon');
+    if (icon) {
+      icon.textContent = '✅';
+      setTimeout(() => { icon.textContent = '⧉'; }, 2000);
+    }
+  });
 }
 
 async function saOpenClub(clubId) {
@@ -12490,6 +12697,7 @@ async function saOpenClub(clubId) {
   // Применяем тему клуба
   currentClub = club;
   applyClubSettings();
+  updateClubPaymentWarning();
 
   // Устанавливаем SA-режим
   isSuperAdminAccess = true;
@@ -12574,6 +12782,12 @@ let _saClubIdTimer = null;
 function saCheckClubIdAvailable(value) {
   const hint = document.getElementById('saClubIdHint');
   if (!hint) return;
+  const preview = document.getElementById('saNewClubLinkPreview');
+  const copyBtn = document.getElementById('saNewClubLinkCopyBtn');
+  if (preview) {
+    preview.value = value ? `${window.location.origin}/?club=${value}` : '';
+    if (copyBtn) copyBtn.disabled = !value;
+  }
   clearTimeout(_saClubIdTimer);
   if (!value) { hint.textContent = ''; hint.className = 'sa-field-hint'; return; }
   hint.textContent = 'Wird geprüft…';
@@ -12913,6 +13127,8 @@ async function showSAEditClubScreen(clubId) {
 
   document.getElementById('saEditClubIdHidden').value  = club.club_id;
   document.getElementById('saEditClubIdDisplay').value = club.club_id;
+  const editLink = document.getElementById('saEditClubLinkDisplay');
+  if (editLink) editLink.value = `${window.location.origin}/?club=${club.club_id}`;
   document.getElementById('saEditClubName').value       = club.club_name       || '';
   document.getElementById('saEditClubShortName').value  = club.club_short_name || '';
   document.getElementById('saEditClubActive').value     = club.active ? 'true' : 'false';
@@ -13328,7 +13544,7 @@ async function loadAndRenderSAZahlungen() {
 
   const { data: clubs, error } = await db
     .from('clubs')
-    .select('club_id, club_name, club_short_name, active, aktiv_von, aktiv_bis, last_payment_date, billing_cycle, phone, email')
+    .select('club_id, club_name, club_short_name, active, aktiv_von, aktiv_bis, last_payment_date, billing_cycle, phone, email, contract_active, contract_number, contract_start, contract_end, contract_auto_debit, contract_note')
     .order('club_name', { ascending: true });
 
   if (error) { loadingEl.textContent = 'Fehler: ' + error.message; return; }
@@ -13362,28 +13578,120 @@ async function loadAndRenderSAZahlungen() {
   const lastPayMap = {};
   (payRows || []).forEach(p => { if (!lastPayMap[p.club_id]) lastPayMap[p.club_id] = p; });
 
-  _saZahlungenCache = (clubs || []).map(c => ({
-    club:         c,
-    studentCount: countMap[c.club_id] || 0,
-    adminTrainer: adminMap[c.club_id] || null,
-    tarifRows:    tarifRows || [],
-    lastPayment:  lastPayMap[c.club_id] || null,
-  }));
+  // Автодеактивация просроченных клубов
+  await saAutoDeactivateExpired(clubs || []);
 
+  _saZahlungenCache = (clubs || [])
+    .sort((a, b) => saZahlSortPriority(a) - saZahlSortPriority(b))
+    .map(c => ({
+      club:         c,
+      studentCount: countMap[c.club_id] || 0,
+      adminTrainer: adminMap[c.club_id] || null,
+      tarifRows:    tarifRows || [],
+      lastPayment:  lastPayMap[c.club_id] || null,
+    }));
+
+  saUpdateZahlDashBadges(_saZahlungenCache);
   loadingEl.classList.add('hidden');
   _zahlFilter.onReset();
 }
 
-function saPaymentStatus(club, lastPayment) {
-  const cycle = club.billing_cycle || 'trial';
-  if (cycle === 'trial') return { cls: 'sa-pay-status-trial', txt: 'Testperiode', cardCls: 'sa-pay-trial' };
-
+// Универсальный расчёт warning-статуса клуба (для Dashboard, Clubs Mgmt, Zahlungen)
+function saGetClubWarningStatus(club) {
   const today = new Date(); today.setHours(0,0,0,0);
-  if (!club.aktiv_bis) return { cls: 'sa-pay-status-open', txt: 'Offen', cardCls: '' };
+  const hasAutoContract = club.contract_active === 'JA' && club.contract_auto_debit === 'JA';
 
-  const bis = new Date(club.aktiv_bis); bis.setHours(0,0,0,0);
-  if (bis < today) return { cls: 'sa-pay-status-overdue', txt: 'Überfällig', cardCls: 'sa-pay-overdue' };
-  return { cls: 'sa-pay-status-ok', txt: 'Bezahlt', cardCls: '' };
+  // Оплата
+  let payWarn = null, payDaysLeft = null;
+  if (club.billing_cycle !== 'trial' && club.aktiv_bis && !hasAutoContract) {
+    const bis = new Date(club.aktiv_bis); bis.setHours(0,0,0,0);
+    if (bis < today) {
+      payWarn = 'expired';
+    } else {
+      const d = Math.round((bis - today) / 86400000);
+      if (d <= 15) { payWarn = 'soon'; payDaysLeft = d; }
+    }
+  }
+
+  // Контракт
+  let contractWarn = null, contractDaysLeft = null;
+  if (club.contract_active === 'JA' && club.contract_auto_debit !== 'JA' && club.contract_end) {
+    const end = new Date(club.contract_end); end.setHours(0,0,0,0);
+    const d = Math.round((end - today) / 86400000);
+    if (d <= 30) { contractWarn = 'soon'; contractDaysLeft = d; }
+  }
+
+  return { payWarn, payDaysLeft, contractWarn, contractDaysLeft };
+}
+
+// Возвращает CSS-статус оплаты клуба для карточки Zahlungen
+function saPaymentStatus(club) {
+  const cycle = club.billing_cycle || 'trial';
+  if (cycle === 'trial') return { cls: 'sa-pay-status-trial', txt: 'Testperiode', cardCls: 'sa-pay-trial', payWarn: null };
+  if (!club.aktiv_bis)   return { cls: 'sa-pay-status-open',  txt: 'Offen',       cardCls: '',             payWarn: null };
+
+  const { payWarn, payDaysLeft } = saGetClubWarningStatus(club);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const bis   = new Date(club.aktiv_bis); bis.setHours(0,0,0,0);
+
+  if (bis < today) return { cls: 'sa-pay-status-overdue', txt: 'Überfällig', cardCls: 'sa-pay-overdue',  payWarn: 'expired' };
+  if (payWarn === 'soon') return { cls: 'sa-pay-status-ok', txt: 'Bezahlt', cardCls: 'sa-pay-expiring', payWarn: 'soon', daysLeft: payDaysLeft };
+  return { cls: 'sa-pay-status-ok', txt: 'Bezahlt', cardCls: '', payWarn: null };
+}
+
+// Возвращает предупреждение по контракту — теперь через универсальную функцию
+function saContractWarn(club) {
+  const { contractWarn, contractDaysLeft } = saGetClubWarningStatus(club);
+  return contractWarn ? { daysLeft: contractDaysLeft } : null;
+}
+
+// Приоритет сортировки для Zahlungen-экрана
+function saZahlSortPriority(club) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (club.aktiv_bis) {
+    const bis = new Date(club.aktiv_bis); bis.setHours(0,0,0,0);
+    if (bis < today) return 0;                       // просрочена оплата
+    const d = Math.round((bis - today) / 86400000);
+    const hasAuto = club.contract_active === 'JA' && club.contract_auto_debit === 'JA';
+    if (!hasAuto && d <= 15) return 1;               // оплата скоро заканчивается
+  }
+  if (saContractWarn(club)) return 2;                // контракт скоро заканчивается
+  return 3;                                          // всё ок
+}
+
+// Автодеактивация просроченных клубов (без контракта с автосписанием)
+async function saAutoDeactivateExpired(clubs) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const toDeactivate = clubs.filter(c => {
+    if (!c.active) return false;
+    if (c.contract_active === 'JA' && c.contract_auto_debit === 'JA') return false;
+    if (!c.aktiv_bis) return false;
+    const bis = new Date(c.aktiv_bis); bis.setHours(0,0,0,0);
+    return bis < today;
+  });
+  if (!toDeactivate.length) return;
+  const ids = toDeactivate.map(c => c.club_id);
+  await db.from('clubs').update({ active: false }).in('club_id', ids);
+  toDeactivate.forEach(c => { c.active = false; });
+}
+
+// Обновить бейджи Dashboard
+function saUpdateZahlDashBadges(items) {
+  let countExpired = 0, countSoon = 0, countContract = 0;
+  items.forEach(({ club }) => {
+    const { payWarn, contractWarn } = saGetClubWarningStatus(club);
+    if (payWarn === 'expired')    countExpired++;
+    else if (payWarn === 'soon')  countSoon++;
+    if (contractWarn)             countContract++;
+  });
+  const el = document.getElementById('saZahlDashBadges');
+  if (!el) return;
+  const parts = [];
+  if (countExpired) parts.push(`<span class="sa-dash-zbadge sa-dash-zbadge--red">🔴 ${countExpired}</span>`);
+  if (countSoon)    parts.push(`<span class="sa-dash-zbadge sa-dash-zbadge--orange">⚠ ${countSoon}</span>`);
+  if (countContract)parts.push(`<span class="sa-dash-zbadge sa-dash-zbadge--blue">📄 ${countContract}</span>`);
+  el.innerHTML = parts.join('');
+  el.classList.toggle('hidden', !parts.length);
 }
 
 function renderSAZahlungCard({ club, studentCount, tarifRows, lastPayment }) {
@@ -13399,14 +13707,41 @@ function renderSAZahlungCard({ club, studentCount, tarifRows, lastPayment }) {
   const priceStr  = cycle === 'trial' ? '0 EUR'
     : (curPrice != null && curPrice > 0 ? curPrice + ' ' + (matchedTarif?.currency || 'EUR') : '—');
 
-  const status = saPaymentStatus(club, lastPayment);
+  const status       = saPaymentStatus(club);
+  const contractWarn = saContractWarn(club);
   const isActive = club.active;
 
   const lastPayStr = lastPayment
     ? saFormatDate(lastPayment.payment_date) + ' · ' + (lastPayment.amount || '—') + ' ' + (lastPayment.currency || 'EUR')
     : '—';
 
+  // Предупреждение по оплате
+  let payWarnRow = '';
+  if (status.payWarn === 'expired') {
+    payWarnRow = '<div class="sa-pay-warn sa-pay-warn--red">🔴 Zahlung abgelaufen · Club automatisch inaktiv</div>';
+  } else if (status.payWarn === 'soon') {
+    payWarnRow = '<div class="sa-pay-warn sa-pay-warn--orange">⚠ Zahlung läuft bald ab: noch ' + status.daysLeft + ' Tage</div>';
+  }
+
+  // Предупреждение по контракту
+  const contractWarnRow = contractWarn !== null
+    ? '<div class="sa-pay-warn sa-pay-warn--blue">📄 Vertrag läuft bald ab: noch ' + contractWarn.daysLeft + ' Tage</div>'
+    : '';
+
+  const hasContract = club.contract_active === 'JA';
+  const contractRow = hasContract
+    ? '<div class="sa-pay-contract-row">'
+      + '<span class="sa-pay-contract-icon">📋</span>'
+      + '<span class="sa-pay-contract-label">Vertrag:</span>'
+      + (club.contract_number ? '<span class="sa-pay-contract-value">Nr. ' + club.contract_number + '</span><span class="sa-pay-contract-sep">·</span>' : '')
+      + '<span class="sa-pay-contract-value">' + saFormatDate(club.contract_start) + ' – ' + saFormatDate(club.contract_end) + '</span>'
+      + (club.contract_auto_debit === 'JA' ? '<span class="sa-pay-contract-sep">·</span><span class="sa-pay-contract-label">Aut. Abbuchung</span><span class="sa-pay-contract-value">Ja</span>' : '')
+      + '</div>'
+    : '<div class="sa-pay-contract-row"><span class="sa-pay-contract-none">Vertrag: —</span></div>';
+
   return '<div class="sa-pay-card ' + status.cardCls + '" id="sa-pay-card-' + club.club_id + '">'
+    + payWarnRow
+    + contractWarnRow
     + '<div class="sa-pay-card-top">'
     +   '<div>'
     +     '<div class="sa-pay-card-name">' + (club.club_name || club.club_id) + '</div>'
@@ -13414,6 +13749,7 @@ function renderSAZahlungCard({ club, studentCount, tarifRows, lastPayment }) {
     +   '</div>'
     +   '<span class="sa-pay-status ' + status.cls + '">' + status.txt + '</span>'
     + '</div>'
+    + contractRow
     + '<div class="sa-pay-meta">'
     +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Status</span><span class="sa-pay-meta-value">' + (isActive ? 'Aktiv' : 'Inaktiv') + '</span></div>'
     +   '<div class="sa-pay-meta-item"><span class="sa-pay-meta-label">Schüler aktiv</span><span class="sa-pay-meta-value">' + studentCount + '</span></div>'
@@ -13468,6 +13804,15 @@ async function showSAZahlungForm(clubId) {
   const formCycle = (cycle === 'trial') ? 'monthly' : cycle;
   document.getElementById('saZahlungCycle').value = formCycle;
 
+  // Заполнить поля контракта из данных клуба
+  document.getElementById('saZahlungContractActive').value    = club.contract_active    || 'NEIN';
+  document.getElementById('saZahlungContractAutoDebit').value = club.contract_auto_debit || 'NEIN';
+  document.getElementById('saZahlungContractNumber').value    = club.contract_number    || '';
+  document.getElementById('saZahlungContractStart').value     = club.contract_start     || '';
+  document.getElementById('saZahlungContractEnd').value       = club.contract_end       || '';
+  document.getElementById('saZahlungContractNote').value      = club.contract_note      || '';
+  saToggleContractFields();
+
   // Вычислить период
   saZahlungUpdatePeriod();
 
@@ -13479,6 +13824,14 @@ async function showSAZahlungForm(clubId) {
 
 function hideSAZahlungForm() {
   document.getElementById('saZahlungFormScreen').classList.add('hidden');
+}
+
+function saToggleContractFields() {
+  const active  = document.getElementById('saZahlungContractActive')?.value === 'JA';
+  const details = document.getElementById('saVertragDetails');
+  if (!details) return;
+  if (active) { details.classList.add('open'); }
+  else        { details.classList.remove('open'); }
 }
 
 function saCalcPeriod(aktiv_bis, cycle) {
@@ -13574,12 +13927,25 @@ async function saveSAZahlung() {
   }]);
   if (payErr) return setError('Fehler beim Speichern der Zahlung: ' + payErr.message);
 
-  // 2. UPDATE clubs
+  // 2. UPDATE clubs (включая поля контракта)
+  const contractActive    = document.getElementById('saZahlungContractActive')?.value    || 'NEIN';
+  const contractAutoDebit = document.getElementById('saZahlungContractAutoDebit')?.value || 'NEIN';
+  const contractNumber    = document.getElementById('saZahlungContractNumber')?.value.trim()  || null;
+  const contractStart     = document.getElementById('saZahlungContractStart')?.value          || null;
+  const contractEnd       = document.getElementById('saZahlungContractEnd')?.value            || null;
+  const contractNote      = document.getElementById('saZahlungContractNote')?.value.trim()    || null;
+
   const clubUpdate = {
-    active:            true,
-    billing_cycle:     cycle,
-    aktiv_bis:         periodEnd,
-    last_payment_date: payDate,
+    active:               true,
+    billing_cycle:        cycle,
+    aktiv_bis:            periodEnd,
+    last_payment_date:    payDate,
+    contract_active:      contractActive,
+    contract_auto_debit:  contractAutoDebit,
+    contract_number:      contractActive === 'JA' ? contractNumber    : null,
+    contract_start:       contractActive === 'JA' ? contractStart     : null,
+    contract_end:         contractActive === 'JA' ? contractEnd       : null,
+    contract_note:        contractActive === 'JA' ? contractNote      : null,
   };
   if (!item?.club.aktiv_von) clubUpdate.aktiv_von = periodStart;
 

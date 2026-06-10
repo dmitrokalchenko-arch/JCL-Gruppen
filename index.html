@@ -2712,7 +2712,8 @@ Abbrechen
     <button class="sa-dash-card sa-dash-active" onclick="showSAZahlungenScreen()">
       <div class="sa-dash-icon">💳</div>
       <div class="sa-dash-title">Zahlungen / Abo</div>
-      <div class="sa-dash-text">Ohlungen registrieren, Abos verlängern</div>
+      <div class="sa-dash-text">Zahlungen registrieren, Abos verlängern</div>
+      <div id="saZahlDashBadges" class="sa-dash-zbadges hidden"></div>
       <div class="sa-dash-soon">In Entwicklung</div>
     </button>
 
@@ -2804,6 +2805,21 @@ Abbrechen
                  placeholder="z.B. judo-musterstadt"
                  oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,''); saCheckClubIdAvailable(this.value)">
           <div id="saClubIdHint" class="sa-field-hint"></div>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Club-Link <span class="sa-label-hint">(automatisch)</span></label>
+          <div class="sa-club-link-field-row">
+            <input id="saNewClubLinkPreview" class="sa-input" type="text" readonly
+                   placeholder="wird nach Eingabe der Club-ID angezeigt">
+            <button type="button" class="sa-club-link-copy-btn" id="saNewClubLinkCopyBtn"
+                    title="Link kopieren" disabled
+                    onclick="saCopyClubLinkFromInput('saNewClubLinkPreview', this)">
+              <span class="sa-copy-icon">⧉</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3010,6 +3026,19 @@ Abbrechen
           <label class="sa-label">Club-ID <span class="sa-label-hint">(nicht änderbar)</span></label>
           <input id="saEditClubIdDisplay" class="sa-input" type="text" disabled>
         </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Club-Link</label>
+          <div class="sa-club-link-field-row">
+            <input id="saEditClubLinkDisplay" class="sa-input" type="text" readonly>
+            <button type="button" class="sa-club-link-copy-btn" title="Link kopieren"
+                    onclick="saCopyClubLinkFromInput('saEditClubLinkDisplay', this)">
+              <span class="sa-copy-icon">⧉</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
         <div class="sa-form-field">
           <label class="sa-label">Status</label>
           <select id="saEditClubActive" class="sa-input sa-select">
@@ -3368,6 +3397,57 @@ Abbrechen
       <div class="sa-pay-club-info-box" id="saZahlungClubInfoBox"></div>
     </div>
 
+    <div class="sa-form-section sa-vertrag-section">
+      <div class="sa-form-section-title sa-vertrag-section-title">📋 Vertrag</div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Vertrag vorhanden</label>
+          <select id="saZahlungContractActive" class="sa-input sa-select"
+                  onchange="saToggleContractFields()">
+            <option value="NEIN">Nein</option>
+            <option value="JA">Ja</option>
+          </select>
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Automatische Abbuchung</label>
+          <select id="saZahlungContractAutoDebit" class="sa-input sa-select">
+            <option value="NEIN">Nein</option>
+            <option value="JA">Ja</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="saVertragDetails" class="sa-vertrag-details">
+        <div class="sa-form-row">
+          <div class="sa-form-field sa-form-field-full">
+            <label class="sa-label">Vertragsnummer</label>
+            <input id="saZahlungContractNumber" class="sa-input" type="text"
+                   placeholder="z.B. VTR-2024-001">
+          </div>
+        </div>
+
+        <div class="sa-form-row">
+          <div class="sa-form-field">
+            <label class="sa-label">Vertrag von</label>
+            <input id="saZahlungContractStart" class="sa-input" type="date">
+          </div>
+          <div class="sa-form-field">
+            <label class="sa-label">Vertrag bis</label>
+            <input id="saZahlungContractEnd" class="sa-input" type="date">
+          </div>
+        </div>
+
+        <div class="sa-form-row">
+          <div class="sa-form-field sa-form-field-full">
+            <label class="sa-label">Notiz <span class="sa-label-hint">(optional)</span></label>
+            <input id="saZahlungContractNote" class="sa-input" type="text"
+                   placeholder="z.B. Jahresvertrag, Sonderkonditionen…">
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="sa-form-section">
       <div class="sa-form-section-title">Zahlungsdetails</div>
 
@@ -3464,6 +3544,12 @@ Abbrechen
 
 </div>
 
+<!-- Club Payment Warning Banner (floating, visible when payment/contract issues) -->
+<div id="clubPaymentWarning" class="club-pay-warning hidden">
+  <span id="clubPaymentWarningIcon" class="club-pay-warning-icon"></span>
+  <span id="clubPaymentWarningText" class="club-pay-warning-text"></span>
+</div>
+
 <!-- Super Admin Impersonation Badge (floating, visible only in SA mode) -->
 <div id="saImpersonationBadge" class="sa-impersonation-badge hidden">
   <div class="sa-imp-row1">
@@ -3473,6 +3559,83 @@ Abbrechen
   </div>
   <div class="sa-imp-row2">
     <button class="sa-imp-back-btn" onclick="saExitImpersonation()">← Zurück zum Super Admin</button>
+  </div>
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — CLUB DEACTIVATE / DELETE CONFIRM MODAL
+========================================================= -->
+<div id="saClubActionModal" class="sa-modal hidden">
+  <div class="sa-modal-overlay" onclick="closeSAClubActionModal()"></div>
+  <div class="sa-modal-panel sa-club-action-panel">
+
+    <!-- Шаг 1: выбор действия -->
+    <div id="saClubActionStep1">
+      <div class="sa-club-action-header">
+        <span class="sa-club-action-icon">⚠</span>
+        <div>
+          <div class="sa-club-action-title">Club verwalten</div>
+          <div class="sa-club-action-subtitle" id="saClubActionSubtitle"></div>
+        </div>
+      </div>
+
+      <div class="sa-club-action-warning">
+        <div class="sa-club-action-warning-title">Was möchten Sie tun?</div>
+        <div class="sa-club-action-warning-text">Wählen Sie eine Aktion für diesen Club.</div>
+      </div>
+
+      <div class="sa-club-action-btns">
+        <button class="sa-cab-cancel" onclick="closeSAClubActionModal()">Abbrechen</button>
+        <button class="sa-cab-deactivate" id="saClubActionDeactivateBtn" onclick="saConfirmDeactivate()">
+          Club deaktivieren
+        </button>
+        <button class="sa-cab-delete" onclick="saShowDeleteStep()">
+          Club endgültig löschen
+        </button>
+      </div>
+    </div>
+
+    <!-- Шаг 2: подтверждение удаления (ввод club_id + PIN) -->
+    <div id="saClubActionStep2" class="hidden">
+      <div class="sa-club-action-header">
+        <span class="sa-club-action-icon sa-club-action-icon--danger">💀</span>
+        <div>
+          <div class="sa-club-action-title sa-club-action-title--danger">Endgültig löschen</div>
+          <div class="sa-club-action-subtitle" id="saClubDeleteSubtitle"></div>
+        </div>
+      </div>
+
+      <div class="sa-club-action-danger-box">
+        <div class="sa-club-action-danger-line">⛔ Diese Aktion kann nicht rückgängig gemacht werden.</div>
+        <div class="sa-club-action-danger-line">Alle Daten dieses Clubs werden unwiderruflich gelöscht:</div>
+        <div class="sa-club-action-danger-list">
+          Trainer · Gruppen · Schüler · Anwesenheiten · Zahlungen · Archiv · Statistiken · Promo-Daten
+        </div>
+      </div>
+
+      <div class="sa-club-action-confirm-fields">
+        <label class="sa-label">Club-ID zur Bestätigung eingeben</label>
+        <input id="saDeleteConfirmClubId" class="sa-input" type="text"
+               placeholder="z.B. boxing-test"
+               oninput="saUpdateDeleteBtn()">
+
+        <label class="sa-label">Super Admin PIN</label>
+        <input id="saDeleteConfirmPin" class="sa-input" type="password"
+               placeholder="PIN eingeben"
+               oninput="saUpdateDeleteBtn()">
+
+        <div id="saDeleteError" class="sa-status"></div>
+      </div>
+
+      <div class="sa-club-action-btns">
+        <button class="sa-cab-cancel" onclick="saShowActionStep1()">← Zurück</button>
+        <button class="sa-cab-delete-confirm" id="saDeleteConfirmBtn"
+                onclick="saExecuteClubDelete()" disabled>
+          Endgültig löschen
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 

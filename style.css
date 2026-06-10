@@ -15107,6 +15107,7 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 .sa-club-card-name {
   font-size: 16px;
@@ -15229,6 +15230,149 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   color: #ff6b6b;
 }
 .sa-club-btn-deactivate:hover { background: rgba(255,107,107,0.2); }
+
+/* =========================================================
+   SUPER ADMIN — CLUB ACTION MODAL (Deactivate / Delete)
+   ========================================================= */
+.sa-club-action-panel {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  padding: 28px 24px 22px;
+}
+
+.sa-club-action-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.sa-club-action-icon {
+  font-size: 28px;
+  color: #d4af37;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.sa-club-action-icon--danger { color: #ff6b6b; }
+.sa-club-action-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e8e8e8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sa-club-action-title--danger { color: #ff6b6b; }
+.sa-club-action-subtitle {
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 3px;
+}
+
+.sa-club-action-warning {
+  background: rgba(212,175,55,0.07);
+  border: 1px solid rgba(212,175,55,0.25);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+}
+.sa-club-action-warning-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4af37;
+  margin-bottom: 4px;
+}
+.sa-club-action-warning-text {
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+}
+
+.sa-club-action-danger-box {
+  background: rgba(255,107,107,0.07);
+  border: 1px solid rgba(255,107,107,0.3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+}
+.sa-club-action-danger-line {
+  font-size: 12px;
+  color: rgba(255,150,150,0.85);
+  margin-bottom: 4px;
+}
+.sa-club-action-danger-line:last-of-type { margin-bottom: 0; }
+.sa-club-action-danger-list {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+.sa-club-action-confirm-fields { margin-bottom: 16px; }
+
+.sa-club-action-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sa-cab-cancel {
+  width: 100%;
+  padding: 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sa-cab-cancel:hover { background: rgba(255,255,255,0.1); }
+
+.sa-cab-deactivate {
+  width: 100%;
+  padding: 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,165,0,0.35);
+  background: rgba(255,165,0,0.08);
+  color: #ffa500;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sa-cab-deactivate:hover { background: rgba(255,165,0,0.18); }
+
+.sa-cab-delete {
+  width: 100%;
+  padding: 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,107,107,0.35);
+  background: rgba(255,107,107,0.08);
+  color: #ff6b6b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sa-cab-delete:hover { background: rgba(255,107,107,0.18); }
+
+.sa-cab-delete-confirm {
+  width: 100%;
+  padding: 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,60,60,0.5);
+  background: rgba(255,60,60,0.15);
+  color: #ff4444;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sa-cab-delete-confirm:hover:not(:disabled) { background: rgba(255,60,60,0.28); }
+.sa-cab-delete-confirm:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
 .sa-club-btn-activate {
   background: rgba(72,199,142,0.1);
@@ -15645,6 +15789,56 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
 /* =========================================================
    SUPER ADMIN — IMPERSONATION BADGE
    ========================================================= */
+/* =========================================================
+   CLUB PAYMENT WARNING BANNER (floating)
+   ========================================================= */
+.club-pay-warning {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 98000;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 20px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 90vw;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+  pointer-events: none;
+}
+.club-pay-warning.hidden { display: none; }
+
+.club-pay-warning--red {
+  background: linear-gradient(135deg, rgba(180,20,20,0.92) 0%, rgba(120,10,10,0.92) 100%);
+  border: 1px solid rgba(255,100,100,0.5);
+  color: #ffcccc;
+}
+.club-pay-warning--orange {
+  background: linear-gradient(135deg, rgba(160,90,0,0.92) 0%, rgba(110,60,0,0.92) 100%);
+  border: 1px solid rgba(255,165,0,0.5);
+  color: #ffe0a0;
+}
+.club-pay-warning--blue {
+  background: linear-gradient(135deg, rgba(20,60,130,0.92) 0%, rgba(10,40,100,0.92) 100%);
+  border: 1px solid rgba(100,160,255,0.45);
+  color: #c8deff;
+}
+.club-pay-warning-icon { font-size: 15px; flex-shrink: 0; }
+.club-pay-warning-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Если одновременно виден SA-бейдж — сдвигаем warning вниз */
+body.sa-imp-active .club-pay-warning {
+  top: 80px;
+}
+
+@media (max-width: 560px) {
+  .club-pay-warning { font-size: 11px; padding: 8px 14px; top: 8px; }
+  body.sa-imp-active .club-pay-warning { top: 90px; }
+}
+
 .sa-impersonation-badge {
   position: fixed;
   top: 12px;
@@ -15741,6 +15935,123 @@ body.sa-imp-active { padding-top: 72px; }
   font-weight: 600;
 }
 .sa-club-admin-sep { color: rgba(255,255,255,0.2); }
+
+.sa-club-card-name-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sa-club-warn-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 1px;
+}
+.sa-club-warn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: default;
+}
+.sa-club-warn--red    { background: rgba(255,60,60,0.13);   color: #ff6b6b;            border: 1px solid rgba(255,60,60,0.3); }
+.sa-club-warn--orange { background: rgba(255,165,0,0.12);   color: #ffa500;            border: 1px solid rgba(255,165,0,0.3); }
+.sa-club-warn--blue   { background: rgba(100,160,255,0.12); color: rgba(130,180,255,0.9); border: 1px solid rgba(100,160,255,0.3); }
+
+.sa-club-contract-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(212,175,55,0.28);
+  background: rgba(212,175,55,0.06);
+  font-size: 11px;
+  color: rgba(212,175,55,0.85);
+  flex-shrink: 1;
+  min-width: 0;
+}
+.sa-club-contract-icon { flex-shrink: 0; }
+.sa-club-contract-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sa-club-contract-none {
+  color: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.08);
+  background: transparent;
+  font-style: italic;
+}
+
+.sa-club-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.sa-club-link-label {
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+}
+.sa-club-link-url {
+  color: rgba(100,180,255,0.75);
+  font-family: monospace;
+  word-break: break-all;
+  flex: 1;
+}
+.sa-club-link-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(100,180,255,0.25);
+  background: rgba(100,180,255,0.07);
+  color: rgba(100,180,255,0.8);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sa-club-link-copy-btn:hover {
+  background: rgba(100,180,255,0.18);
+  border-color: rgba(100,180,255,0.5);
+}
+.sa-club-link-copy-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.sa-copy-icon {
+  line-height: 1;
+  pointer-events: none;
+}
+
+.sa-club-link-field-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sa-club-link-field-row .sa-input {
+  flex: 1;
+  font-size: 12px;
+  font-family: monospace;
+  color: rgba(100,180,255,0.85);
+}
+.sa-club-link-field-row .sa-club-link-copy-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+}
 
 /* =========================================================
    SUPER ADMIN — CLUBS SEARCH / FILTER
@@ -16052,3 +16363,101 @@ body.sa-imp-active { padding-top: 72px; }
   color: rgba(212,175,55,0.7);
   margin-top: 4px;
 }
+
+/* =========================================================
+   VERTRAG — блок в форме Zahlung hinzufügen
+   ========================================================= */
+.sa-vertrag-section {
+  border: 1px solid rgba(212,175,55,0.3) !important;
+  background: rgba(212,175,55,0.04) !important;
+}
+.sa-vertrag-section-title {
+  color: #d4af37 !important;
+}
+.sa-vertrag-details {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.25s ease;
+}
+.sa-vertrag-details.open {
+  max-height: 300px;
+  opacity: 1;
+}
+
+/* =========================================================
+   ZAHLUNGEN — Warning-блоки в карточке
+   ========================================================= */
+.sa-pay-warn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.sa-pay-warn--red {
+  background: rgba(255,60,60,0.1);
+  border: 1px solid rgba(255,60,60,0.35);
+  color: #ff6b6b;
+}
+.sa-pay-warn--orange {
+  background: rgba(255,165,0,0.09);
+  border: 1px solid rgba(255,165,0,0.3);
+  color: #ffa500;
+}
+.sa-pay-warn--blue {
+  background: rgba(100,160,255,0.09);
+  border: 1px solid rgba(100,160,255,0.3);
+  color: rgba(130,180,255,0.9);
+}
+
+/* Рамки карточек по статусу */
+.sa-pay-expiring {
+  border-color: rgba(255,165,0,0.45) !important;
+}
+
+/* =========================================================
+   ZAHLUNGEN — Dashboard-бейджи
+   ========================================================= */
+.sa-dash-zbadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.sa-dash-zbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sa-dash-zbadge--red    { background: rgba(255,60,60,0.15);  color: #ff6b6b; }
+.sa-dash-zbadge--orange { background: rgba(255,165,0,0.15);  color: #ffa500; }
+.sa-dash-zbadge--blue   { background: rgba(100,160,255,0.15);color: rgba(130,180,255,0.95); }
+
+/* =========================================================
+   VERTRAG — строка в карточке оплаты
+   ========================================================= */
+.sa-pay-contract-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  background: rgba(212,175,55,0.06);
+  border: 1px solid rgba(212,175,55,0.2);
+  border-radius: 7px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.sa-pay-contract-icon { color: #d4af37; font-size: 13px; flex-shrink: 0; }
+.sa-pay-contract-label { color: rgba(255,255,255,0.4); }
+.sa-pay-contract-value { color: rgba(212,175,55,0.9); font-weight: 600; }
+.sa-pay-contract-sep { color: rgba(255,255,255,0.15); }
+.sa-pay-contract-none { color: rgba(255,255,255,0.25); font-style: italic; }

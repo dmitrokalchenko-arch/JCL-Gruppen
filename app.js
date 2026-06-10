@@ -13,6 +13,7 @@ const DEFAULT_CLUB_ID = 'jcl';
 
 let superAdminSession    = null;
 let isSuperAdminAccess   = false;
+let isSAStandaloneMode   = false;   // true когда открыт через ?superadmin=1
 let _saClubsCache        = [];   // { club, studentCount, adminTrainer, tarifRows } — заполняется при loadAndRenderSAClubs
 
 const FALLBACK_CLUB = {
@@ -64,6 +65,9 @@ async function loadCurrentClubSettings() {
 function updateClubPaymentWarning() {
   const el = document.getElementById('clubPaymentWarning');
   if (!el) return;
+
+  // В standalone SA-режиме без просмотра клуба — не показывать
+  if (isSAStandaloneMode && !isSuperAdminAccess) { el.classList.add('hidden'); return; }
 
   // SA-импersonation: данные клуба уже в currentClub
   const club = currentClub;
@@ -566,6 +570,14 @@ function togglePinVisibility(){
 }
 
 window.onload = async function () {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('superadmin') === '1') {
+    isSAStandaloneMode = true;
+    document.body.classList.add('sa-standalone-mode');
+    document.getElementById('saStandalonePage')?.classList.remove('hidden');
+    setTimeout(() => document.getElementById('saStandaloneUsername')?.focus(), 100);
+    return;
+  }
   await loadCurrentClubSettings();
   showSportStartScreen();
 };
@@ -12235,32 +12247,44 @@ function closeSuperAdminLogin() {
   if (modal) modal.classList.add('hidden');
 }
 
-async function superAdminLogin() {
-  const username = document.getElementById('saUsername').value.trim();
-  const pin      = document.getElementById('saPin').value.trim();
-  const status   = document.getElementById('saLoginStatus');
-
+// Общий движок проверки SA-логина
+async function _superAdminLoginCore(username, pin, statusEl) {
   if (!username || !pin) {
-    status.textContent = 'Bitte Benutzername und PIN eingeben.';
+    statusEl.textContent = 'Bitte Benutzername und PIN eingeben.';
     return;
   }
-
-  status.textContent = 'Wird geprüft…';
-
+  statusEl.textContent = 'Wird geprüft…';
   const { data, error } = await db
     .from('super_admins')
     .select('id, username, name, pin')
     .eq('username', username)
     .maybeSingle();
-
   if (error || !data || data.pin !== pin) {
-    status.textContent = 'Falscher Benutzername oder PIN.';
+    statusEl.textContent = 'Falscher Benutzername oder PIN.';
     return;
   }
-
   superAdminSession = { id: data.id, username: data.username, name: data.name };
-  closeSuperAdminLogin();
+  statusEl.textContent = '';
+  if (isSAStandaloneMode) {
+    document.getElementById('saStandalonePage').classList.add('hidden');
+  } else {
+    closeSuperAdminLogin();
+  }
   showSuperAdminDashboard();
+}
+
+// Вход через модальное окно (gear на странице клуба)
+async function superAdminLogin() {
+  const username = document.getElementById('saUsername').value.trim();
+  const pin      = document.getElementById('saPin').value.trim();
+  await _superAdminLoginCore(username, pin, document.getElementById('saLoginStatus'));
+}
+
+// Вход через standalone-страницу (?superadmin=1)
+async function superAdminLoginStandalone() {
+  const username = document.getElementById('saStandaloneUsername').value.trim();
+  const pin      = document.getElementById('saStandalonePin').value.trim();
+  await _superAdminLoginCore(username, pin, document.getElementById('saStandaloneStatus'));
 }
 
 function showSuperAdminDashboard() {
@@ -12285,6 +12309,22 @@ function superAdminLogout() {
   document.getElementById('superAdminScreen').classList.add('hidden');
   document.getElementById('saImpersonationBadge')?.classList.add('hidden');
   document.body.classList.remove('sa-imp-active');
+  if (isSAStandaloneMode) {
+    document.getElementById('saStandalonePage').classList.remove('hidden');
+    document.getElementById('saStandaloneUsername').value = '';
+    document.getElementById('saStandalonePin').value      = '';
+    document.getElementById('saStandaloneStatus').textContent = '';
+    setTimeout(() => document.getElementById('saStandaloneUsername').focus(), 100);
+  }
+}
+
+function copySALink(btn) {
+  const url = `${window.location.origin}/?superadmin=1`;
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✅ Kopiert';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  });
 }
 
 // =========================================================
@@ -12305,6 +12345,7 @@ function saFormatDate(val) {
 function saExitImpersonation() {
   isSuperAdminAccess = false;
   document.getElementById('saImpersonationBadge')?.classList.add('hidden');
+  document.getElementById('clubPaymentWarning')?.classList.add('hidden');
   document.body.classList.remove('sa-imp-active');
 
   // Скрыть клубский UI (стартовый экран / appBox)

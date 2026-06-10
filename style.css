@@ -14910,6 +14910,14 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   color: rgba(255,255,255,0.45);
 }
 
+.sa-screen-header-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
 .sa-logout-btn {
   background: rgba(255,255,255,0.07);
   border: 1px solid rgba(255,255,255,0.15);
@@ -14919,12 +14927,94 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   padding: 8px 16px;
   cursor: pointer;
   white-space: nowrap;
-  margin-top: 4px;
   transition: all 0.2s;
 }
 .sa-logout-btn:hover {
   background: rgba(255,255,255,0.12);
   color: #fff;
+}
+
+.sa-copy-link-btn {
+  background: rgba(212,175,55,0.08);
+  border: 1px solid rgba(212,175,55,0.3);
+  border-radius: 7px;
+  color: rgba(212,175,55,0.8);
+  font-size: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.sa-copy-link-btn:hover {
+  background: rgba(212,175,55,0.16);
+  color: #d4af37;
+}
+
+/* =========================================================
+   SUPER ADMIN — STANDALONE PAGE (?superadmin=1)
+   ========================================================= */
+body.sa-standalone-mode {
+  background: #07111c !important;
+  /* Нейтральный фон без цветов клуба */
+}
+body.sa-standalone-mode #sportStartScreen,
+body.sa-standalone-mode #appBox,
+body.sa-standalone-mode #clubPaymentWarning {
+  display: none !important;
+}
+
+.sa-standalone-page {
+  position: fixed;
+  inset: 0;
+  z-index: 88000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 30%, rgba(212,175,55,0.07) 0%, #07111c 60%);
+}
+.sa-standalone-page.hidden { display: none; }
+
+.sa-standalone-card {
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: #0f1923;
+  border: 1px solid rgba(212,175,55,0.35);
+  border-radius: 16px;
+  padding: 36px 28px 28px;
+  box-shadow: 0 12px 50px rgba(0,0,0,0.75), 0 0 0 1px rgba(212,175,55,0.08);
+}
+
+.sa-standalone-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.sa-standalone-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+  color: #d4af37;
+}
+.sa-standalone-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #e8e8e8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sa-standalone-subtitle {
+  font-size: 12px;
+  color: rgba(212,175,55,0.6);
+  margin-top: 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sa-standalone-btn {
+  width: 100%;
+  margin-top: 18px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 /* Сетка карточек Dashboard */

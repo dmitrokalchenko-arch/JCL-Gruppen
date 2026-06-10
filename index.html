@@ -2690,7 +2690,12 @@ Abbrechen
       <h1 class="sa-screen-title">Super Admin Control Center</h1>
       <div id="saWelcomeName" class="sa-screen-subtitle"></div>
     </div>
-    <button class="sa-logout-btn" onclick="superAdminLogout()">← Verlassen</button>
+    <div class="sa-screen-header-right">
+      <button class="sa-copy-link-btn" onclick="copySALink(this)" title="Super Admin Link kopieren">
+        ⧉ SA-Link
+      </button>
+      <button class="sa-logout-btn" onclick="superAdminLogout()">← Verlassen</button>
+    </div>
   </div>
 
   <div class="sa-dashboard-grid">
@@ -3542,6 +3547,31 @@ Abbrechen
 
   <div id="saClubsList" class="sa-clubs-list"></div>
 
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — STANDALONE LOGIN PAGE (?superadmin=1)
+========================================================= -->
+<div id="saStandalonePage" class="sa-standalone-page hidden">
+  <div class="sa-standalone-card">
+    <div class="sa-standalone-header">
+      <div class="sa-standalone-icon">⚙</div>
+      <div class="sa-standalone-title">Super Admin</div>
+      <div class="sa-standalone-subtitle">Control Center</div>
+    </div>
+    <label class="sa-label">Benutzername</label>
+    <input id="saStandaloneUsername" class="sa-input" type="text"
+           placeholder="Benutzername" autocomplete="off"
+           onkeydown="if(event.key==='Enter') document.getElementById('saStandalonePin').focus()">
+    <label class="sa-label">PIN-Code</label>
+    <input id="saStandalonePin" class="sa-input" type="password"
+           placeholder="PIN" autocomplete="off"
+           onkeydown="if(event.key==='Enter') superAdminLoginStandalone()">
+    <div id="saStandaloneStatus" class="sa-status"></div>
+    <button class="sa-btn-login sa-standalone-btn" onclick="superAdminLoginStandalone()">
+      Anmelden
+    </button>
+  </div>
 </div>
 
 <!-- Club Payment Warning Banner (floating, visible when payment/contract issues) -->

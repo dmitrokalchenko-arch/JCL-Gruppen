@@ -12352,6 +12352,9 @@ function saExitImpersonation() {
   document.getElementById('sportStartScreen')?.classList.add('hidden');
   document.getElementById('appBox')?.classList.add('hidden');
 
+  // Восстановить standalone-класс если зашли через ?superadmin=1
+  if (isSAStandaloneMode) document.body.classList.add('sa-standalone-mode');
+
   // Вернуться в SA Dashboard → Clubs Management
   document.getElementById('superAdminScreen')?.classList.remove('hidden');
   showSAClubsScreen();
@@ -12738,10 +12741,12 @@ async function saOpenClub(clubId) {
   // Применяем тему клуба
   currentClub = club;
   applyClubSettings();
-  updateClubPaymentWarning();
 
   // Устанавливаем SA-режим
   isSuperAdminAccess = true;
+
+  // В standalone-режиме убираем класс, чтобы club UI не скрывался
+  document.body.classList.remove('sa-standalone-mode');
 
   // Скрываем все SA-экраны
   document.getElementById('superAdminScreen')?.classList.add('hidden');
@@ -12756,6 +12761,8 @@ async function saOpenClub(clubId) {
   const clubNameEl = document.getElementById('saImpClubName');
   if (clubNameEl) clubNameEl.textContent = '— ' + (club.club_name || clubId);
   document.body.classList.add('sa-imp-active');
+
+  updateClubPaymentWarning();
 
   // Показываем стартовый экран клуба
   showSportStartScreen();

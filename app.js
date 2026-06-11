@@ -44,7 +44,6 @@ async function loadCurrentClubSettings() {
       .from('clubs')
       .select('*')
       .eq('club_id', clubId)
-      .eq('active', true)
       .maybeSingle();
 
     if (error || !data) {
@@ -52,7 +51,7 @@ async function loadCurrentClubSettings() {
       currentClub = FALLBACK_CLUB;
     } else {
       currentClub = data;
-      console.log('[Club] Einstellungen geladen:', currentClub.club_short_name);
+      console.log('[Club] Einstellungen geladen:', currentClub.club_short_name, '| active:', currentClub.active);
     }
   } catch (e) {
     console.warn('[Club] Netzwerkfehler — Fallback aktiv:', e);
@@ -60,6 +59,57 @@ async function loadCurrentClubSettings() {
   }
   applyClubSettings();
   updateClubPaymentWarning();
+}
+
+function getClubAccessBlock() {
+  if (!currentClub || currentClub === FALLBACK_CLUB) return null;
+  if (currentClub.active === false) {
+    return 'Der Zugang zu diesem Club ist aktuell durch den Systemadministrator deaktiviert.';
+  }
+  const { payWarn } = saGetClubWarningStatus(currentClub);
+  if (payWarn === 'expired') {
+    return 'Der Zugang zu diesem Club ist gesperrt, da der Zahlungszeitraum abgelaufen ist.';
+  }
+  return null;
+}
+
+async function getClubAccessBlockFresh() {
+  const clubId = getCurrentClubId();
+  console.log('[ClubBlock] Prüfe Club-Zugang für club_id:', clubId);
+  const { data: club, error } = await db
+    .from('clubs')
+    .select('club_id, active, aktiv_bis, billing_cycle, contract_active, contract_auto_debit')
+    .eq('club_id', clubId)
+    .maybeSingle();
+  console.log('[ClubBlock] Club-Daten:', club, '| Fehler:', error);
+  if (error || !club) {
+    console.warn('[ClubBlock] Club nicht gefunden — Zugang blockiert');
+    return 'Der Zugang zu diesem Club ist nicht verfügbar.';
+  }
+  console.log('[ClubBlock] active:', club.active, '| aktiv_bis:', club.aktiv_bis);
+
+  // Синхронизируем currentClub с актуальными данными и перерисовываем баннер,
+  // чтобы повторная активация SA сразу отражалась без перезагрузки страницы
+  if (currentClub && currentClub !== FALLBACK_CLUB) {
+    currentClub.active    = club.active;
+    currentClub.aktiv_bis = club.aktiv_bis;
+    currentClub.billing_cycle       = club.billing_cycle;
+    currentClub.contract_active     = club.contract_active;
+    currentClub.contract_auto_debit = club.contract_auto_debit;
+    updateClubPaymentWarning();
+  }
+
+  let blockReason = null;
+  if (club.active === false) {
+    blockReason = 'Der Zugang zu diesem Club ist aktuell durch den Systemadministrator deaktiviert.';
+  } else {
+    const { payWarn } = saGetClubWarningStatus(club);
+    if (payWarn === 'expired') {
+      blockReason = 'Der Zugang zu diesem Club ist gesperrt, da der Zahlungszeitraum abgelaufen ist.';
+    }
+  }
+  console.log('[ClubBlock] Blockierungsgrund:', blockReason ?? 'keiner — Zugang erlaubt');
+  return blockReason;
 }
 
 function updateClubPaymentWarning() {
@@ -81,6 +131,10 @@ function updateClubPaymentWarning() {
     cls  = 'club-pay-warning--red';
     icon = '🔴';
     text = 'Die Zahlung ist abgelaufen. Der Club ist derzeit nicht aktiv.';
+  } else if (club.active === false) {
+    cls  = 'club-pay-warning--red';
+    icon = '🔴';
+    text = 'Der Zugang zu diesem Club wurde durch den Systemadministrator vorübergehend deaktiviert.';
   } else if (payWarn === 'soon') {
     cls  = 'club-pay-warning--orange';
     icon = '⚠';
@@ -819,6 +873,14 @@ async function login() {
   if (!trainerId) {
     status.textContent = 'Bitte Trainer auswählen.';
     return;
+  }
+
+  if (!isSuperAdminAccess) {
+    const _blockReason = await getClubAccessBlockFresh();
+    if (_blockReason) {
+      showCustomMessage(_blockReason);
+      return;
+    }
   }
 
   // Im Super Admin Impersonation Mode PIN-Prüfung überspringen

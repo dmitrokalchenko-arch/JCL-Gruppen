@@ -1811,6 +1811,13 @@ function filterStudentsUniversal(list, filters) {
       return false;
     }
 
+    if (
+      filters.geschlecht &&
+      String(student.geschlecht || 'Keine Angabe') !== String(filters.geschlecht)
+    ) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -2236,10 +2243,10 @@ async function renderStudentTableUniversal(students, options = {}) {
   fullStudents.forEach(function(student, index) {
 
     const statusIcon = getStudentStatusIcon(student);
-    const rowColorClass = 'student-universal-row-' + (index % 4);
+    const rowGenderClass = getGenderRowClass(student);
 
     html += `
-      <tr class="${rowColorClass}">
+      <tr class="${rowGenderClass}">
 
         ${showCheckbox ? `
           <td>
@@ -4174,6 +4181,7 @@ students = filterStudentsUniversal(students, {
   kyuTo: document.getElementById('adminStatKyuTo')?.value || '',
   obiFrom: document.getElementById('adminStatObiFrom')?.value || '',
   obiTo: document.getElementById('adminStatObiTo')?.value || '',
+  geschlecht: document.getElementById('adminStatGeschlecht')?.value || '',
   groupId: ''
 });
 
@@ -4183,6 +4191,13 @@ showCheckbox:false,
 showGroup:true,
 showComment:false
 });
+
+const countEl = document.getElementById('adminFilterCount');
+if(countEl){
+  countEl.textContent = students.length > 0
+    ? `Gefunden: ${students.length} Schüler`
+    : 'Keine Schüler gefunden';
+}
 
 }
 
@@ -4196,7 +4211,8 @@ fields:[
 'adminStatKyuFrom',
 'adminStatKyuTo',
 'adminStatObiFrom',
-'adminStatObiTo'
+'adminStatObiTo',
+'adminStatGeschlecht'
 ],
 callback:applyAdminStudentFilter
 });
@@ -5143,10 +5159,10 @@ async function renderWeight(groupId) {
 
   students.forEach(function(student, index){
 
-    const rowColorClass = 'weight-row-color-' + (index % 4);
+    const rowGenderClass = getGenderRowClass(student);
 
     html += `
-      <div class="weight-modern-row ${rowColorClass}">
+      <div class="weight-modern-row ${rowGenderClass}">
 
         <div class="weight-number-badge">
           ${index + 1}
@@ -5458,11 +5474,13 @@ statusIcon === '⚠️'
 ? 'attendance-warning-row'
 : '';
 
+const genderClass = getGenderRowClass(student);
+
 const showAttendanceCheckbox =
 currentTrainer && currentTrainer.role === 'Trainer';
 
 html += `
-<tr class="${rowClass}">
+<tr class="${[rowClass, genderClass].filter(Boolean).join(' ')}">
 
 
 
@@ -5954,6 +5972,19 @@ async function loadTodayAttendanceCount(groupId) {
 
 function getStudentRating(student) {
   return student.calculatedRating || student.rating || student.trainingsgesamt || student.trainings_gesamt || 0;
+}
+
+function getGenderRowClass(student) {
+  const raw = String(
+    student.geschlecht || student.Geschlecht || ''
+  ).toLowerCase().trim();
+  if (raw === 'männlich' || raw === 'maennlich' || raw === 'mannlich') {
+    return 'student-row-male';
+  }
+  if (raw === 'weiblich') {
+    return 'student-row-female';
+  }
+  return 'student-row-other';
 }
 
 function getStudentStatusIcon(student){
@@ -6485,6 +6516,13 @@ const cfg = getSportConfig(student.sport_id);
 const studentName =
 (student.vorname || '') + ' ' + (student.nachname || '');
 
+const genderIconMap = {
+  'Männlich': '♂',
+  'Weiblich': '♀',
+  'Divers':   '⚧'
+};
+const genderIcon = genderIconMap[student.geschlecht] || '';
+
 const entryDate =
   student.eintrittsdatum ||
   student.probetraining_start ||
@@ -6510,7 +6548,9 @@ return `
     ${photoHtml}
 
     <div>
-      <div class="student-name">${studentName}</div>
+      <div class="student-name">
+        ${studentName}${genderIcon ? `<span class="gender-badge">${genderIcon}</span>` : ''}
+      </div>
 
       <div class="student-badges">
         <span class="student-badge badge-blue">Alter: ${student.alter || '-'}</span>
@@ -6939,6 +6979,16 @@ value="${student.vorname || ''}">
 </div>
 
 <div>
+<label>Geschlecht</label>
+<select id="editGeschlecht">
+  <option value="Keine Angabe" ${(student.geschlecht || 'Keine Angabe') === 'Keine Angabe' ? 'selected' : ''}>Keine Angabe</option>
+  <option value="Männlich" ${student.geschlecht === 'Männlich' ? 'selected' : ''}>Männlich</option>
+  <option value="Weiblich" ${student.geschlecht === 'Weiblich' ? 'selected' : ''}>Weiblich</option>
+  <option value="Divers" ${student.geschlecht === 'Divers' ? 'selected' : ''}>Divers</option>
+</select>
+</div>
+
+<div>
 <label>Geburtsdatum</label>
 <input
 id="editGeburtsdatum"
@@ -7339,6 +7389,16 @@ formBox.innerHTML = `
 </div>
 
 <div>
+<label>Geschlecht</label>
+<select id="newGeschlecht">
+  <option value="Keine Angabe">Keine Angabe</option>
+  <option value="Männlich">Männlich</option>
+  <option value="Weiblich">Weiblich</option>
+  <option value="Divers">Divers</option>
+</select>
+</div>
+
+<div>
 <label>Geburtsdatum</label>
 
 <div class="birthdate-row">
@@ -7647,6 +7707,9 @@ async function saveNewStudent(groupId) {
     kommentar:
       document.getElementById('newKommentar')?.value?.trim() || '',
 
+    geschlecht:
+      document.getElementById('newGeschlecht')?.value || 'Keine Angabe',
+
     gruppe_id: groupId,
     sport_id: sportId,
 
@@ -7723,7 +7786,8 @@ document.getElementById('editGruppe')?.value || '',
   telefon: document.getElementById('editTelefon')?.value?.trim() || '',
   email: document.getElementById('editEmail')?.value?.trim() || '',
   foto_url: document.getElementById('editFotoUrl')?.value?.trim() || '',
-  kommentar: document.getElementById('editKommentar')?.value?.trim() || ''
+  kommentar: document.getElementById('editKommentar')?.value?.trim() || '',
+  geschlecht: document.getElementById('editGeschlecht')?.value || 'Keine Angabe'
 };
 
 const { data, error } = await db
@@ -7811,6 +7875,36 @@ if(previousScreenBeforeEditStudent === 'attendanceScreen'){
 
 }
 
+if(previousScreenBeforeEditStudent === 'adminStudentScreen'){
+
+  hideAllWorkScreens();
+  document.getElementById('adminStudentScreen').classList.remove('hidden');
+  previousScreenBeforeEditStudent = null;
+  await applyAdminStudentFilter();
+  return;
+
+}
+
+if(previousScreenBeforeEditStudent === 'groupScreen'){
+
+  hideAllWorkScreens();
+  document.getElementById('groupScreen').classList.remove('hidden');
+  previousScreenBeforeEditStudent = null;
+  await applyGroupFilter();
+  return;
+
+}
+
+if(previousScreenBeforeEditStudent === 'clubStatistikScreen'){
+
+  hideAllWorkScreens();
+  document.getElementById('clubStudentStatsScreen').classList.remove('hidden');
+  previousScreenBeforeEditStudent = null;
+  await showFilteredStudentsForStatistics();
+  return;
+
+}
+
 cancelStudentEditForm();
 
 }
@@ -7873,16 +7967,6 @@ async function openClubStudentStatsFromClub() {
 
   document.getElementById('currentGroupInfo').textContent =
     'Aktuelle Seite: Club Statistik / Schüler Statistik';
-
-  const statsResult = document.getElementById('statsResult');
-  if (statsResult) {
-    statsResult.textContent = 'Keine Statistik geladen.';
-  }
-
-  const statsStudentsList = document.getElementById('statsStudentsList');
-  if (statsStudentsList) {
-    statsStudentsList.innerHTML = '';
-  }
 
   await loadClubStudentSportFilter();
   await showFilteredStudentsForStatistics();
@@ -7977,21 +8061,6 @@ async function handleClubStudentSportFilterChange() {
     select?.value || ''
   );
 
-  const statsResult =
-    document.getElementById('statsResult');
-
-  if(statsResult){
-    statsResult.textContent =
-      'Keine Statistik geladen.';
-  }
-
-  const statsStudentsList =
-    document.getElementById('statsStudentsList');
-
-  if(statsStudentsList){
-    statsStudentsList.innerHTML = '';
-  }
-
   await showFilteredStudentsForStatistics();
 
 }
@@ -8008,19 +8077,9 @@ async function handleClubSportFilterChange() {
   await loadClubStatisticsSupabase();
   await loadSportStatsOverview();
 
-  const statsResult =
-    document.getElementById('statsResult');
-
-  if(statsResult){
-    statsResult.textContent =
-      'Keine Statistik geladen.';
-  }
-
-  const statsStudentsList =
-    document.getElementById('statsStudentsList');
-
-  if(statsStudentsList){
-    statsStudentsList.innerHTML = '';
+  const clubStudentStatsScreen = document.getElementById('clubStudentStatsScreen');
+  if (clubStudentStatsScreen && !clubStudentStatsScreen.classList.contains('hidden')) {
+    await showFilteredStudentsForStatistics();
   }
 
 }
@@ -8175,6 +8234,22 @@ const { data: students } = await studentsQuery;
   document.getElementById('clubTrainerCount').textContent = trainerCount;
   document.getElementById('clubGroupCount').textContent = (groups || []).length;
   document.getElementById('clubStudentCount').textContent = (students || []).length;
+
+  const gCount = { 'Männlich': 0, 'Weiblich': 0, 'Divers': 0, 'Keine Angabe': 0 };
+  (students || []).forEach(s => {
+    const g = String(s.geschlecht || 'Keine Angabe');
+    if (gCount[g] !== undefined) gCount[g]++;
+    else gCount['Keine Angabe']++;
+  });
+  const gBox = document.getElementById('clubStudentGenderStats');
+  if (gBox) {
+    gBox.innerHTML = `
+      <span class="csg-badge csg-male">♂ ${gCount['Männlich']}</span>
+      <span class="csg-badge csg-female">♀ ${gCount['Weiblich']}</span>
+      <span class="csg-badge csg-divers">⚧ ${gCount['Divers']}</span>
+      <span class="csg-badge csg-unknown">– ${gCount['Keine Angabe']}</span>
+    `;
+  }
 }
 
 function getClubObiRank(obi) {
@@ -8223,6 +8298,7 @@ async function getClubFilteredStudents() {
   const ageTo = document.getElementById('statAgeTo')?.value;
   const obiFrom = document.getElementById('statObiFrom')?.value;
   const obiTo = document.getElementById('statObiTo')?.value;
+  const geschlecht = document.getElementById('statGeschlecht')?.value || '';
 
   const selectedSport =
     document.getElementById('clubStudentSportFilter')?.value ||
@@ -8254,6 +8330,8 @@ async function getClubFilteredStudents() {
     if (obiFrom && (obiRank === null || obiRank < Number(obiFrom))) return false;
     if (obiTo && (obiRank === null || obiRank > Number(obiTo))) return false;
 
+    if (geschlecht && String(student.geschlecht || 'Keine Angabe') !== geschlecht) return false;
+
     return true;
   });
 }
@@ -8265,18 +8343,60 @@ async function applyStatsFilter() {
 
   const filtered = await getClubFilteredStudents();
 
-  resultBox.textContent =
-    'Gefunden: ' + filtered.length + ' Schüler';
+  const gCount = {
+    'Männlich': 0,
+    'Weiblich': 0,
+    'Divers': 0,
+    'Keine Angabe': 0
+  };
+  filtered.forEach(s => {
+    const g = String(s.geschlecht || 'Keine Angabe');
+    if (gCount[g] !== undefined) gCount[g]++;
+    else gCount['Keine Angabe']++;
+  });
 
-  document.getElementById('statsStudentsList').innerHTML = '';
+  resultBox.innerHTML = `
+    <div class="geschlecht-stat-row">
+      <span class="geschlecht-stat-badge badge-blue">Gesamt: <strong>${filtered.length}</strong></span>
+      <span class="geschlecht-stat-badge badge-blue">♂ Männlich: <strong>${gCount['Männlich']}</strong></span>
+      <span class="geschlecht-stat-badge badge-pink">♀ Weiblich: <strong>${gCount['Weiblich']}</strong></span>
+      <span class="geschlecht-stat-badge badge-purple">⚧ Divers: <strong>${gCount['Divers']}</strong></span>
+      <span class="geschlecht-stat-badge badge-gray">— Keine Angabe: <strong>${gCount['Keine Angabe']}</strong></span>
+    </div>
+  `;
+
+  await renderStudentTableUniversal(filtered, {
+    containerId: 'statsStudentsList',
+    showCheckbox: false,
+    showGroup: true,
+    showComment: false
+  });
 }
 
 async function showFilteredStudentsForStatistics() {
   const box = document.getElementById('statsStudentsList');
-
   box.innerHTML = 'Schüler werden geladen...';
 
   const filtered = await getClubFilteredStudents();
+
+  const gCount = { 'Männlich': 0, 'Weiblich': 0, 'Divers': 0, 'Keine Angabe': 0 };
+  filtered.forEach(s => {
+    const g = String(s.geschlecht || 'Keine Angabe');
+    if (gCount[g] !== undefined) gCount[g]++;
+    else gCount['Keine Angabe']++;
+  });
+  const resultBox = document.getElementById('statsResult');
+  if (resultBox) {
+    resultBox.innerHTML = `
+      <div class="geschlecht-stat-row">
+        <span class="geschlecht-stat-badge badge-blue">Gesamt: <strong>${filtered.length}</strong></span>
+        <span class="geschlecht-stat-badge badge-blue">♂ Männlich: <strong>${gCount['Männlich']}</strong></span>
+        <span class="geschlecht-stat-badge badge-pink">♀ Weiblich: <strong>${gCount['Weiblich']}</strong></span>
+        <span class="geschlecht-stat-badge badge-purple">⚧ Divers: <strong>${gCount['Divers']}</strong></span>
+        <span class="geschlecht-stat-badge badge-gray">— Keine Angabe: <strong>${gCount['Keine Angabe']}</strong></span>
+      </div>
+    `;
+  }
 
   await renderStudentTableUniversal(filtered, {
     containerId: 'statsStudentsList',
@@ -8697,6 +8817,7 @@ async function applyTrainerFilters() {
     kyuTo: document.getElementById('trainerFilterKyuTo')?.value || '',
     obiFrom: document.getElementById('trainerFilterObiFrom')?.value || '',
     obiTo: document.getElementById('trainerFilterObiTo')?.value || '',
+    geschlecht: document.getElementById('trainerFilterGeschlecht')?.value || '',
     groupId: document.getElementById('trainerFilterGroup')?.value || '',
     allowedGroupIds: trainerId ? allowedGroupIds : []
   });
@@ -8724,7 +8845,8 @@ async function resetTrainerFilters() {
       'trainerFilterKyuTo',
       'trainerFilterObiFrom',
       'trainerFilterObiTo',
-      'trainerFilterGroup'
+      'trainerFilterGroup',
+      'trainerFilterGeschlecht'
     ],
     suggestionsId: 'trainerStudentNameSuggestions',
     callback: applyTrainerFilters

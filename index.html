@@ -1311,6 +1311,7 @@ style="cursor:pointer;"
       <div>
         <div class="club-stat-title">Schüler</div>
         <div id="clubStudentCount" class="club-stat-number">-</div>
+        <div id="clubStudentGenderStats" class="club-student-gender-row"></div>
       </div>
     </div>
 
@@ -1557,6 +1558,17 @@ Studenten Anwesenheit Statistik
           <option value="10">schwarz</option>
         </select>
       </div>
+
+      <div>
+        <label>Geschlecht</label>
+        <select id="statGeschlecht">
+          <option value="">Alle</option>
+          <option value="Männlich">Männlich</option>
+          <option value="Weiblich">Weiblich</option>
+          <option value="Divers">Divers</option>
+          <option value="Keine Angabe">Keine Angabe</option>
+        </select>
+      </div>
     </div>
 
     <div class="club-action-grid">
@@ -1675,7 +1687,16 @@ Alle Gruppen
       <div id="adminStudentNameSuggestions" class="suggestions-box"></div>
     </div>
 
-    <div></div>
+    <div>
+      <label>Geschlecht</label>
+      <select id="adminStatGeschlecht">
+        <option value="">Alle</option>
+        <option value="Männlich">Männlich</option>
+        <option value="Weiblich">Weiblich</option>
+        <option value="Divers">Divers</option>
+        <option value="Keine Angabe">Keine Angabe</option>
+      </select>
+    </div>
 
     <div>
       <label>Alter von</label>
@@ -1717,9 +1738,12 @@ Alle Gruppen
 
   </div>
 
-  <div class="trainer-filter-buttons">
-    <button class="trainer-purple-button" onclick="applyAdminStudentFilter()">🔎 Filtern</button>
-    <button class="trainer-light-button" onclick="resetAdminStudentFilter()">↩ Filter zurücksetzen</button>
+  <div class="admin-filter-bottom-row">
+    <div class="trainer-filter-buttons">
+      <button class="trainer-purple-button" onclick="applyAdminStudentFilter()">🔎 Filtern</button>
+      <button class="trainer-light-button" onclick="resetAdminStudentFilter()">↩ Filter zurücksetzen</button>
+    </div>
+    <div id="adminFilterCount" class="admin-filter-count"></div>
   </div>
 
 </div>
@@ -2443,7 +2467,19 @@ onclick="toggleTrainerStudentFilter()"
         </div>
       </div>
 
-      
+      <div>
+        <label>Geschlecht</label>
+        <div class="trainer-input-row">
+          <div class="trainer-field-icon">⚧</div>
+          <select id="trainerFilterGeschlecht">
+            <option value="">Alle</option>
+            <option value="Männlich">Männlich</option>
+            <option value="Weiblich">Weiblich</option>
+            <option value="Divers">Divers</option>
+            <option value="Keine Angabe">Keine Angabe</option>
+          </select>
+        </div>
+      </div>
 
     </div>
 

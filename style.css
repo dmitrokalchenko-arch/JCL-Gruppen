@@ -1314,6 +1314,9 @@ box-sizing: border-box;
   font-size: 30px;
   font-weight: 900;
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
 }
 
 .student-badges{
@@ -4078,32 +4081,29 @@ white-space:nowrap;
 }
   */
 
-/* ===== UNIVERSAL STUDENT TABLE SOFT ROW COLORS ===== */
-/*
-.student-universal-table {
-  margin-top: 14px;
+/* ===== GENDER ROW COLOURING ===== */
+/* Colour applied directly to <td> so it overrides all dark-theme td !important rules */
+
+.student-row-male > td {
+  background: rgba(80, 160, 255, 0.16) !important;
+}
+.student-row-female > td {
+  background: rgba(255, 120, 190, 0.16) !important;
+}
+.student-row-other > td {
+  background: rgba(212, 175, 55, 0.11) !important;
 }
 
-.student-universal-row-0 {
-  background: #f8fbff;
+/* Left accent border on first cell only */
+.student-row-male > td:first-child {
+  border-left: 4px solid rgba(80, 160, 255, 0.9) !important;
 }
-
-.student-universal-row-1 {
-  background: #f7fff9;
+.student-row-female > td:first-child {
+  border-left: 4px solid rgba(255, 120, 190, 0.9) !important;
 }
-
-.student-universal-row-2 {
-  background: #fffaf0;
+.student-row-other > td:first-child {
+  border-left: 4px solid rgba(212, 175, 55, 0.9) !important;
 }
-
-.student-universal-row-3 {
-  background: #faf5ff;
-}
-
-.student-universal-table tr:hover {
-  filter: brightness(0.98);
-}
-*/
 
 
 #adminStudentScreen .trainer-control-grid{
@@ -6468,14 +6468,15 @@ body:has(#adminStudentScreen:not(.hidden)) #appBox{
 #adminStudentScreen #adminStudentStatsBox .trainer-filter-grid{
   display:grid !important;
   grid-template-columns:
-    minmax(180px, 1.6fr)
-    78px
-    78px
-    92px
-    92px
-    92px
-    92px !important;
-  gap:10px !important;
+    minmax(160px, 1.4fr)
+    100px
+    72px
+    72px
+    88px
+    88px
+    88px
+    88px !important;
+  gap:8px !important;
   align-items:end !important;
 }
 
@@ -6501,20 +6502,58 @@ body:has(#adminStudentScreen:not(.hidden)) #appBox{
   border-radius:9px !important;
 }
 
-/* кнопки фильтра справа, как на рисунке */
+/* Geschlecht select — тёмный стиль как у других фильтров */
+
+#adminStudentScreen #adminStatGeschlecht {
+  background: rgba(30, 55, 110, 0.85) !important;
+  color: #fff !important;
+  border: 1.5px solid rgba(100, 160, 255, 0.75) !important;
+}
+
+#adminStudentScreen #adminStatGeschlecht option {
+  background: #1a2a55 !important;
+  color: #fff !important;
+}
+
+/* нижняя строка: кнопки слева + счётчик справа */
+
+.admin-filter-bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
 
 #adminStudentScreen #adminStudentStatsBox .trainer-filter-buttons{
   display:grid !important;
   grid-template-columns:150px 170px !important;
   gap:10px !important;
-  justify-content:end !important;
-  margin-top:10px !important;
+  margin-top:0 !important;
 }
 
 #adminStudentScreen #adminStudentStatsBox .trainer-filter-buttons button{
   height:44px !important;
   font-size:13px !important;
   border-radius:10px !important;
+}
+
+/* счётчик результатов */
+
+#adminFilterCount {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(80, 160, 255, 0.12);
+  border: 1px solid rgba(80, 160, 255, 0.3);
+  border-radius: 10px;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+
+#adminFilterCount:empty {
+  display: none;
 }
 
 /* таблица не должна вылезать за экран */
@@ -6549,14 +6588,15 @@ body:has(#adminStudentScreen:not(.hidden)) #appBox{
 
   #adminStudentScreen #adminStudentStatsBox .trainer-filter-grid{
     grid-template-columns:
-      minmax(160px, 1.4fr)
-      70px
-      70px
-      82px
-      82px
-      82px
-      82px !important;
-    gap:8px !important;
+      minmax(140px, 1.2fr)
+      90px
+      65px
+      65px
+      78px
+      78px
+      78px
+      78px !important;
+    gap:6px !important;
   }
 
   #adminStudentScreen #adminStudentStatsBox input,
@@ -16550,4 +16590,190 @@ body.sa-imp-active { padding-top: 72px; }
 .sa-pay-contract-label { color: rgba(255,255,255,0.4); }
 .sa-pay-contract-value { color: rgba(212,175,55,0.9); font-weight: 600; }
 .sa-pay-contract-sep { color: rgba(255,255,255,0.15); }
+
+/* ── Geschlecht Statistik Badges ─────────────────────────────────── */
+.geschlecht-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.geschlecht-stat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.geschlecht-stat-badge.badge-blue   { background: rgba(37,99,235,0.18); color: #93c5fd; border: 1px solid rgba(37,99,235,0.35); }
+.geschlecht-stat-badge.badge-pink   { background: rgba(236,72,153,0.18); color: #f9a8d4; border: 1px solid rgba(236,72,153,0.35); }
+.geschlecht-stat-badge.badge-purple { background: rgba(168,85,247,0.18); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.35); }
+.geschlecht-stat-badge.badge-gray   { background: rgba(148,163,184,0.14); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.25); }
+
+/* Club Statistik — карточка пола расширена на всю ширину */
+/* old gender card removed — gender stats are now inline in Schüler card */
+
+/* 3-column grid for top 3 cards */
+#clubStatistikScreen .club-summary-grid {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+/* inline gender badges inside Schüler card */
+.club-student-gender-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.club-student-gender-row .csg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  line-height: 1.4;
+}
+
+.club-student-gender-row .csg-male {
+  background: rgba(80, 160, 255, 0.18);
+  color: #90c8ff;
+  border: 1px solid rgba(80, 160, 255, 0.45);
+}
+
+.club-student-gender-row .csg-female {
+  background: rgba(255, 100, 180, 0.18);
+  color: #ffb3e0;
+  border: 1px solid rgba(255, 100, 180, 0.45);
+}
+
+.club-student-gender-row .csg-divers {
+  background: rgba(180, 100, 255, 0.18);
+  color: #d4aaff;
+  border: 1px solid rgba(180, 100, 255, 0.45);
+}
+
+.club-student-gender-row .csg-unknown {
+  background: rgba(180, 180, 180, 0.14);
+  color: #c0c8d8;
+  border: 1px solid rgba(180, 180, 180, 0.28);
+}
+
+/* Schüler Statistik — statsResult для geschlecht */
+#statsResult .geschlecht-stat-row {
+  margin-top: 4px;
+}
+
+/* Значок пола — универсальный премиум-бейдж JCL */
+.gender-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.14);
+  border: 2.5px solid #d4af37;
+  box-shadow:
+    0 0 14px rgba(212, 175, 55, 0.55),
+    0 0  4px rgba(212, 175, 55, 0.80),
+    inset 0 0 10px rgba(212, 175, 55, 0.12);
+  font-size: 25px;
+  line-height: 1;
+  color: #ffe066;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.95);
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-left: 10px;
+  position: relative;
+  top: -1px;
+}
+
+@media (max-width: 768px) {
+  .gender-badge {
+    width: 38px;
+    height: 38px;
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .gender-badge {
+    width: 34px;
+    height: 34px;
+    font-size: 21px;
+  }
+}
 .sa-pay-contract-none { color: rgba(255,255,255,0.25); font-style: italic; }
+
+
+/* ===== GENDER ROW HIGHLIGHT — HIGH-SPECIFICITY OVERRIDES =====
+  Specificity: 2 IDs + 1 class = beats all single-ID rules in this file.
+  Using parent screen ID + container ID ensures we win even over nth-child rules.
+======================================================================== */
+
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-male > td,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-male > td,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-male > td,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-male > td,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-male > td,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-male > td,
+#attendanceScreen    #studentsList                  tr.student-row-male > td {
+  background: rgba(80, 160, 255, 0.22) !important;
+}
+
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-female > td,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-female > td,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-female > td,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-female > td,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-female > td,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-female > td,
+#attendanceScreen    #studentsList                  tr.student-row-female > td {
+  background: rgba(255, 120, 190, 0.22) !important;
+}
+
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-other > td,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-other > td,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-other > td,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-other > td,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-other > td,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-other > td,
+#attendanceScreen    #studentsList                  tr.student-row-other > td {
+  background: rgba(212, 175, 55, 0.15) !important;
+}
+
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-male > td:first-child,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-male > td:first-child,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-male > td:first-child,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-male > td:first-child,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-male > td:first-child,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-male > td:first-child,
+#attendanceScreen    #studentsList                  tr.student-row-male > td:first-child {
+  border-left: 4px solid rgba(80, 160, 255, 0.9) !important;
+}
+
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-female > td:first-child,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-female > td:first-child,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-female > td:first-child,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-female > td:first-child,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-female > td:first-child,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-female > td:first-child,
+#attendanceScreen    #studentsList                  tr.student-row-female > td:first-child {
+  border-left: 4px solid rgba(255, 120, 190, 0.9) !important;
+}
+
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-other > td:first-child,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-other > td:first-child,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-other > td:first-child,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-other > td:first-child,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-other > td:first-child,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-other > td:first-child,
+#attendanceScreen    #studentsList                  tr.student-row-other > td:first-child {
+  border-left: 4px solid rgba(212, 175, 55, 0.9) !important;
+}

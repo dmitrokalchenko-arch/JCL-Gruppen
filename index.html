@@ -212,7 +212,7 @@
   <div class="dashboard-text">Trainer-, Admin- und Buchhaltungskonten verwalten</div>
 </button>
 
-<button class="dashboard-card" onclick="showAdminBuchhaltungScreen()">
+<button class="dashboard-card" onclick="showPromoTransition(()=>showAdminBuchhaltungScreen())">
   <div class="dashboard-title">Administrator / Buchhaltung</div>
   <div class="dashboard-text">Admin- und Buchhaltungsdaten verwalten</div>
 </button>
@@ -1337,7 +1337,7 @@ Studenten Anwesenheit Statistik
 <!-- ===== ZEITRAUM STATISTIK BUTTON ===== -->
 <div
   class="club-stat-card zr-entry-card"
-  onclick="showZeitraumStatistikScreen()"
+  onclick="navigateWithPromo(()=>showZeitraumStatistikScreen())"
   style="cursor:pointer;"
 >
   <div class="club-stat-icon">📈</div>
@@ -1635,7 +1635,7 @@ Alle Gruppen
 <button
   id="orphanStudentsButton"
   class="orphan-students-button hidden"
-  onclick="showOrphanStudentsList()">
+  onclick="navigateWithPromo(()=>showOrphanStudentsList())">
 
   ⚠ Ohne Gruppe / Trainer: 0
 
@@ -1797,7 +1797,7 @@ Alle Gruppen
 
       <div
         class="club-stat-card club-purple"
-        onclick="showAdminStatistikCenter()"
+        onclick="showPromoTransition(()=>showAdminStatistikCenter())"
         style="cursor:pointer;"
       >
         <div class="club-stat-icon">📅</div>
@@ -1987,7 +1987,7 @@ oder ohne aktiven Trainer
   <button
     type="button"
     class="admin-buch-add-card"
-    onclick="showAddAdminBuchForm()"
+    onclick="navigateWithPromo(()=>showAddAdminBuchForm())"
   >
     <div class="admin-buch-add-icon">➕</div>
 
@@ -2136,7 +2136,15 @@ Daten werden geladen...
         <div id="groupStudentNameSuggestions" class="suggestions-box"></div>
       </div>
 
-      <div></div>
+      <div>
+        <label>Geschlecht</label>
+        <select id="groupStatGeschlecht">
+          <option value="">Alle</option>
+          <option value="männlich">männlich</option>
+          <option value="weiblich">weiblich</option>
+          <option value="divers">divers</option>
+        </select>
+      </div>
 
       <div>
         <label>Alter von</label>
@@ -2289,7 +2297,7 @@ Daten werden geladen...
   <button
   id="editSelectedTrainerBtn"
   class="trainer-small-action-btn trainer-img-btn"
-  onclick="openEditSelectedTrainer()"
+  onclick="navigateWithPromo(()=>openEditSelectedTrainer())"
   disabled
   title="Trainer bearbeiten"
 >
@@ -2736,21 +2744,21 @@ Abbrechen
 
   <div class="sa-dashboard-grid">
 
-    <button class="sa-dash-card sa-dash-active" onclick="showSAClubsScreen()">
+    <button class="sa-dash-card sa-dash-active" onclick="navigateWithPromo(()=>showSAClubsScreen())">
       <div class="sa-dash-icon">🏢</div>
       <div class="sa-dash-title">Clubs Management</div>
       <div class="sa-dash-text">Clubs ansehen, erstellen, bearbeiten</div>
       <div class="sa-dash-soon">In Entwicklung</div>
     </button>
 
-    <button class="sa-dash-card sa-dash-active" onclick="showSATarifScreen()">
+    <button class="sa-dash-card sa-dash-active" onclick="navigateWithPromo(()=>showSATarifScreen())">
       <div class="sa-dash-icon">💰</div>
       <div class="sa-dash-title">Tarifpakete / Preise</div>
       <div class="sa-dash-text">Pakete, Grenzen und Preise verwalten</div>
       <div class="sa-dash-soon">In Entwicklung</div>
     </button>
 
-    <button class="sa-dash-card sa-dash-active" onclick="showSAZahlungenScreen()">
+    <button class="sa-dash-card sa-dash-active" onclick="navigateWithPromo(()=>showSAZahlungenScreen())">
       <div class="sa-dash-icon">💳</div>
       <div class="sa-dash-title">Zahlungen / Abo</div>
       <div class="sa-dash-text">Zahlungen registrieren, Abos verlängern</div>
@@ -3271,7 +3279,7 @@ Abbrechen
         <h2 class="sa-clubs-title">Tarifpakete / Preise</h2>
       </div>
     </div>
-    <button class="sa-new-club-btn" onclick="showSATarifFormNew()">+ Neuer Tarif</button>
+    <button class="sa-new-club-btn" onclick="navigateWithPromo(()=>showSATarifFormNew())">+ Neuer Tarif</button>
   </div>
 
   <div id="saTarifLoadingMsg" class="sa-clubs-loading">Tarife werden geladen…</div>
@@ -3556,7 +3564,7 @@ Abbrechen
         <h2 class="sa-clubs-title">Clubs Management</h2>
       </div>
     </div>
-    <button class="sa-new-club-btn" onclick="showSANewClubScreen()">+ Neuer Club</button>
+    <button class="sa-new-club-btn" onclick="navigateWithPromo(()=>showSANewClubScreen())">+ Neuer Club</button>
   </div>
 
   <div class="sa-clubs-search-bar">

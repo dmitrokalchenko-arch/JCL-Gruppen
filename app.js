@@ -421,6 +421,12 @@ async function showPromoTransition(callback) {
   promoTransitionActive = false;
 }
 
+function navigateWithPromo(callback) {
+  showPromoTransition(() => {
+    if (typeof callback === 'function') callback();
+  });
+}
+
 // =========================================================
 // ST1 — STARTSEITE / SPORTAUSWAHL
 // Первая страница сайта: выбор вида спорта
@@ -1090,20 +1096,16 @@ if (
   currentView === 'addTrainer' &&
   previousView === 'adminBuchhaltung'
 ) {
-
-  hideAllWorkScreens();
-
-  currentView = 'adminBuchhaltung';
-
-  document
-    .getElementById('adminBuchhaltungScreen')
-    .classList.remove('hidden');
-
-  document.getElementById('currentGroupInfo').textContent =
-    'Aktuelle Seite: Administrator / Buchhaltung';
-
-  loadAdminBuchhaltungUsers();
-
+  showPromoTransition(() => {
+    hideAllWorkScreens();
+    currentView = 'adminBuchhaltung';
+    document
+      .getElementById('adminBuchhaltungScreen')
+      .classList.remove('hidden');
+    document.getElementById('currentGroupInfo').textContent =
+      'Aktuelle Seite: Administrator / Buchhaltung';
+    loadAdminBuchhaltungUsers();
+  });
   return;
 }
 
@@ -1111,20 +1113,16 @@ if (
   currentView === 'editTrainer' &&
   previousView === 'adminBuchhaltung'
 ) {
-
-  hideAllWorkScreens();
-
-  currentView = 'adminBuchhaltung';
-
-  document
-    .getElementById('adminBuchhaltungScreen')
-    .classList.remove('hidden');
-
-  document.getElementById('currentGroupInfo').textContent =
-    'Aktuelle Seite: Administrator / Buchhaltung';
-
-  loadAdminBuchhaltungUsers();
-
+  showPromoTransition(() => {
+    hideAllWorkScreens();
+    currentView = 'adminBuchhaltung';
+    document
+      .getElementById('adminBuchhaltungScreen')
+      .classList.remove('hidden');
+    document.getElementById('currentGroupInfo').textContent =
+      'Aktuelle Seite: Administrator / Buchhaltung';
+    loadAdminBuchhaltungUsers();
+  });
   return;
 }
   if (
@@ -1222,21 +1220,14 @@ if (
 }
 
   if(previousScreenBeforeEditStudent){
-
-hideAllWorkScreens();
-
-const screen =
-document.getElementById(
-previousScreenBeforeEditStudent
-);
-
-if(screen){
-screen.classList.remove('hidden');
-}
-
-previousScreenBeforeEditStudent=null;
-return;
-
+  const _targetEdit = previousScreenBeforeEditStudent;
+  previousScreenBeforeEditStudent = null;
+  showPromoTransition(() => {
+    hideAllWorkScreens();
+    const screen = document.getElementById(_targetEdit);
+    if(screen){ screen.classList.remove('hidden'); }
+  });
+  return;
 }
 
     const weightScreen = document.getElementById('weightScreen');
@@ -1246,32 +1237,30 @@ return;
     !weightScreen.classList.contains('hidden') &&
     previousScreenBeforeWeight
   ) {
-    hideAllWorkScreens();
-
-    const screen = document.getElementById(previousScreenBeforeWeight);
-
-    if (screen) {
-      screen.classList.remove('hidden');
-    }
-
+    const _targetWeight = previousScreenBeforeWeight;
     previousScreenBeforeWeight = null;
+    showPromoTransition(() => {
+      hideAllWorkScreens();
+      const screen = document.getElementById(_targetWeight);
+      if (screen) { screen.classList.remove('hidden'); }
+    });
     return;
   }
 
   if(previousScreenBeforeStats){
-    hideAllWorkScreens();
-
-    const screen = document.getElementById(previousScreenBeforeStats);
-
-    if(screen){
-      screen.classList.remove('hidden');
-    }
-
+    const _targetStats = previousScreenBeforeStats;
     previousScreenBeforeStats = null;
+    showPromoTransition(() => {
+      hideAllWorkScreens();
+      const screen = document.getElementById(_targetStats);
+      if(screen){ screen.classList.remove('hidden'); }
+    });
     return;
   }
 
-  goRoleHome();
+  showPromoTransition(() => {
+    goRoleHome();
+  });
 }
 
 function getClubLogoUrl() {
@@ -1282,19 +1271,14 @@ function getClubLogoUrl() {
 function cancelStudentEditForm(){
 
 if(previousScreenBeforeEditStudent){
-
-hideAllWorkScreens();
-
-const screen =
-document.getElementById(previousScreenBeforeEditStudent);
-
-if(screen){
-screen.classList.remove('hidden');
-}
-
-previousScreenBeforeEditStudent = null;
-
-return;
+  const _targetCancel = previousScreenBeforeEditStudent;
+  previousScreenBeforeEditStudent = null;
+  showPromoTransition(() => {
+    hideAllWorkScreens();
+    const screen = document.getElementById(_targetCancel);
+    if(screen){ screen.classList.remove('hidden'); }
+  });
+  return;
 }
 
 goBack();
@@ -1645,9 +1629,19 @@ async function loadStudents() {
 
   }
 
-  counterBox.textContent =
-  '👥 Gesamt Schüler: ' +
-  students.length;
+  const _gCount = { männlich: 0, weiblich: 0, divers: 0 };
+  students.forEach(s => {
+    const g = String(s.geschlecht || '').trim().toLowerCase();
+    if (_gCount[g] !== undefined) _gCount[g]++;
+  });
+  counterBox.innerHTML = `
+    <div class="counter-main-line">👥 Gesamt Schüler: ${students.length}</div>
+    <div class="counter-gender-row">
+      <span class="cgr-badge cgr-male">♂ ${_gCount['männlich']}</span>
+      <span class="cgr-badge cgr-female">♀ ${_gCount['weiblich']}</span>
+      <span class="cgr-badge cgr-divers">⚧ ${_gCount['divers']}</span>
+    </div>
+  `;
 
   // Wiegung-Button bei Gruppenwechsel aktualisieren
   if (groupId && students.length > 0) {
@@ -1698,6 +1692,7 @@ async function applyGroupFilter() {
     kyuTo: document.getElementById('groupStatKyuTo')?.value || '',
     obiFrom: document.getElementById('groupStatObiFrom')?.value || '',
     obiTo: document.getElementById('groupStatObiTo')?.value || '',
+    geschlecht: document.getElementById('groupStatGeschlecht')?.value || '',
     groupId: selectedGroupId,
     allowedGroupIds: selectedGroupId ? [] : allowedGroupIds
   });
@@ -1730,7 +1725,8 @@ async function resetGroupStudentStatsFilter() {
       'groupStatKyuFrom',
       'groupStatKyuTo',
       'groupStatObiFrom',
-      'groupStatObiTo'
+      'groupStatObiTo',
+      'groupStatGeschlecht'
     ],
 
     suggestionsId: 'groupStudentNameSuggestions',
@@ -1813,7 +1809,7 @@ function filterStudentsUniversal(list, filters) {
 
     if (
       filters.geschlecht &&
-      String(student.geschlecht || 'Keine Angabe') !== String(filters.geschlecht)
+      String(student.geschlecht || '').trim().toLowerCase() !== String(filters.geschlecht).trim().toLowerCase()
     ) {
       return false;
     }
@@ -2282,7 +2278,7 @@ async function renderStudentTableUniversal(students, options = {}) {
 
   <button
     class="table-img-action-btn"
-    onclick="editStudent('${getStudentId(student)}')"
+    onclick="navigateWithPromo(()=>editStudent('${getStudentId(student)}'))"
     title="Schüler bearbeiten">
     <img src="${BUTTONS_URL}Stud_Edit.png" alt="Bearbeiten">
   </button>
@@ -2296,7 +2292,7 @@ async function renderStudentTableUniversal(students, options = {}) {
 
   <button
     class="table-img-action-btn"
-    onclick="showStudentStats('${getStudentId(student)}')"
+    onclick="navigateWithPromo(()=>showStudentStats('${getStudentId(student)}'))"
     title="Statistik anzeigen">
     <img src="${BUTTONS_URL}Stud_Statistik.png" alt="Statistik">
   </button>
@@ -4428,6 +4424,7 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
       student_id: student.student_id,
       nachname: student.nachname || '',
       vorname: student.vorname || '',
+      geschlecht: student.geschlecht || '',
       alter: getAgeFromStudent(student),
       gruppe: getGroupText(student),
       trainer: getTrainerText(student),
@@ -4465,6 +4462,7 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
         student_id: a.student_id,
         nachname: base.nachname || '',
         vorname: base.vorname || '',
+        geschlecht: base.geschlecht || '',
         alter: getAgeFromStudent(base),
         gruppe: getGroupText(base),
         trainer: getTrainerText(base),
@@ -4648,8 +4646,10 @@ function buildBuchhaltungStudentRow(student, showDoneButton, actionType, number)
       ? `confirmBuchhaltungContract('${safeId}')`
       : `confirmBuchhaltungArchived('${archivId}')`;
 
+  const genderClass = getGenderRowClass(student);
+
   return `
-    <div class="buch-row">
+    <div class="buch-row ${genderClass}">
       <div><b>${number}. ${student.nachname || '-'}</b></div>
       <div>${student.vorname || '-'}</div>
       <div>${student.alter || '-'}</div>
@@ -4667,7 +4667,7 @@ function buildBuchhaltungStudentRow(student, showDoneButton, actionType, number)
       </div>
 
       <div>
-        <button class="buch-img-btn statistic" onclick="showStudentStats('${safeId}')" title="Statistik">
+        <button class="buch-img-btn statistic" onclick="navigateWithPromo(()=>showStudentStats('${safeId}'))" title="Statistik">
           <img src="${BUTTONS_URL}Stud_Statistik.png" alt="Statistik">
         </button>
       </div>
@@ -5527,7 +5527,7 @@ ${groupCfg.showWeight     ? `<td>${student.aktuelles_gewicht ? student.aktuelles
 
   <button
     class="table-img-action-btn"
-    onclick="editStudent('${getStudentId(student)}')"
+    onclick="navigateWithPromo(()=>editStudent('${getStudentId(student)}'))"
     title="Schüler bearbeiten">
     <img src="${BUTTONS_URL}Stud_Edit.png" alt="Bearbeiten">
   </button>
@@ -5541,7 +5541,7 @@ ${groupCfg.showWeight     ? `<td>${student.aktuelles_gewicht ? student.aktuelles
 
   <button
     class="table-img-action-btn"
-    onclick="showStudentStats('${getStudentId(student)}')"
+    onclick="navigateWithPromo(()=>showStudentStats('${getStudentId(student)}'))"
     title="Statistik anzeigen">
     <img src="${BUTTONS_URL}Stud_Statistik.png" alt="Statistik">
   </button>
@@ -5979,12 +5979,15 @@ function getGenderRowClass(student) {
     student.geschlecht || student.Geschlecht || ''
   ).toLowerCase().trim();
   if (raw === 'männlich' || raw === 'maennlich' || raw === 'mannlich') {
-    return 'student-row-male';
+    return 'student-row-male gender-male';
   }
   if (raw === 'weiblich') {
-    return 'student-row-female';
+    return 'student-row-female gender-female';
   }
-  return 'student-row-other';
+  if (raw === 'divers') {
+    return 'student-row-divers gender-divers';
+  }
+  return 'student-row-other gender-other';
 }
 
 function getStudentStatusIcon(student){
@@ -6521,7 +6524,11 @@ const genderIconMap = {
   'Weiblich': '♀',
   'Divers':   '⚧'
 };
-const genderIcon = genderIconMap[student.geschlecht] || '';
+const _rawG = String(student.geschlecht || '').trim();
+const genderIcon = genderIconMap[_rawG]
+  || genderIconMap[_rawG.charAt(0).toUpperCase() + _rawG.slice(1).toLowerCase()]
+  || '';
+const genderClass = getGenderRowClass(student);
 
 const entryDate =
   student.eintrittsdatum ||
@@ -6541,7 +6548,7 @@ const photoHtml = student.foto_url
 
 return `
 
-<div class="student-stats-card">
+<div class="student-stats-card ${genderClass}">
 
   <div class="student-hero">
 
@@ -9928,14 +9935,13 @@ async function backToGroupOverview() {
   previousView = 'clubStatistik';
   currentView = 'groupOverview';
 
-  hideAllWorkScreens();
-
-  document.getElementById('groupOverviewScreen').classList.remove('hidden');
-
-  document.getElementById('currentGroupInfo').textContent =
-    'Aktuelle Seite: Gruppen Übersicht';
-
-  await showGroupOverviewScreen();
+  await showPromoTransition(async () => {
+    hideAllWorkScreens();
+    document.getElementById('groupOverviewScreen').classList.remove('hidden');
+    document.getElementById('currentGroupInfo').textContent =
+      'Aktuelle Seite: Gruppen Übersicht';
+    await showGroupOverviewScreen();
+  });
 }
 
 function toggleEditTrainingDaysBox() {
@@ -10833,35 +10839,31 @@ function clearNewGroupForm() {
 
 async function backToTrainerStatistik() {
 
-  hideAllWorkScreens();
-
   if (previousView === 'adminBuchhaltung') {
-
-    currentView = 'adminBuchhaltung';
-
-    document
-      .getElementById('adminBuchhaltungScreen')
-      .classList.remove('hidden');
-
-    document.getElementById('currentGroupInfo').textContent =
-      'Aktuelle Seite: Administrator / Buchhaltung';
-
-    await loadAdminBuchhaltungUsers();
-
+    await showPromoTransition(async () => {
+      hideAllWorkScreens();
+      currentView = 'adminBuchhaltung';
+      document
+        .getElementById('adminBuchhaltungScreen')
+        .classList.remove('hidden');
+      document.getElementById('currentGroupInfo').textContent =
+        'Aktuelle Seite: Administrator / Buchhaltung';
+      await loadAdminBuchhaltungUsers();
+    });
     return;
   }
 
-  previousView = 'clubStatistik';
-  currentView = 'trainerAdminFromClub';
-
-  document
-    .getElementById('trainerAdminScreen')
-    .classList.remove('hidden');
-
-  document.getElementById('currentGroupInfo').textContent =
-    'Aktuelle Seite: Club Statistik / Trainer Statistik';
-
-  await loadTrainerAdminOverview();
+  await showPromoTransition(async () => {
+    hideAllWorkScreens();
+    previousView = 'clubStatistik';
+    currentView = 'trainerAdminFromClub';
+    document
+      .getElementById('trainerAdminScreen')
+      .classList.remove('hidden');
+    document.getElementById('currentGroupInfo').textContent =
+      'Aktuelle Seite: Club Statistik / Trainer Statistik';
+    await loadTrainerAdminOverview();
+  });
 }
 
 async function openTrainerStatistikFromAdmin() {
@@ -12527,21 +12529,19 @@ function saFormatDate(val) {
 }
 
 function saExitImpersonation() {
+  // Немедленно сбрасываем состояние impersonation (до promo)
   isSuperAdminAccess = false;
   document.getElementById('saImpersonationBadge')?.classList.add('hidden');
   document.getElementById('clubPaymentWarning')?.classList.add('hidden');
   document.body.classList.remove('sa-imp-active');
-
-  // Скрыть клубский UI (стартовый экран / appBox)
-  document.getElementById('sportStartScreen')?.classList.add('hidden');
-  document.getElementById('appBox')?.classList.add('hidden');
-
-  // Восстановить standalone-класс если зашли через ?superadmin=1
   if (isSAStandaloneMode) document.body.classList.add('sa-standalone-mode');
 
-  // Вернуться в SA Dashboard → Clubs Management
-  document.getElementById('superAdminScreen')?.classList.remove('hidden');
-  showSAClubsScreen();
+  showPromoTransition(async () => {
+    document.getElementById('sportStartScreen')?.classList.add('hidden');
+    document.getElementById('appBox')?.classList.add('hidden');
+    document.getElementById('superAdminScreen')?.classList.remove('hidden');
+    await showSAClubsScreen();
+  });
 }
 
 async function showSAClubsScreen() {
@@ -12552,7 +12552,9 @@ async function showSAClubsScreen() {
 }
 
 function hideSAClubsScreen() {
-  document.getElementById('saClubsScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saClubsScreen').classList.add('hidden');
+  });
 }
 
 async function loadAndRenderSAClubs() {
@@ -12993,7 +12995,9 @@ function showSANewClubScreen() {
 }
 
 function hideSANewClubScreen() {
-  document.getElementById('saNewClubScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saNewClubScreen').classList.add('hidden');
+  });
 }
 
 // Авто-подсказка club_id из названия клуба (только если поле ещё пустое)
@@ -13160,7 +13164,9 @@ async function showSATarifScreen() {
 }
 
 function hideSATarifScreen() {
-  document.getElementById('saTarifScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saTarifScreen').classList.add('hidden');
+  });
 }
 
 async function loadAndRenderSATarife() {
@@ -13293,7 +13299,9 @@ async function showSATarifFormEdit(tarifId) {
 }
 
 function hideSATarifForm() {
-  document.getElementById('saTarifFormScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saTarifFormScreen').classList.add('hidden');
+  });
 }
 
 async function saveSATarif() {
@@ -13437,7 +13445,9 @@ async function showSAEditClubScreen(clubId) {
 }
 
 function hideSAEditClubScreen() {
-  document.getElementById('saEditClubScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saEditClubScreen').classList.add('hidden');
+  });
 }
 
 async function saveSAEditClub() {
@@ -13767,7 +13777,9 @@ async function showSAZahlungenScreen() {
 }
 
 function hideSAZahlungenScreen() {
-  document.getElementById('saZahlungenScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saZahlungenScreen').classList.add('hidden');
+  });
 }
 
 async function loadAndRenderSAZahlungen() {
@@ -14055,7 +14067,9 @@ async function showSAZahlungForm(clubId) {
 }
 
 function hideSAZahlungForm() {
-  document.getElementById('saZahlungFormScreen').classList.add('hidden');
+  showPromoTransition(() => {
+    document.getElementById('saZahlungFormScreen').classList.add('hidden');
+  });
 }
 
 function saToggleContractFields() {

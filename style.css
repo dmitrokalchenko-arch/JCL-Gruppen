@@ -11861,6 +11861,36 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   color: #ffd84d !important;
 }
 
+/* Gender-строка под счётчиком */
+#groupScreen .counter-main-line {
+  font-size: 30px;
+  font-weight: 900;
+  color: #ffd84d;
+  line-height: 1.2;
+}
+
+#groupScreen .counter-gender-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.cgr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+}
+
+.cgr-male   { background: rgba(59,130,246,0.18); color: #60a5fa; border: 1px solid rgba(59,130,246,0.35); }
+.cgr-female { background: rgba(236,72,153,0.18); color: #f472b6; border: 1px solid rgba(236,72,153,0.35); }
+.cgr-divers { background: rgba(167,139,250,0.18); color: #c4b5fd; border: 1px solid rgba(167,139,250,0.35); }
+
 /* Цифра количества */
 #groupScreen #studentCountValue {
   font-size: 54px !important;
@@ -16776,4 +16806,81 @@ body.sa-imp-active { padding-top: 72px; }
 #trainerAdminScreen  #trainerStudentListBlock        tr.student-row-other > td:first-child,
 #attendanceScreen    #studentsList                  tr.student-row-other > td:first-child {
   border-left: 4px solid rgba(212, 175, 55, 0.9) !important;
+}
+
+/* ===================================================================
+   UNIVERSAL GENDER CLASSES
+   gender-male / gender-female / gender-divers / gender-other
+   Работают на любых элементах: <tr>, <div>, карточках, блоках.
+=================================================================== */
+
+/* ── Базовый фон (для div-элементов, не td) ── */
+.gender-male   { background: rgba(80,  160, 255, 0.13) !important; }
+.gender-female { background: rgba(255, 120, 190, 0.13) !important; }
+.gender-divers { background: rgba(167, 139, 250, 0.13) !important; }
+
+/* ── student-row-divers в таблицах (<tr>) ── */
+.student-row-divers > td {
+  background: rgba(167, 139, 250, 0.16) !important;
+}
+.student-row-divers > td:first-child {
+  border-left: 4px solid rgba(167, 139, 250, 0.9) !important;
+}
+
+/* high-specificity для divers в известных таблицах */
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-divers > td,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-divers > td,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-divers > td,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-divers > td,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-divers > td,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-divers > td,
+#attendanceScreen    #studentsList                  tr.student-row-divers > td {
+  background: rgba(167, 139, 250, 0.22) !important;
+}
+#adminStudentScreen  #adminStudentStatsResult  tbody tr.student-row-divers > td:first-child,
+#groupScreen         #groupStudentStatsResult  tbody tr.student-row-divers > td:first-child,
+#clubStudentStatsScreen #statsStudentsList     tbody tr.student-row-divers > td:first-child,
+#orphanStudentsScreen   #orphanStudentsResult  tbody tr.student-row-divers > td:first-child,
+#trainerAdminScreen  #trainerStudentsList           tr.student-row-divers > td:first-child,
+#trainerAdminScreen  #trainerStudentListBlock        tr.student-row-divers > td:first-child,
+#attendanceScreen    #studentsList                  tr.student-row-divers > td:first-child {
+  border-left: 4px solid rgba(167, 139, 250, 0.9) !important;
+}
+
+/* ── Buchhaltung rows (.buch-row — flex-div, не tr/td) ── */
+.buch-row.gender-male {
+  background: rgba(40,  120, 255, 0.18) !important;
+  border-left: 3px solid rgba(80,  160, 255, 0.7) !important;
+}
+.buch-row.gender-female {
+  background: rgba(255, 80,  160, 0.18) !important;
+  border-left: 3px solid rgba(255, 120, 190, 0.7) !important;
+}
+.buch-row.gender-divers {
+  background: rgba(160, 90,  255, 0.18) !important;
+  border-left: 3px solid rgba(167, 139, 250, 0.7) !important;
+}
+
+/* ── Schüler Statistik — student-stats-card ── */
+/* Специфичность 1 ID + 2 класса + 1 класс > 1 ID + 1 класс у базовых правил */
+
+#studentStatsScreen .student-stats-card.gender-male .student-hero,
+#studentStatsScreen .student-stats-card.gender-male .training-card,
+#studentStatsScreen .student-stats-card.gender-male .personal-info-card {
+  background: rgba(40, 120, 255, 0.18) !important;
+  border-color: rgba(80, 160, 255, 0.55) !important;
+}
+
+#studentStatsScreen .student-stats-card.gender-female .student-hero,
+#studentStatsScreen .student-stats-card.gender-female .training-card,
+#studentStatsScreen .student-stats-card.gender-female .personal-info-card {
+  background: rgba(255, 80, 160, 0.18) !important;
+  border-color: rgba(255, 120, 190, 0.55) !important;
+}
+
+#studentStatsScreen .student-stats-card.gender-divers .student-hero,
+#studentStatsScreen .student-stats-card.gender-divers .training-card,
+#studentStatsScreen .student-stats-card.gender-divers .personal-info-card {
+  background: rgba(160, 90, 255, 0.18) !important;
+  border-color: rgba(167, 139, 250, 0.55) !important;
 }

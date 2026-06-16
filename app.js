@@ -395,10 +395,26 @@ async function showPromoTransition(callback) {
     return;
   }
 
-  img.src = getPromoImageUrl();
+  // Скрыть overlay и очистить старое изображение ДО назначения нового src,
+  // чтобы браузер не успел отрисовать предыдущий кадр.
+  overlay.classList.add('hidden');
+  overlay.classList.remove('promo-running');
+  img.src = '';
+
+  const newSrc = getPromoImageUrl();
+
+  // Дождаться загрузки нового изображения перед показом overlay.
+  await new Promise(resolve => {
+    img.onload  = resolve;
+    img.onerror = resolve; // при ошибке всё равно продолжаем
+    img.src = newSrc;
+    // Если изображение уже в кэше — complete=true, onload не стрелит
+    if (img.complete && img.naturalWidth > 0) resolve();
+  });
+  img.onload  = null;
+  img.onerror = null;
 
   overlay.classList.remove('hidden');
-  overlay.classList.remove('promo-running');
 
   void overlay.offsetWidth;
 

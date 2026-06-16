@@ -12277,6 +12277,32 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
   border-right: none !important;
 }
 
+/* ===== WEIGHT ROW GENDER COLORS ===== */
+
+#weightScreen .weight-modern-row.gender-male {
+  background: rgba(80, 160, 255, 0.18) !important;
+  border-color: rgba(80, 160, 255, 0.45) !important;
+  box-shadow:
+    0 0 10px rgba(80, 160, 255, 0.2),
+    inset 0 0 8px rgba(80, 160, 255, 0.1) !important;
+}
+
+#weightScreen .weight-modern-row.gender-female {
+  background: rgba(255, 120, 190, 0.18) !important;
+  border-color: rgba(255, 120, 190, 0.45) !important;
+  box-shadow:
+    0 0 10px rgba(255, 120, 190, 0.2),
+    inset 0 0 8px rgba(255, 120, 190, 0.1) !important;
+}
+
+#weightScreen .weight-modern-row.gender-divers {
+  background: rgba(167, 139, 250, 0.18) !important;
+  border-color: rgba(167, 139, 250, 0.45) !important;
+  box-shadow:
+    0 0 10px rgba(167, 139, 250, 0.2),
+    inset 0 0 8px rgba(167, 139, 250, 0.1) !important;
+}
+
 /* ===== WEIGHT KG STYLE ===== */
 
 #weightScreen .weight-unit {

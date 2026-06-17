@@ -91,6 +91,16 @@ background-attachment:fixed;
 
 .top-title-block {
   flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.top-logo-img {
+  height: 94px;
+  width: auto;
+  max-width: 468px;
+  object-fit: contain;
+  display: block;
 }
 
 .top-icon-actions {
@@ -12334,6 +12344,11 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
     gap: 8px !important;
   }
 
+  .top-logo-img {
+    height: 36px !important;
+    max-width: 160px !important;
+  }
+
   /* --- Карточки административного дашборда --- */
   .dashboard-card {
     padding: 16px 14px 16px 70px !important;
@@ -12408,6 +12423,11 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
 
   .top-header {
     padding: 0 6px 8px 6px !important;
+  }
+
+  .top-logo-img {
+    height: 28px !important;
+    max-width: 130px !important;
   }
 
   .club-summary-grid {

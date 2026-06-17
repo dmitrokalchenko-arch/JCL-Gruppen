@@ -7394,6 +7394,11 @@ if (!formSportId && groupId) {
 const formCfg = getSportConfig(formSportId);
 const formBox = document.getElementById('addStudentForm');
 
+window._addStudentFormSportId = formSportId;
+window._addStudentFormGroupId = groupId;
+window._selectedExistingStudent = null;
+window._addStudentSuggestionsCache = {};
+
 formBox.innerHTML = `
 <div class="add-student-form-box">
 
@@ -7401,9 +7406,10 @@ formBox.innerHTML = `
 
 <div class="student-form-grid">
 
-<div>
+<div style="position:relative">
 <label>Nachname</label>
-<input id="newNachname" placeholder="Nachname">
+<input id="newNachname" placeholder="Nachname" oninput="showAddStudentNameSuggestions()" autocomplete="off">
+<div id="addStudentNameSuggestions" class="suggestions-box"></div>
 </div>
 
 <div>
@@ -7540,6 +7546,138 @@ if(groupId){
 
 goRoleHome();
 
+}
+
+async function showAddStudentNameSuggestions() {
+  const input = document.getElementById('newNachname');
+  const box   = document.getElementById('addStudentNameSuggestions');
+  if (!input || !box) return;
+
+  const query = input.value.trim().toLowerCase();
+  if (query.length < 2) { box.innerHTML = ''; return; }
+
+  const clubId  = currentClub?.club_id;
+  const sportId = window._addStudentFormSportId;
+
+  let studentsQuery = db.from('students').select('*').eq('club_id', clubId);
+  if (sportId) studentsQuery = studentsQuery.eq('sport_id', sportId);
+  const { data: studentsData } = await studentsQuery.order('nachname', { ascending: true });
+
+  const { data: archivData } = await db
+    .from('archiv').select('*').eq('club_id', clubId)
+    .order('nachname', { ascending: true });
+
+  const studentIds = new Set(
+    (studentsData || []).map(s => s.student_id).filter(Boolean)
+  );
+
+  const combined = [
+    ...(studentsData || []).map(s => ({ ...s, _source: 'students' })),
+    ...(archivData || [])
+      .filter(a => !studentIds.has(a.student_id))
+      .map(a => ({ ...a, _source: 'archiv' }))
+  ];
+
+  const filtered = combined.filter(s => {
+    const full = (
+      (s.nachname || '') + ' ' + (s.vorname || '') + ' ' +
+      (s.vorname  || '') + ' ' + (s.nachname || '')
+    ).toLowerCase();
+    return full.includes(query);
+  });
+
+  if (filtered.length === 0) { box.innerHTML = ''; return; }
+
+  window._addStudentSuggestionsCache = {};
+  const shown = filtered.slice(0, 10);
+  shown.forEach((s, i) => { window._addStudentSuggestionsCache[i] = s; });
+
+  box.innerHTML = shown.map((s, i) => {
+    const name = (s.nachname || '') + ' ' + (s.vorname || '');
+    const geb  = s.geburtsdatum ? ' · ' + formatDateDE(s.geburtsdatum) : '';
+
+    let status, statusColor;
+    if (s._source === 'archiv') {
+      status = 'Archiviert'; statusColor = '#e6a817';
+    } else if (s.aktiv === 'JA') {
+      status = 'Aktiv'; statusColor = '#4caf50';
+    } else if (s.probetraining_status === 'BEENDET') {
+      status = 'Probetraining beendet'; statusColor = '#e67e22';
+    } else {
+      status = 'Inaktiv'; statusColor = '#e53935';
+    }
+
+    return `
+      <div class="suggestion-item" onclick="selectAddStudentSuggestion(${i})" style="display:flex;justify-content:space-between;align-items:center">
+        <span>${name}${geb}</span>
+        <span style="color:${statusColor};font-size:0.78em;margin-left:8px;white-space:nowrap">${status}</span>
+      </div>`;
+  }).join('');
+}
+
+async function selectAddStudentSuggestion(idx) {
+  const box = document.getElementById('addStudentNameSuggestions');
+  if (box) box.innerHTML = '';
+
+  const student = window._addStudentSuggestionsCache?.[idx];
+  if (!student) return;
+
+  const groupId = window._addStudentFormGroupId;
+
+  if (student._source === 'students' && student.aktiv === 'JA') {
+    const groupIds = String(student.gruppe_id || '')
+      .split(/[;,]/).map(x => x.trim()).filter(Boolean);
+    if (groupId && groupIds.includes(String(groupId))) {
+      const confirmed = await showCustomConfirm({
+        title: 'Teilnehmer bereits vorhanden',
+        message: `${student.nachname} ${student.vorname} ist bereits in dieser Gruppe aktiv. Möchten Sie trotzdem ein Duplikat anlegen?`,
+        confirmText: 'Duplikat anlegen',
+        cancelText: 'Abbrechen',
+        type: 'danger'
+      });
+      if (!confirmed) return;
+      fillAddStudentForm(student);
+      window._selectedExistingStudent = null;
+      return;
+    }
+  }
+
+  window._selectedExistingStudent = student;
+  fillAddStudentForm(student);
+}
+
+function fillAddStudentForm(student) {
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = (val != null) ? val : '';
+  };
+
+  set('newNachname', student.nachname);
+  set('newVorname',  student.vorname);
+  set('newTelefon',  student.telefon);
+  set('newEmail',    student.email);
+  set('newFotoUrl',  student.foto_url);
+  set('newKommentar',student.kommentar);
+  set('newGewicht',  student.aktuelles_gewicht);
+
+  const gescEl = document.getElementById('newGeschlecht');
+  if (gescEl && student.geschlecht) gescEl.value = student.geschlecht;
+
+  if (student.geburtsdatum) {
+    const parts = String(student.geburtsdatum).split('-');
+    if (parts.length === 3) {
+      set('newGeburtJahr',  parts[0]);
+      set('newGeburtMonat', parseInt(parts[1], 10));
+      set('newGeburtTag',   parseInt(parts[2], 10));
+    }
+  }
+
+  const kyuEl = document.getElementById('newKyu');
+  if (kyuEl && student.kyu_grad)    kyuEl.value = student.kyu_grad;
+  const obiEl = document.getElementById('newObi');
+  if (obiEl && student.guertelfarbe) obiEl.value = student.guertelfarbe;
+
+  if (student.foto_url) updateNewStudentPhotoPreview();
 }
 
 function updateNewStudentPhotoPreview(){
@@ -7749,13 +7887,37 @@ async function saveNewStudent(groupId) {
     club_id: currentClub.club_id
   };
 
-  const { error } = await db
-    .from('students')
-    .insert([payload]);
+  const existing = window._selectedExistingStudent;
+  window._selectedExistingStudent = null;
 
-  if (error) {
-    console.error(error);
-    showCustomMessage('Fehler beim Speichern: ' + error.message);
+  let saveError = null;
+
+  if (existing && existing._source === 'students' && existing.aktiv !== 'JA') {
+    // Restore deactivated student: update existing record
+    const restorePayload = {
+      ...payload,
+      aktiv: 'JA',
+      gruppe_id: groupId,
+      kommentar: (existing.kommentar ? existing.kommentar + ' | ' : '') +
+        'Reaktiviert am ' + todayBerlin()
+    };
+    delete restorePayload.club_id;
+    delete restorePayload.eintrittsdatum;
+    delete restorePayload.probetraining_start;
+
+    const { error: restoreErr } = await db
+      .from('students')
+      .update(restorePayload)
+      .eq('id', existing.id);
+    saveError = restoreErr;
+  } else {
+    const { error } = await db.from('students').insert([payload]);
+    saveError = error;
+  }
+
+  if (saveError) {
+    console.error(saveError);
+    showCustomMessage('Fehler beim Speichern: ' + saveError.message);
     return;
   }
 

@@ -6889,6 +6889,166 @@ color:white!important;
   object-fit:contain;
 }
 
+.rating-sport-badge{
+  display:inline-block;
+  background:rgba(226,185,106,0.12);
+  border:1px solid rgba(226,185,106,0.3);
+  border-radius:6px;
+  padding:2px 7px;
+  font-size:0.82em;
+  font-weight:700;
+  white-space:nowrap;
+  margin:1px 2px;
+}
+.multisport-cell-row{
+  line-height:1.5;
+  font-size:0.85em;
+}
+.multisport-cell-label{
+  font-weight:600;
+  opacity:0.7;
+}
+.stats-sport-total{
+  font-size:1em;
+  font-weight:700;
+  line-height:1.6;
+}
+.stats-sport-line{
+  font-size:0.82em;
+  line-height:1.5;
+  opacity:0.85;
+}
+.stats-sport-label{
+  font-weight:600;
+}
+
+/* ── Edit student form — full-width grid helper ── */
+.edit-full-width{ grid-column: 1 / -1; }
+
+/* ── Custom Multi-Select (CMS) ── */
+.cms-wrap{
+  position:relative;
+  width:100%;
+}
+.cms-trigger{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-height:42px;
+  padding:6px 10px;
+  border:1px solid var(--accent,#e2b96a);
+  border-radius:8px;
+  background:rgba(255,255,255,0.05);
+  cursor:pointer;
+  user-select:none;
+  transition:background 0.15s;
+}
+.cms-trigger:hover{ background:rgba(255,255,255,0.09); }
+.cms-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  flex:1;
+  min-height:28px;
+  align-items:center;
+}
+.cms-caret{
+  font-size:0.8em;
+  opacity:0.6;
+  flex-shrink:0;
+}
+.cms-placeholder{
+  font-size:0.88em;
+  opacity:0.45;
+}
+.cms-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  background:rgba(226,185,106,0.18);
+  border:1px solid rgba(226,185,106,0.45);
+  border-radius:20px;
+  padding:3px 10px 3px 10px;
+  font-size:0.82em;
+  font-weight:600;
+  color:var(--accent,#e2b96a);
+  white-space:nowrap;
+}
+.cms-chip-x{
+  cursor:pointer;
+  opacity:0.7;
+  font-size:1.05em;
+  line-height:1;
+  padding:0 1px;
+  border-radius:50%;
+  transition:opacity 0.12s;
+}
+.cms-chip-x:hover{ opacity:1; }
+.cms-chip-info{
+  background:rgba(255,255,255,0.08);
+  border-color:rgba(255,255,255,0.2);
+  color:rgba(255,255,255,0.85);
+  font-weight:500;
+}
+.cms-panel{
+  display:none;
+  position:absolute;
+  top:calc(100% + 4px);
+  left:0; right:0;
+  z-index:999;
+  background:#1e1e2e;
+  border:1px solid var(--accent,#e2b96a);
+  border-radius:8px;
+  padding:6px 0;
+  max-height:230px;
+  overflow-y:auto;
+  box-shadow:0 8px 24px rgba(0,0,0,0.5);
+}
+.cms-panel.cms-open{ display:block; }
+.cms-item{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:7px 14px;
+  cursor:pointer;
+  font-size:0.9em;
+  transition:background 0.1s;
+}
+.cms-item:hover{ background:rgba(255,255,255,0.07); }
+.cms-item input[type="checkbox"]{
+  width:15px; height:15px;
+  accent-color:var(--accent,#e2b96a);
+  cursor:pointer;
+  flex-shrink:0;
+}
+.cms-group-header{
+  padding:5px 14px 3px;
+  font-size:0.75em;
+  font-weight:700;
+  letter-spacing:0.07em;
+  text-transform:uppercase;
+  opacity:0.5;
+  border-top:1px solid rgba(255,255,255,0.08);
+  margin-top:4px;
+}
+.cms-group-header:first-child{ border-top:none; margin-top:0; }
+.cms-no-items{
+  padding:8px 14px;
+  font-size:0.85em;
+  opacity:0.45;
+}
+.cms-info-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  min-height:42px;
+  padding:6px 10px;
+  border:1px solid rgba(255,255,255,0.15);
+  border-radius:8px;
+  background:rgba(255,255,255,0.03);
+  align-items:center;
+}
+
 .table-img-action-btn{
   width:44px !important;
   height:44px !important;

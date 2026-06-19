@@ -276,6 +276,8 @@ let allTrainers = [];
 let previousScreenBeforeStats = null;
 let previousScreenBeforeWeight = null;
 let previousScreenBeforeEditStudent = null;
+let _editStudentContextSportId   = null; // sport context when edit form was opened
+let _editStudentOriginalGroupIds = [];   // student's group IDs at form-open time
 let promoTransitionActive = false;
 let promoTransitionFileNames = [];
 let promoSequenceIndex = 0;
@@ -559,6 +561,121 @@ function getRankBeltLookup(sportId) {
 
 let selectedLoginContext = null;
 
+// =========================================================
+// PIN-HASHING — Web Crypto PBKDF2
+// PIN wird nie im Klartext gespeichert. Felder: pin_hash, pin_salt
+// =========================================================
+
+async function generatePinSalt() {
+  const arr = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashPin(pin, salt) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', enc.encode(String(pin)), 'PBKDF2', false, ['deriveBits']
+  );
+  const saltBytes = new Uint8Array(salt.match(/.{2}/g).map(h => parseInt(h, 16)));
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPinHash(inputPin, storedHash, storedSalt) {
+  try {
+    const inputHash = await hashPin(inputPin, storedSalt);
+    return inputHash === storedHash;
+  } catch {
+    return false;
+  }
+}
+
+async function buildPinHashPayload(pinPlain) {
+  const salt = await generatePinSalt();
+  const hash = await hashPin(pinPlain, salt);
+  return { pin_hash: hash, pin_salt: salt };
+}
+
+// Migriert einen Trainer von Klartext-PIN auf Hash (einmalig beim Login)
+async function migratePinToHash(trainerId, pinPlain) {
+  try {
+    const payload = await buildPinHashPayload(pinPlain);
+    await db.from('trainers').update(payload).eq('trainer_id', trainerId);
+  } catch(e) {
+    console.warn('PIN-Migration fehlgeschlagen:', e);
+  }
+}
+
+// =========================================================
+// BRUTE-FORCE-SCHUTZ — localStorage
+// Schlüssel: club_id:sport_id:group_id:loginText
+// =========================================================
+
+const _LOGIN_MAX_ATTEMPTS = 5;
+const _LOGIN_LOCKOUT_MS   = 10 * 60 * 1000; // 10 Minuten
+
+function _loginAttemptKey(clubId, sportId, groupId, loginText) {
+  return `la:${clubId}:${sportId}:${groupId}:${String(loginText).toLowerCase().trim()}`;
+}
+
+function _checkLoginLockout(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (d.lockUntil && Date.now() < d.lockUntil) {
+      const rem = Math.ceil((d.lockUntil - Date.now()) / 60000);
+      return `Zu viele Fehlversuche. Bitte in ${rem} Minute(n) erneut versuchen.`;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function _recordFailedLogin(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    let d = raw ? JSON.parse(raw) : { count: 0, lockUntil: null };
+    if (d.lockUntil && Date.now() >= d.lockUntil) d = { count: 0, lockUntil: null };
+    d.count = (d.count || 0) + 1;
+    if (d.count >= _LOGIN_MAX_ATTEMPTS) d.lockUntil = Date.now() + _LOGIN_LOCKOUT_MS;
+    localStorage.setItem(key, JSON.stringify(d));
+  } catch { /* ignore */ }
+}
+
+function _clearLoginAttempts(key) {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+// =========================================================
+// TRAINER-LOGIN MATCHING
+// Format: "Thomas G" oder "Thomas Graziani"
+// DB-Format: "Nachname Vorname"
+// =========================================================
+
+function matchTrainerByLogin(loginText, trainers) {
+  const parts = loginText.trim().split(/\s+/);
+  if (parts.length < 2) return null;
+
+  const inputVorname = parts[0].toLowerCase();
+  const inputNachPart = parts.slice(1).join(' ').toLowerCase();
+
+  return trainers.find(t => {
+    // DB: "Nachname Vorname"
+    const np = String(t.name || '').trim().split(/\s+/);
+    if (np.length < 2) return false;
+    const dbNach = np[0].toLowerCase();
+    const dbVor  = np.slice(1).join(' ').toLowerCase();
+    if (dbVor !== inputVorname) return false;
+    // "Thomas G" → Nachname beginnt mit G
+    if (inputNachPart.length === 1) return dbNach.startsWith(inputNachPart);
+    // "Thomas Graziani" → voller Nachname
+    return dbNach === inputNachPart;
+  }) || null;
+}
+
 const STARTSEITE_ICON_FILES = {
   judo: '1_Judo.png',
   jiujitsu: '1_Jiujitsu.png',
@@ -604,9 +721,12 @@ function showLoginScreenForContext(context){
   const title = document.getElementById('st2LoginTitle');
   if(title){
     title.textContent = context.type === 'verwaltung'
-      ? 'Bitte wählen Sie Ihren Zugang'
-      : 'Bitte wählen Sie Ihren Trainer';
+      ? 'Verwaltungs-Login'
+      : 'Trainer-Login';
   }
+
+  const loginInput = document.getElementById('trainerLoginInput');
+  if(loginInput){ loginInput.value = ''; }
 
   const pin = document.getElementById('pinInput');
   if(pin){
@@ -615,9 +735,7 @@ function showLoginScreenForContext(context){
   }
 
   const status = document.getElementById('loginStatus');
-  if(status){
-    status.textContent = '';
-  }
+  if(status){ status.textContent = ''; }
 }
 
 function backToSportStartFromLogin(){
@@ -654,6 +772,15 @@ window.onload = async function () {
     setTimeout(() => document.getElementById('saStandaloneUsername')?.focus(), 100);
     return;
   }
+
+  // Enter-Taste im Login-Formular → login()
+  document.getElementById('trainerLoginInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('pinInput')?.focus();
+  });
+  document.getElementById('pinInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
+  });
+
   await loadCurrentClubSettings();
   showSportStartScreen();
 };
@@ -761,7 +888,7 @@ async function openSportLoginFromStart(sport) {
       iconFile: iconFile
     });
 
-    await loadTrainerLoginList();
+    await loadGruppeSelectForLogin();
 
   });
 }
@@ -782,168 +909,188 @@ async function openAdministrationLoginFromStart() {
       iconFile: STARTSEITE_ICON_FILES.verwaltung
     });
 
-    await loadTrainerLoginList();
+    await loadGruppeSelectForLogin();
 
   });
 }
 
 // =========================================================
 // ST2 — TRAINERLISTE NACH SPORT / VERWALTUNG
-// Выпадающий список: тренеры по спорту или администрация
+// Gruppe-Auswahl für den Login (Sport-Kontext)
 // =========================================================
 
-async function loadTrainerLoginList() {
-
+async function loadGruppeSelectForLogin() {
+  const block  = document.getElementById('st2GruppeBlock');
+  const select = document.getElementById('gruppeLoginSelect');
   const status = document.getElementById('loginStatus');
-  const select = document.getElementById('trainerSelect');
 
-  if(!select)return;
+  if (!block || !select) return;
 
-  if(status){
-    status.textContent = 'Zugänge werden geladen...';
-  }
-
-  const { data, error } = await db
-    .from('trainers')
-    .select('*')
-    .eq('aktiv', 'JA')
-    .eq('club_id', currentClub.club_id)
-    .order('name', { ascending: true });
-
-  if(error){
-    console.error(error);
-
-    if(status){
-      status.textContent = 'Fehler beim Laden: ' + error.message;
-    }
-
+  if (!selectedLoginContext || selectedLoginContext.type !== 'sport') {
+    block.classList.add('hidden');
     return;
   }
 
-  let users = data || [];
+  block.classList.remove('hidden');
+  select.innerHTML = '<option value="">Gruppen werden geladen...</option>';
+  if (status) status.textContent = '';
 
-  if(selectedLoginContext && selectedLoginContext.type === 'sport'){
+  const { data, error } = await db
+    .from('groups')
+    .select('gruppe_id, gruppenname')
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id)
+    .eq('sport_id', selectedLoginContext.sportId)
+    .order('gruppenname', { ascending: true });
 
-    users = users.filter(user => {
-
-      const role =
-        String(user.rolle || '').toLowerCase();
-
-      const userSports =
-        String(user.sport_id || '')
-        .split(/[;,]/)
-        .map(x => x.trim())
-        .filter(Boolean);
-
-      return (
-        role === 'trainer' &&
-        userSports.includes(selectedLoginContext.sportId)
-      );
-
-    });
-
+  if (error) {
+    select.innerHTML = '<option value="">Fehler beim Laden</option>';
+    console.error(error);
+    return;
   }
 
-  if(selectedLoginContext && selectedLoginContext.type === 'verwaltung'){
-
-    users = users.filter(user => {
-
-      const role =
-        String(user.rolle || '').toLowerCase();
-
-      return (
-        role === 'admin' ||
-        role === 'buchhaltung'
-      );
-
-    });
-
-  }
-
-  allTrainers = users;
-
-  select.innerHTML = '<option value="">Bitte auswählen</option>';
-
-  users.forEach(function(user){
-
-    const option = document.createElement('option');
-
-    option.value = user.trainer_id;
-    option.textContent =
-      (user.name || '-') + ' (' + (user.rolle || '-') + ')';
-
-    select.appendChild(option);
-
+  const groups = data || [];
+  select.innerHTML = '<option value="">Gruppe auswählen</option>';
+  groups.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.gruppe_id;
+    opt.textContent = g.gruppenname || g.gruppe_id;
+    select.appendChild(opt);
   });
-
-  if(status){
-
-    if(users.length === 0){
-      status.textContent = 'Keine passenden Zugänge gefunden.';
-    }else{
-      status.textContent = 'Bitte auswählen.';
-    }
-
-  }
 }
 
 async function login() {
-  const trainerId = document.getElementById('trainerSelect').value;
-  const pin = document.getElementById('pinInput').value;
-  const status = document.getElementById('loginStatus');
+  const status     = document.getElementById('loginStatus');
+  const loginInput = document.getElementById('trainerLoginInput');
+  const pinInput   = document.getElementById('pinInput');
 
-  if (!trainerId) {
-    status.textContent = 'Bitte Trainer auswählen.';
+  const loginText = (loginInput?.value || '').trim();
+  const pinValue  = (pinInput?.value  || '').trim();
+
+  const isSport = selectedLoginContext?.type === 'sport';
+  const sportId = selectedLoginContext?.sportId || '';
+  const groupId = isSport
+    ? (document.getElementById('gruppeLoginSelect')?.value || '')
+    : '';
+
+  // Brute-force-Schlüssel (keine PIN enthalten)
+  const attemptKey = _loginAttemptKey(
+    currentClub.club_id, sportId, groupId, loginText
+  );
+
+  // Sperrprüfung
+  const lockMsg = _checkLoginLockout(attemptKey);
+  if (lockMsg) { status.textContent = lockMsg; return; }
+
+  // Eingabevalidierung
+  if (isSport && !groupId) {
+    status.textContent = 'Bitte Gruppe auswählen.';
     return;
+  }
+  if (!loginText) {
+    status.textContent = 'Bitte Trainer-Login eingeben.';
+    return;
+  }
+  if (!isSuperAdminAccess) {
+    if (!pinValue) {
+      status.textContent = 'Bitte PIN eingeben.';
+      return;
+    }
+    if (pinValue.length !== 6) {
+      status.textContent = 'PIN muss 6-stellig sein.';
+      return;
+    }
   }
 
   if (!isSuperAdminAccess) {
     const _blockReason = await getClubAccessBlockFresh();
-    if (_blockReason) {
-      showCustomMessage(_blockReason);
-      return;
-    }
+    if (_blockReason) { showCustomMessage(_blockReason); return; }
   }
 
-  // Im Super Admin Impersonation Mode PIN-Prüfung überspringen
-  if (isSuperAdminAccess) {
-    status.textContent = 'SA-Zugriff wird geprüft...';
-    const { data: saData, error: saErr } = await db
-      .from('trainers')
-      .select('*')
-      .eq('trainer_id', trainerId)
-      .eq('club_id', currentClub.club_id)
-      .maybeSingle();
-    if (saErr || !saData) {
-      status.textContent = 'Trainer nicht gefunden.';
-      return;
-    }
-    // Direkt einloggen ohne PIN
-    var data = saData;
-    var error = null;
+  status.textContent = 'Login wird geprüft...';
+
+  // Alle aktiven Trainer dieses Clubs laden
+  const { data: trainers, error: tErr } = await db
+    .from('trainers')
+    .select('*')
+    .eq('aktiv', 'JA')
+    .eq('club_id', currentClub.club_id);
+
+  if (tErr) {
+    status.textContent = 'Login oder PIN falsch.';
+    return;
+  }
+
+  let candidates = trainers || [];
+
+  // Nach Rolle/Sport filtern
+  if (isSport) {
+    candidates = candidates.filter(t => {
+      if (String(t.rolle || '').toLowerCase() !== 'trainer') return false;
+      const tSports = String(t.sport_id || '').split(/[;,]/).map(x => x.trim());
+      return tSports.includes(sportId);
+    });
   } else {
-    if (!pin) {
-      status.textContent = 'Bitte PIN eingeben.';
-      return;
-    }
-    status.textContent = 'Login wird geprüft...';
-    var { data, error } = await db
-      .from('trainers')
-      .select('*')
-      .eq('trainer_id', trainerId)
-      .eq('pin', pin)
+    candidates = candidates.filter(t => {
+      const r = String(t.rolle || '').toLowerCase();
+      return r === 'admin' || r === 'buchhaltung';
+    });
+  }
+
+  // Trainer anhand des Loginnamens finden
+  const trainer = matchTrainerByLogin(loginText, candidates);
+  if (!trainer) {
+    _recordFailedLogin(attemptKey);
+    status.textContent = 'Login oder PIN falsch.';
+    return;
+  }
+
+  // Gruppencheck: Trainer muss Zugang zur gewählten Gruppe haben
+  if (isSport && groupId) {
+    const { data: tg } = await db
+      .from('trainer_groups')
+      .select('gruppe_id')
+      .eq('trainer_id', trainer.trainer_id)
+      .eq('gruppe_id', groupId)
       .eq('club_id', currentClub.club_id)
       .maybeSingle();
-    if (error || !data) {
-      if (error) console.error(error);
-      status.textContent = 'Falsche PIN oder Trainer nicht gefunden.';
+    if (!tg) {
+      _recordFailedLogin(attemptKey);
+      status.textContent = 'Login oder PIN falsch.';
       return;
     }
   }
 
-  currentTrainer = data;
+  // PIN-Prüfung (SA überspringt)
+  if (!isSuperAdminAccess) {
+    let pinOk = false;
+
+    if (trainer.pin_hash && trainer.pin_salt) {
+      // Gehashter PIN
+      pinOk = await verifyPinHash(pinValue, trainer.pin_hash, trainer.pin_salt);
+    } else if (trainer.pin) {
+      // Legacy-Klartext — prüfen und sofort migrieren
+      pinOk = (String(trainer.pin) === pinValue);
+      if (pinOk) {
+        await migratePinToHash(trainer.trainer_id, pinValue);
+      }
+    }
+
+    if (!pinOk) {
+      _recordFailedLogin(attemptKey);
+      status.textContent = 'Login oder PIN falsch.';
+      return;
+    }
+  }
+
+  // Erfolgreicher Login
+  _clearLoginAttempts(attemptKey);
+
+  const data = trainer;
+  currentTrainer = { ...data };
   currentTrainer.role = data.rolle;
   currentTrainer.trainerId = data.trainer_id;
+  if (isSport && groupId) currentTrainer._loginGroupId = groupId;
 
   await loadCurrentPromoSettings();
 
@@ -951,42 +1098,43 @@ async function login() {
   document.getElementById('mainScreen').classList.remove('hidden');
   document.getElementById('topNavButtons').classList.remove('hidden');
   document.getElementById('appBox')?.classList.remove('st2-login-mode');
-
-  document
-.querySelector('.login-screen-st2')
-?.classList.add('hidden');
+  document.querySelector('.login-screen-st2')?.classList.add('hidden');
 
   updateClubPaymentWarning();
 
   document.getElementById('welcome').textContent =
     'Willkommen, ' + (data.name || '-') + ' (' + (data.rolle || '-') + ')';
-
-  document.getElementById('currentGroupInfo').textContent =
-    'Aktuelle Gruppe: -';
+  document.getElementById('currentGroupInfo').textContent = 'Aktuelle Gruppe: -';
 
   if (data.rolle === 'Admin') {
     document.getElementById('adminScreen').classList.remove('hidden');
   }
 
- if (data.rolle === 'Buchhaltung') {
+  if (data.rolle === 'Buchhaltung') {
     currentView = 'buchhaltung';
-
     document.getElementById('buchhaltungScreen').classList.remove('hidden');
-    document.getElementById('currentGroupInfo').textContent =
-      'Aktuelle Rolle: Buchhaltung';
-
+    document.getElementById('currentGroupInfo').textContent = 'Aktuelle Rolle: Buchhaltung';
     await loadBuchhaltungData();
   }
 
   if (data.rolle === 'Trainer') {
-  document.getElementById('groupScreen').classList.remove('hidden');
-  await loadGroups();
-  const _loginSportId = String(currentTrainer?.sport_id || selectedLoginContext?.sportId || '')
-    .split(/[;,]/)[0].trim();
-  applyTrainerFilterSportCfg(_loginSportId);
-  applyWeightButtonVisibility(_loginSportId);
-}
-await updateTopSponsorLogos();
+    document.getElementById('groupScreen').classList.remove('hidden');
+    await loadGroups();
+    // Beim Login gewählte Gruppe automatisch vorauswählen
+    if (currentTrainer._loginGroupId) {
+      const groupSelect = document.getElementById('groupSelect');
+      if (groupSelect) {
+        groupSelect.value = currentTrainer._loginGroupId;
+        groupSelect.dispatchEvent(new Event('change'));
+      }
+    }
+    const _loginSportId = String(currentTrainer?.sport_id || selectedLoginContext?.sportId || '')
+      .split(/[;,]/)[0].trim();
+    applyTrainerFilterSportCfg(_loginSportId);
+    applyWeightButtonVisibility(_loginSportId);
+  }
+
+  await updateTopSponsorLogos();
   status.textContent = '';
 }
 
@@ -1660,9 +1808,11 @@ async function loadStudents() {
   `;
 
   // Wiegung-Button bei Gruppenwechsel aktualisieren
-  if (groupId && students.length > 0) {
-    const groupSport = students.find(s => s.sport_id)?.sport_id || null;
-    applyWeightButtonVisibility(groupSport);
+  // Use group's sport_id from DB, not student.sport_id (wrong for multi-sport students)
+  if (groupId) {
+    const { data: _wgRow } = await db.from('groups').select('sport_id')
+      .eq('gruppe_id', groupId).maybeSingle();
+    applyWeightButtonVisibility(_wgRow?.sport_id || null);
   } else {
     const defaultSport = String(currentTrainer?.sport_id || selectedLoginContext?.sportId || '')
       .split(/[;,]/)[0].trim();
@@ -1723,11 +1873,24 @@ async function applyGroupFilter() {
     return;
   }
 
+  // Determine sport context from the selected group (not from student.sport_id)
+  let trainerPageSportId = null;
+  if (selectedGroupId) {
+    const { data: _grpRow } = await db.from('groups').select('sport_id')
+      .eq('gruppe_id', selectedGroupId).maybeSingle();
+    trainerPageSportId = _grpRow?.sport_id || null;
+  }
+  if (!trainerPageSportId) {
+    trainerPageSportId = String(currentTrainer?.sport_id || selectedLoginContext?.sportId || '')
+      .split(/[;,]/)[0].trim() || null;
+  }
+
  await renderStudentTableUniversal(filtered, {
   containerId: 'groupStudentStatsResult',
   showCheckbox: false,
   showGroup: true,
-  showComment: false
+  showComment: false,
+  contextSportId: trainerPageSportId
 });
 }
 
@@ -2151,6 +2314,30 @@ function selectGroupStudentSuggestion(name) {
       }
 }
 
+// Builds per-sport group display for Alle Sportarten mode
+function buildGroupsBySportHtml(groupsBySport) {
+  if (!groupsBySport || Object.keys(groupsBySport).length === 0) return '-';
+  const sports = Object.keys(groupsBySport);
+  if (sports.length === 1) return groupsBySport[sports[0]].join(', ') || '-';
+  return sports.map(sid => {
+    const sport = (adminAvailableSports || []).find(s => String(s.sport_id) === String(sid));
+    const label = sport ? sport.name : sid;
+    return `<div class="multisport-cell-row"><span class="multisport-cell-label">${escapeHtml(label)}:</span> ${escapeHtml(groupsBySport[sid].join(', '))}</div>`;
+  }).join('');
+}
+
+// Builds per-sport trainer display for Alle Sportarten mode
+function buildTrainersBySportHtml(trainersBySport) {
+  if (!trainersBySport || Object.keys(trainersBySport).length === 0) return null;
+  const sports = Object.keys(trainersBySport);
+  if (sports.length === 1) return trainersBySport[sports[0]].join(', ') || null;
+  return sports.map(sid => {
+    const sport = (adminAvailableSports || []).find(s => String(s.sport_id) === String(sid));
+    const label = sport ? sport.name : sid;
+    return `<div class="multisport-cell-row"><span class="multisport-cell-label">${escapeHtml(label)}:</span> ${escapeHtml(trainersBySport[sid].join(', '))}</div>`;
+  }).join('');
+}
+
 async function renderStudentTableUniversal(students, options = {}) {
 
   const container =
@@ -2158,9 +2345,10 @@ async function renderStudentTableUniversal(students, options = {}) {
 
   if (!container) return;
 
-  const showCheckbox = options.showCheckbox === true;
-  const showGroup = options.showGroup === true;
-  const showComment = options.showComment === true;
+  const showCheckbox   = options.showCheckbox === true;
+  const showGroup      = options.showGroup === true;
+  const showComment    = options.showComment === true;
+  const contextSportId = options.contextSportId || null;
 
   if (!students || students.length === 0) {
     container.innerHTML = `
@@ -2187,10 +2375,14 @@ async function renderStudentTableUniversal(students, options = {}) {
   students.map(async student => {
 
     const fullStudent =
-      await getStudentFullData(getStudentId(student), null, student) || student;
+      await getStudentFullData(getStudentId(student), null, student, contextSportId) || student;
 
-    fullStudent.trainersText =
-      await getActiveTrainerNamesForStudent(fullStudent, trainersMap);
+    // When contextSportId is set, getStudentFullData already filtered trainersText to that sport.
+    // Overwriting it here would break the sport context — only overwrite in Alle Sportarten mode.
+    if (!contextSportId) {
+      fullStudent.trainersText =
+        await getActiveTrainerNamesForStudent(fullStudent, trainersMap);
+    }
 
     return fullStudent;
 
@@ -2198,22 +2390,26 @@ async function renderStudentTableUniversal(students, options = {}) {
 );
 
   // ── Sport-Kontext ermitteln ──────────────────────────────────────────────
-  const sportIdsInTable = [
-    ...new Set(fullStudents.map(s => s.sport_id).filter(Boolean))
-  ];
+  // When a sport context is active, use it directly — do NOT derive from student.sport_id,
+  // because multi-sport students still carry their primary sport_id (e.g. "judo")
+  // even when displayed in a Tai Chi context.
+  const sportIdsInTable = contextSportId
+    ? [contextSportId]
+    : [...new Set(fullStudents.map(s => s.sport_id).filter(Boolean))];
+
   const isSingleSport = sportIdsInTable.length === 1;
   const tableCfg = isSingleSport ? getSportConfig(sportIdsInTable[0]) : null;
 
   const anyShowGrad = sportIdsInTable.length === 0 ? true
-    : isSingleSport ? tableCfg.showGraduation
+    : isSingleSport ? (tableCfg?.showGraduation ?? true)
     : sportIdsInTable.some(id => getSportConfig(id).showGraduation);
 
   const anyShowBelt = sportIdsInTable.length === 0 ? true
-    : isSingleSport ? tableCfg.showBelt
+    : isSingleSport ? (tableCfg?.showBelt ?? true)
     : sportIdsInTable.some(id => getSportConfig(id).showBelt);
 
   const anyShowWeight = sportIdsInTable.length === 0 ? true
-    : isSingleSport ? tableCfg.showWeight
+    : isSingleSport ? (tableCfg?.showWeight ?? true)
     : sportIdsInTable.some(id => getSportConfig(id).showWeight);
 
   const thGrad   = isSingleSport && tableCfg ? tableCfg.graduationLabel : 'Graduierung';
@@ -2221,7 +2417,8 @@ async function renderStudentTableUniversal(students, options = {}) {
   const thWeight = 'Gewicht';
 
   function renderSportFieldCells(student) {
-    const rowCfg = getSportConfig(student.sport_id);
+    // Use context sport config when available — not student's primary sport_id
+    const rowCfg = contextSportId ? getSportConfig(contextSportId) : getSportConfig(student.sport_id);
     return `
       ${anyShowGrad   ? `<td>${rowCfg.showGraduation ? (student.kyu_grad || '-') : '-'}</td>` : ''}
       ${anyShowBelt   ? `<td>${rowCfg.showBelt       ? (student.guertelfarbe || '-') : '-'}</td>` : ''}
@@ -2278,14 +2475,26 @@ async function renderStudentTableUniversal(students, options = {}) {
         ${renderSportFieldCells(student)}
 
         ${showGroup ? `
-          <td>${student.groupsHtml || student.groupsText || student.gruppe_id || '-'}</td>
+          <td>${
+            !contextSportId && student.groupsBySport && Object.keys(student.groupsBySport).length > 1
+              ? buildGroupsBySportHtml(student.groupsBySport)
+              : (student.groupsHtml || student.groupsText || student.gruppe_id || '-')
+          }</td>
         ` : ''}
 
-        <td>${student.trainersText || student.trainer || '-'}</td>
+        <td>${(() => {
+          if (!contextSportId && student.trainersBySport && Object.keys(student.trainersBySport).length > 1) {
+            return buildTrainersBySportHtml(student.trainersBySport) || student.trainersText || '-';
+          }
+          return student.trainersText || student.trainer || '-';
+        })()}</td>
         <td>
   <span class="rating-img-wrap">
     <img src="${BUTTONS_URL}Stud_Rating.png" alt="Rating">
-    <span>${student.calculatedRating || student.rating || 0}</span>
+    ${contextSportId
+      ? `<span>${student.calculatedRating ?? 0}</span>`
+      : (student.ratingBadgesHtml || `<span>🏆 0</span>`)
+    }
   </span>
 </td>
 
@@ -2294,21 +2503,21 @@ async function renderStudentTableUniversal(students, options = {}) {
 
   <button
     class="table-img-action-btn"
-    onclick="navigateWithPromo(()=>editStudent('${getStudentId(student)}'))"
+    onclick="navigateWithPromo(()=>editStudent('${getStudentId(student)}', '${contextSportId || ''}'))"
     title="Schüler bearbeiten">
     <img src="${BUTTONS_URL}Stud_Edit.png" alt="Bearbeiten">
   </button>
 
   <button
     class="table-img-action-btn"
-    onclick="toggleArchivePanel('${getStudentId(student)}')"
+    onclick="toggleArchivePanel('${getStudentId(student)}','${contextSportId || ''}')"
     title="Schüler löschen / archivieren">
     <img src="${BUTTONS_URL}Stud_Delete.png" alt="Löschen">
   </button>
 
   <button
     class="table-img-action-btn"
-    onclick="navigateWithPromo(()=>showStudentStats('${getStudentId(student)}'))"
+    onclick="navigateWithPromo(()=>showStudentStats('${getStudentId(student)}', '${contextSportId || ''}'))"
     title="Statistik anzeigen">
     <img src="${BUTTONS_URL}Stud_Statistik.png" alt="Statistik">
   </button>
@@ -3548,7 +3757,6 @@ async function deleteTrainerFromAdminBuch(trainerId) {
     }
 
     await loadAdminBuchhaltungUsers();
-    await loadTrainerLoginList();
 
     showCustomMessage(
       roleText + ' wurde deaktiviert.'
@@ -3792,7 +4000,11 @@ return;
 
 let students = data || [];
 
-students = students.filter(adminRowHasSelectedSport);
+const { data: _countGroupRows } = await db
+  .from('groups').select('gruppe_id, sport_id').eq('club_id', currentClub.club_id);
+const _countGroupsMap = {};
+(_countGroupRows || []).forEach(g => { _countGroupsMap[g.gruppe_id] = g.sport_id; });
+students = students.filter(s => studentHasSportByGroups(s, adminSelectedSport, _countGroupsMap));
 
 if(groupId){
 
@@ -4167,7 +4379,14 @@ return;
 
 let students = data || [];
 
-students = students.filter(adminRowHasSelectedSport);
+// Build groupsMap so multi-sport students (e.g. sport_id="judo" but also in Tai Chi via gruppe_id)
+// are correctly shown when filtering by Tai Chi
+const { data: _adminGroupRows } = await db
+  .from('groups').select('gruppe_id, sport_id').eq('club_id', currentClub.club_id);
+const _adminGroupsMap = {};
+(_adminGroupRows || []).forEach(g => { _adminGroupsMap[g.gruppe_id] = g.sport_id; });
+
+students = students.filter(s => studentHasSportByGroups(s, adminSelectedSport, _adminGroupsMap));
 
 if(groupId){
 
@@ -4201,7 +4420,8 @@ await renderStudentTableUniversal(students,{
 containerId:'adminStudentStatsResult',
 showCheckbox:false,
 showGroup:true,
-showComment:false
+showComment:false,
+contextSportId: buchhaltungSelectedSport || null
 });
 
 const countEl = document.getElementById('adminFilterCount');
@@ -4787,6 +5007,19 @@ overlay
 
 }
 
+
+function showHinweisMessage(text) {
+  const titleEl = document.querySelector('#customMessageOverlay .custom-message-title');
+  const iconEl  = document.querySelector('#customMessageOverlay .custom-message-icon');
+  const origTitle = titleEl?.textContent;
+  const origIcon  = iconEl?.textContent;
+  if (titleEl) titleEl.textContent = 'Hinweis';
+  if (iconEl)  iconEl.textContent  = 'ℹ';
+  showCustomMessage(text, () => {
+    if (titleEl) titleEl.textContent = origTitle || 'Erfolgreich gespeichert';
+    if (iconEl)  iconEl.textContent  = origIcon  || '✓';
+  });
+}
 
 async function closeCustomMessage(){
 
@@ -5404,6 +5637,11 @@ const todayAttendanceMap = {};
     .select('trainer_name')
     .eq('gruppe_id', groupId);
 
+  // Resolve the sport_id of the current group so rating is shown only for this sport
+  const { data: currentGroupData } = await db
+    .from('groups').select('sport_id').eq('gruppe_id', groupId).maybeSingle();
+  const currentGroupSportId = currentGroupData?.sport_id || null;
+
   const externalGroupData = {
     groups: [],
     trainers: [...new Set(
@@ -5419,7 +5657,8 @@ const fullData =
 await getStudentFullData(
 getStudentId(s),
 externalGroupData,
-s
+s,
+currentGroupSportId
 );
 
 return fullData || s;
@@ -5452,10 +5691,9 @@ if (autoCloseErrors.length > 0) {
 }
 
   // ── Sport-Kontext für Anwesenheit ──────────────────────────
-  const groupSportId =
-    enrichedStudents.find(s => s.sport_id)?.sport_id || null;
-  const groupCfg = getSportConfig(groupSportId);
-  applyWeightButtonVisibility(groupSportId);
+  // currentGroupSportId is queried from DB above — do NOT derive from student data
+  const groupCfg = getSportConfig(currentGroupSportId);
+  applyWeightButtonVisibility(currentGroupSportId);
   // ───────────────────────────────────────────────────────────
 
 let html = `
@@ -5536,28 +5774,31 @@ ${groupCfg.showWeight     ? `<td>${student.aktuelles_gewicht ? student.aktuelles
 
 <td>${student.trainersText || '-'}</td>
 
-<td>🏆 ${student.calculatedRating || 0}</td>
+<td>${currentGroupSportId
+  ? `🏆 ${student.calculatedRating ?? 0}`
+  : (student.ratingBadgesHtml || '🏆 0')
+}</td>
 
 <td>
   <div class="table-action-row">
 
   <button
     class="table-img-action-btn"
-    onclick="navigateWithPromo(()=>editStudent('${getStudentId(student)}'))"
+    onclick="navigateWithPromo(()=>editStudent('${getStudentId(student)}', '${currentGroupSportId || ''}'))"
     title="Schüler bearbeiten">
     <img src="${BUTTONS_URL}Stud_Edit.png" alt="Bearbeiten">
   </button>
 
   <button
     class="table-img-action-btn"
-    onclick="toggleArchivePanel('${getStudentId(student)}')"
+    onclick="toggleArchivePanel('${getStudentId(student)}','${currentGroupSportId || ''}')"
     title="Schüler löschen / archivieren">
     <img src="${BUTTONS_URL}Stud_Delete.png" alt="Löschen">
   </button>
 
   <button
     class="table-img-action-btn"
-    onclick="navigateWithPromo(()=>showStudentStats('${getStudentId(student)}'))"
+    onclick="navigateWithPromo(()=>showStudentStats('${getStudentId(student)}', '${currentGroupSportId || ''}'))"
     title="Statistik anzeigen">
     <img src="${BUTTONS_URL}Stud_Statistik.png" alt="Statistik">
   </button>
@@ -5702,107 +5943,58 @@ async function saveAttendance() {
 await loadTodayAttendanceCount(groupId);
 }
 
-function toggleArchivePanel(studentId){
+function toggleArchivePanel(studentId, contextSportId) {
+  const oldPanel = document.getElementById('archivePanel_' + studentId);
+  if (oldPanel) { oldPanel.remove(); return; }
 
-const oldPanel =
-document.getElementById(
-'archivePanel_'+studentId
-);
+  const rowButton = event.target.closest('tr');
+  if (!rowButton) return;
 
-if(oldPanel){
-oldPanel.remove();
-return;
-}
+  const isTrainer = currentTrainer?.role === 'Trainer';
+  const ctx = contextSportId || '';
 
-const rowButton =
-event.target.closest('tr');
+  // Trainer sees simpler label; Admin sees full archive label
+  const actionLabel = (isTrainer && ctx) ? 'Entfernen' : 'Archivieren';
+  const titleLabel  = (isTrainer && ctx) ? 'Schüler aus Sportart entfernen' : 'Schüler archivieren';
 
-if(!rowButton) return;
-
-const html = `
-
-<tr
-id="archivePanel_${studentId}"
-class="archive-panel-row">
-
+  const html = `
+<tr id="archivePanel_${studentId}" class="archive-panel-row">
 <td colspan="12">
-
 <div class="archive-panel-box">
 
-<div class="archive-title">
-Schüler archivieren
-</div>
+<div class="archive-title">${titleLabel}</div>
 
 <div class="archive-reasons">
-
-<label class="archive-reason-option">
-  <input
-  type="radio"
-  name="reason_${studentId}"
-  value="Kündigung / Austritt"
-  checked>
-  <span>Kündigung / Austritt</span>
-</label>
-
-<label class="archive-reason-option">
-  <input
-  type="radio"
-  name="reason_${studentId}"
-  value="Längere Pause">
-  <span>Längere Pause</span>
-</label>
-
-<label class="archive-reason-option">
-  <input
-  type="radio"
-  name="reason_${studentId}"
-  value="Doppelt angelegt">
-  <span>Doppelt angelegt</span>
-</label>
-
-<label class="archive-reason-option">
-  <input
-  type="radio"
-  name="reason_${studentId}"
-  value="Sonstiges">
-  <span>Sonstiges</span>
-</label>
-
+  <label class="archive-reason-option">
+    <input type="radio" name="reason_${studentId}" value="Kündigung / Austritt" checked>
+    <span>Kündigung / Austritt</span>
+  </label>
+  <label class="archive-reason-option">
+    <input type="radio" name="reason_${studentId}" value="Längere Pause">
+    <span>Längere Pause</span>
+  </label>
+  <label class="archive-reason-option">
+    <input type="radio" name="reason_${studentId}" value="Doppelt angelegt">
+    <span>Doppelt angelegt</span>
+  </label>
+  <label class="archive-reason-option">
+    <input type="radio" name="reason_${studentId}" value="Sonstiges">
+    <span>Sonstiges</span>
+  </label>
 </div>
 
-<input
-id="archiveComment_${studentId}"
-type="text"
-placeholder="Kommentar optional">
+<input id="archiveComment_${studentId}" type="text" placeholder="Kommentar optional">
 
 <div class="archive-buttons">
-
-<button
-type="button"
-onclick="closeArchivePanel('${studentId}')">
-Abbrechen
-</button>
-
-<button
-type="button"
-onclick="archiveStudent('${studentId}')">
-Archivieren
-</button>
-
+  <button type="button" onclick="closeArchivePanel('${studentId}')">Abbrechen</button>
+  <button type="button" onclick="archiveStudent('${studentId}','${ctx}')">${actionLabel}</button>
 </div>
 
 </div>
-
 </td>
+</tr>`;
 
-</tr>
-`;
-
-rowButton.insertAdjacentHTML(
-'afterend',
-html
-);
-
+  rowButton.insertAdjacentHTML('afterend', html);
 }
 
 function closeArchivePanel(studentId){
@@ -5815,58 +6007,132 @@ document
 
 }
 
-async function archiveStudent(id){
+async function archiveStudent(id, contextSportId) {
+  const selectedReason = document.querySelector(`input[name="reason_${id}"]:checked`);
+  if (!selectedReason) { showCustomMessage('Bitte Grund auswählen.'); return; }
 
-  const selectedReason = document.querySelector(
-    `input[name="reason_${id}"]:checked`
-  );
+  const archivGrund     = selectedReason.value;
+  const archivKommentar = document.getElementById('archiveComment_' + id)?.value.trim() || '';
 
-  if(!selectedReason){
-    showCustomMessage('Bitte Grund auswählen.');
-    return;
-  }
+  const { data: student, error: studentError } = await db
+    .from('students').select('*').eq('id', id).single();
 
-  const archivGrund = selectedReason.value;
-
-  const archivKommentar =
-    document.getElementById('archiveComment_' + id)?.value.trim() || '';
-
-  const {data: student, error: studentError} = await db
-    .from('students')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if(studentError || !student){
+  if (studentError || !student) {
     console.error(studentError);
     showCustomMessage('Schüler nicht gefunden.');
     return;
   }
 
-  document.getElementById('deleteConfirmText').innerHTML = `
-    <div style="text-align:left;line-height:1.7;">
-      <b>Schüler wirklich archivieren?</b><br><br>
-      <b>Nachname:</b> ${student.nachname || '-'}<br>
-      <b>Vorname:</b> ${student.vorname || '-'}<br>
-      <b>Grund:</b> ${archivGrund || '-'}
-    </div>
-  `;
+  const isTrainer = currentTrainer?.role === 'Trainer';
 
-  document.getElementById('confirmDeleteBtn').onclick = async function(){
+  // ── Admin / SuperAdmin: full archive ─────────────────────────────────────
+  if (!isTrainer || !contextSportId) {
+    document.getElementById('deleteConfirmText').innerHTML = `
+      <div style="text-align:left;line-height:1.7;">
+        <b>Schüler wirklich archivieren?</b><br><br>
+        <b>${student.nachname || ''} ${student.vorname || ''}</b><br>
+        <b>Grund:</b> ${archivGrund}
+      </div>`;
+    document.getElementById('confirmDeleteBtn').onclick = async function () {
+      closeDeleteConfirm();
+      await archiveStudentConfirmed(id, student, archivGrund, archivKommentar);
+    };
+    document.getElementById('deleteConfirmOverlay').classList.remove('hidden');
+    return;
+  }
 
-    closeDeleteConfirm();
+  // ── Trainer: determine how many sports the student is in ─────────────────
+  const allGroupIds = String(student.gruppe_id || '')
+    .split(/[;,]/).map(x => x.trim()).filter(Boolean);
 
-    await archiveStudentConfirmed(
-      id,
-      student,
-      archivGrund,
-      archivKommentar
-    );
-  };
+  let groupSportMap = {};
+  if (allGroupIds.length) {
+    const { data: gRows } = await db.from('groups')
+      .select('gruppe_id, sport_id')
+      .in('gruppe_id', allGroupIds)
+      .eq('club_id', currentClub.club_id);
+    (gRows || []).forEach(g => { if (g.sport_id) groupSportMap[g.gruppe_id] = g.sport_id; });
+  }
 
-  document
-    .getElementById('deleteConfirmOverlay')
-    .classList.remove('hidden');
+  const groupsToKeep   = allGroupIds.filter(gid => groupSportMap[gid] !== contextSportId);
+  const groupsToRemove = allGroupIds.filter(gid => groupSportMap[gid] === contextSportId);
+
+  if (!groupsToRemove.length) {
+    showHinweisMessage('Dieser Schüler ist bereits nicht mehr in dieser Sportart / Gruppe vorhanden.');
+    return;
+  }
+
+  const remainingSports = [...new Set(groupsToKeep.map(g => groupSportMap[g]).filter(Boolean))];
+  const hasOtherSports  = remainingSports.length > 0;
+
+  const sportName = (adminAvailableSports || []).find(s => String(s.sport_id) === String(contextSportId))?.name
+    || contextSportId;
+
+  if (hasOtherSports) {
+    // Partial removal — student stays active
+    document.getElementById('deleteConfirmText').innerHTML = `
+      <div style="text-align:left;line-height:1.7;">
+        <b>${student.nachname || ''} ${student.vorname || ''}</b><br><br>
+        Dieser Schüler wird nur aus <b>${escapeHtml(sportName)}</b> entfernt.<br>
+        Er bleibt im Verein aktiv, weil er noch in anderen Sportarten angemeldet ist.<br><br>
+        <b>Grund:</b> ${archivGrund}
+      </div>`;
+    document.getElementById('confirmDeleteBtn').onclick = async function () {
+      closeDeleteConfirm();
+      await removeStudentFromSport(id, groupsToKeep, student, archivGrund, archivKommentar);
+    };
+  } else {
+    // Last sport — full archive
+    document.getElementById('deleteConfirmText').innerHTML = `
+      <div style="text-align:left;line-height:1.7;">
+        <b>${student.nachname || ''} ${student.vorname || ''}</b><br><br>
+        Dieser Schüler hat keine weiteren aktiven Sportarten.<br>
+        Er wird aus dem Verein archiviert.<br><br>
+        <b>Grund:</b> ${archivGrund}
+      </div>`;
+    document.getElementById('confirmDeleteBtn').onclick = async function () {
+      closeDeleteConfirm();
+      await archiveStudentConfirmed(id, student, archivGrund, archivKommentar);
+    };
+  }
+
+  document.getElementById('deleteConfirmOverlay').classList.remove('hidden');
+}
+
+// Removes student from one sport only — keeps other-sport groups, student stays active.
+async function removeStudentFromSport(studentId, groupsToKeep, student, archivGrund, archivKommentar) {
+  const newGruppeId = groupsToKeep.join(';');
+
+  const kommentarText = (student.kommentar || '')
+    + (archivKommentar ? ' | Kommentar: ' + archivKommentar : '')
+    + ' | Aus Sportart entfernt am ' + todayBerlin()
+    + ' | Grund: ' + archivGrund;
+
+  const { error } = await db.from('students')
+    .update({ gruppe_id: newGruppeId, kommentar: kommentarText })
+    .eq('id', studentId);
+
+  if (error) {
+    console.error('[removeFromSport]', error);
+    showCustomMessage('Fehler beim Entfernen: ' + error.message);
+    return;
+  }
+
+  closeArchivePanel(studentId);
+
+  // Refresh all visible student lists that may still show this student
+  if (document.getElementById('adminStudentStatsResult'))  await applyAdminStudentFilter();
+  if (document.getElementById('trainerStudentsList'))      await applyTrainerFilters();
+  if (document.getElementById('groupStudentStatsResult'))  await applyGroupFilter();
+
+  // Refresh Anwesenheit list if it is currently visible
+  const attendanceList = document.getElementById('studentsList');
+  if (attendanceList) {
+    const groupId = document.getElementById('groupSelect')?.value || '';
+    if (groupId) await loadStudentsListForAttendance(groupId);
+  }
+
+  showCustomMessage('Schüler aus dieser Sportart entfernt.');
 }
 
 async function archiveStudentConfirmed(id, student, archivGrund, archivKommentar){
@@ -6307,32 +6573,61 @@ async function getStudentLastAttendanceInfo(studentId, externalPossibleIds){
   };
 }
 
-function calculateStudentRatingFromRows(possibleIds, data) {
+function calculateStudentRatingFromRows(possibleIds, data, sportId, groupsMap) {
   const uniqueVisits = {};
 
   (data || []).forEach(row => {
-    const sameStudent =
-      possibleIds.includes(String(row.student_id || ''));
-
-    const isPresent =
-      String(row.anwesenheit || '').toUpperCase() === 'JA';
-
+    const sameStudent = possibleIds.includes(String(row.student_id || ''));
+    const isPresent   = String(row.anwesenheit || '').toUpperCase() === 'JA';
     if (!sameStudent || !isPresent) return;
 
-    const dateKey =
-      String(row.datum || '').slice(0, 10);
+    // If a sport filter is active, skip visits from groups of other sports
+    if (sportId && groupsMap) {
+      const rowSport = groupsMap[String(row.gruppe_id || '')];
+      if (rowSport !== sportId) return;
+    }
 
+    const dateKey = String(row.datum || '').slice(0, 10);
     if (!dateKey) return;
 
-    const key =
-      String(row.student_id) + '_' +
-      String(row.gruppe_id) + '_' +
-      dateKey;
-
+    const key = String(row.student_id) + '_' + String(row.gruppe_id) + '_' + dateKey;
     uniqueVisits[key] = true;
   });
 
   return Object.keys(uniqueVisits).length;
+}
+
+/**
+ * Calculates rating for each sport separately.
+ * Returns [{sportId, count}] — never a combined total.
+ */
+function buildStudentRatingBadges(possibleIds, attendanceRows, sportIds, groupsMap) {
+  return (sportIds || []).map(sid => ({
+    sportId: sid,
+    count: calculateStudentRatingFromRows(possibleIds, attendanceRows, sid, groupsMap)
+  }));
+}
+
+/**
+ * Renders rating badges HTML.
+ * Single sport → plain "🏆 N".
+ * Multiple sports → "[SportName 🏆 N] [SportName 🏆 N]".
+ * Never shows a combined total.
+ */
+function renderRatingBadgesHtml(badges) {
+  if (!badges || badges.length === 0) return '<span>0</span>';
+
+  if (badges.length === 1) {
+    // Single sport: plain number — the caller's surrounding element already shows a trophy icon
+    return `<span>${badges[0].count}</span>`;
+  }
+
+  // Multiple sports: show named badges with emoji for clarity
+  return badges.map(b => {
+    const sport = (adminAvailableSports || []).find(s => s.sport_id === b.sportId);
+    const label = sport?.name || b.sportId;
+    return `<span class="rating-sport-badge">${label} 🏆 ${b.count}</span>`;
+  }).join(' ');
 }
 
 function getStudentLastAttendanceInfoFromRows(possibleIds, data) {
@@ -6387,7 +6682,7 @@ function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-async function getStudentFullData(studentId, externalGroupData, externalStudentData){
+async function getStudentFullData(studentId, externalGroupData, externalStudentData, contextSportId){
 
 let student;
 
@@ -6433,9 +6728,6 @@ const { data: attendanceRows } = await db
   .in('student_id', possibleIds)
   .eq('club_id', currentClub.club_id);
 
-const calculatedRating =
-  calculateStudentRatingFromRows(possibleIds, attendanceRows || []);
-
 const lastAttendanceInfo =
   getStudentLastAttendanceInfoFromRows(possibleIds, attendanceRows || []);
 
@@ -6446,6 +6738,8 @@ const groupIds = String(student.gruppe_id || '')
 
 let groups = [];
 let trainers = [];
+let groupsBySport = {};   // { sportId: ['gruppenname', ...] }
+let trainersBySport = {}; // { sportId: ['trainer_name', ...] }
 
 if (externalGroupData) {
   groups = externalGroupData.groups || [];
@@ -6454,7 +6748,7 @@ if (externalGroupData) {
 
 const { data: groupData, error: groupDataError } = await db
 .from('groups')
-.select('gruppe_id, gruppenname, aktiv')
+.select('gruppe_id, gruppenname, aktiv, sport_id')
 .in('gruppe_id', groupIds)
 .eq('club_id', currentClub.club_id);
 
@@ -6462,12 +6756,34 @@ if (groupDataError) {
   console.error('getStudentFullData groups error:', groupDataError);
 }
 
-groups = groupData || [];
+const allGroups = groupData || [];
+
+// Build per-sport group map from all loaded groups (before contextSportId filter)
+allGroups.forEach(g => {
+  if (!g.sport_id || String(g.aktiv || '').toUpperCase() !== 'JA') return;
+  if (!groupsBySport[g.sport_id]) groupsBySport[g.sport_id] = [];
+  const name = g.gruppenname || g.gruppe_id;
+  if (!groupsBySport[g.sport_id].includes(name)) groupsBySport[g.sport_id].push(name);
+});
+
+// When a sport context is active, show only active groups of that sport
+// (excludes deleted/inactive groups and other sport groups)
+groups = contextSportId
+  ? allGroups.filter(g => g.sport_id === contextSportId && String(g.aktiv || '').toUpperCase() === 'JA')
+  : allGroups;
+
+// Build a lookup: gruppe_id → sport_id from all loaded groups
+const loadedGroupSportMap = {};
+allGroups.forEach(g => { loadedGroupSportMap[g.gruppe_id] = g.sport_id; });
+
+const trainerQueryIds = (contextSportId && groups.length)
+  ? groups.map(g => g.gruppe_id)
+  : groupIds;
 
 const { data: trainerData, error: trainerDataError } = await db
 .from('trainer_groups')
-.select('trainer_name')
-.in('gruppe_id', groupIds)
+.select('trainer_name, gruppe_id')
+.in('gruppe_id', trainerQueryIds)
 .eq('club_id', currentClub.club_id);
 
 if (trainerDataError) {
@@ -6479,16 +6795,68 @@ trainers = [...new Set(
 .map(x => x.trainer_name)
 .filter(Boolean)
 )];
+
+// Build per-sport trainer map
+(trainerData || []).forEach(tg => {
+  if (!tg.trainer_name) return;
+  const sport = loadedGroupSportMap[tg.gruppe_id];
+  if (!sport) return;
+  if (!trainersBySport[sport]) trainersBySport[sport] = [];
+  if (!trainersBySport[sport].includes(tg.trainer_name)) trainersBySport[sport].push(tg.trainer_name);
+});
 }
+
+// ── Per-sport rating calculation ────────────────────────────────────────────
+// Build groupsMap from attendance rows + known groups to resolve gruppe_id → sport_id.
+// We query ALL groups referenced in attendance (including historical ones).
+const attendanceGroupIds = [...new Set(
+  (attendanceRows || []).map(r => String(r.gruppe_id || '')).filter(Boolean)
+)];
+let groupsMap = {};
+if (attendanceGroupIds.length > 0) {
+  const { data: attGroups } = await db
+    .from('groups')
+    .select('gruppe_id, sport_id')
+    .in('gruppe_id', attendanceGroupIds)
+    .eq('club_id', currentClub.club_id);
+  (attGroups || []).forEach(g => {
+    groupsMap[String(g.gruppe_id)] = g.sport_id;
+  });
+}
+
+// Sport IDs this student participates in
+const studentSportIds = String(student.sport_id || '')
+  .split(/[;,]/).map(x => x.trim()).filter(Boolean);
+
+// Sport-specific rating (for the active filter context)
+const calculatedRating = calculateStudentRatingFromRows(
+  possibleIds, attendanceRows || [], contextSportId || null, groupsMap
+);
+
+// Per-sport badges — never a combined total.
+// Derive sport list from student's actual group memberships via groupsMap so that
+// Tai Chi attendance counts even when student.sport_id = "judo" (multi-sport via gruppe_id).
+const groupMapSportIds = [...new Set(
+  groupIds.map(gid => groupsMap[gid]).filter(Boolean)
+)];
+const effectiveSportIds = groupMapSportIds.length > 0 ? groupMapSportIds : studentSportIds;
+const ratingBadges     = buildStudentRatingBadges(possibleIds, attendanceRows || [], effectiveSportIds, groupsMap);
+const ratingBadgesHtml = renderRatingBadgesHtml(ratingBadges);
+// ─────────────────────────────────────────────────────────────────────────────
 
 return {
 ...student,
 calculatedRating,
+ratingBadges,
+ratingBadgesHtml,
 lastAttendanceDate: lastAttendanceInfo.lastDate,
 daysSinceLastAttendance: lastAttendanceInfo.daysSince,
 groupsText: groups.map(g => g.gruppenname || g.gruppe_id).join(', ') || '-',
-groupsHtml: buildGroupsHtml(groups, groupIds),
-trainersText: trainers.join(', ') || '-'
+// When context-filtered, pass only filtered group IDs so deleted/other-sport groups don't appear as (gelöscht)
+groupsHtml: buildGroupsHtml(groups, contextSportId ? groups.map(g => g.gruppe_id) : groupIds),
+trainersText: trainers.join(', ') || '-',
+groupsBySport,
+trainersBySport
 };
 
 }
@@ -6528,9 +6896,10 @@ if(days > 0 || parts.length === 0) parts.push(days + ' Tage');
 return parts.join(' ');
 }
 
-function buildStudentInfoHtml(student){
+function buildStudentInfoHtml(student, contextSportId, studentSportStats){
 
-const cfg = getSportConfig(student.sport_id);
+const cfg = getSportConfig(contextSportId || student.sport_id);
+const isMultiSport = !!studentSportStats && Object.keys(studentSportStats).length > 1;
 
 const studentName =
 (student.vorname || '') + ' ' + (student.nachname || '');
@@ -6562,6 +6931,79 @@ const photoHtml = student.foto_url
 <div class="student-avatar">👤</div>
 `;
 
+// ── Gruppe & Trainer badges ───────────────────────────────────────────────
+let gruppeHtml;
+let trainerHtml;
+if (isMultiSport) {
+  gruppeHtml = Object.values(studentSportStats).map(st =>
+    `<div class="multisport-cell-row"><span class="multisport-cell-label">${escapeHtml(st.sportName)}:</span> ${escapeHtml(st.groups.join(', ') || '-')}</div>`
+  ).join('');
+  trainerHtml = Object.values(studentSportStats).map(st =>
+    `<div class="multisport-cell-row"><span class="multisport-cell-label">${escapeHtml(st.sportName)}:</span> ${escapeHtml(st.trainers.join(', ') || '-')}</div>`
+  ).join('');
+} else {
+  gruppeHtml  = student.groupsHtml  || student.groupsText  || '-';
+  trainerHtml = student.trainersText || '-';
+}
+
+// ── Training count helpers ────────────────────────────────────────────────
+function sportBreakdownHtml(field) {
+  if (!isMultiSport) return '';
+  return Object.values(studentSportStats).map(st =>
+    `<div class="stats-sport-line"><span class="stats-sport-label">${escapeHtml(st.sportName)}:</span> ${st[field]}</div>`
+  ).join('');
+}
+
+// ── Rating ───────────────────────────────────────────────────────────────
+let ratingHtml;
+if (contextSportId) {
+  ratingHtml = `<span>${student.calculatedRating ?? 0}</span>`;
+} else {
+  ratingHtml = student.ratingBadgesHtml || `<span>${student.calculatedRating || 0}</span>`;
+}
+
+// ── Trainings gesamt breakdown ───────────────────────────────────────────
+const gesamtBreakdown = isMultiSport
+  ? `<div class="stats-sport-total">Gesamt: ${student.trainingsGesamt || 0}</div>` +
+    Object.values(studentSportStats).map(st =>
+      `<div class="stats-sport-line"><span class="stats-sport-label">${escapeHtml(st.sportName)}:</span> ${st.total}</div>`
+    ).join('')
+  : String(student.trainingsGesamt || 0);
+
+// ── Graduierung / Gürtel / Gewicht — sport-config aware ─────────────────
+// In multi-sport mode: check each sport's config; show per-sport blocks where enabled.
+// In single-sport mode: use cfg as before.
+let graduierungBadgeHtml = '';
+let guertelBadgeHtml     = '';
+let showWeightBlock      = false;
+
+if (isMultiSport) {
+  const graduEntries = [];
+  const guertelEntries = [];
+  let anyWeight = false;
+
+  Object.entries(studentSportStats).forEach(([sid, st]) => {
+    const sc = getSportConfig(sid);
+    if (sc.showGraduation && student.kyu_grad) {
+      graduEntries.push(`<div class="multisport-cell-row"><span class="multisport-cell-label">${escapeHtml(st.sportName)}:</span> ${escapeHtml(student.kyu_grad)}</div>`);
+    }
+    if (sc.showBelt && student.guertelfarbe) {
+      guertelEntries.push(`<div class="multisport-cell-row"><span class="multisport-cell-label">${escapeHtml(st.sportName)}:</span> ${escapeHtml(student.guertelfarbe)}</div>`);
+    }
+    if (sc.showWeight) anyWeight = true;
+  });
+
+  if (graduEntries.length > 0) {
+    graduierungBadgeHtml = `<span class="student-badge badge-purple">Graduierung: ${graduEntries.join('')}</span>`;
+  }
+  if (guertelEntries.length > 0) {
+    guertelBadgeHtml = `<span class="student-badge badge-green">Gürtelfarbe: ${guertelEntries.join('')}</span>`;
+  }
+  showWeightBlock = anyWeight && !!student.aktuelles_gewicht;
+} else {
+  showWeightBlock = cfg.showWeight;
+}
+
 return `
 
 <div class="student-stats-card ${genderClass}">
@@ -6577,10 +7019,16 @@ return `
 
       <div class="student-badges">
         <span class="student-badge badge-blue">Alter: ${student.alter || '-'}</span>
-        ${cfg.showGraduation ? `<span class="student-badge badge-purple">${cfg.graduationLabel}: ${student.kyu_grad || '-'}</span>` : ''}
-        ${cfg.showBelt       ? `<span class="student-badge badge-green">${cfg.beltLabel}: ${student.guertelfarbe || '-'}</span>` : ''}
-        <span class="student-badge badge-green">Gruppe: ${student.groupsHtml || student.groupsText || '-'}</span>
-        <span class="student-badge badge-orange">Trainer: ${student.trainersText || '-'}</span>
+        ${isMultiSport
+          ? graduierungBadgeHtml
+          : (cfg.showGraduation ? `<span class="student-badge badge-purple">${cfg.graduationLabel}: ${student.kyu_grad || '-'}</span>` : '')
+        }
+        ${isMultiSport
+          ? guertelBadgeHtml
+          : (cfg.showBelt ? `<span class="student-badge badge-green">${cfg.beltLabel}: ${student.guertelfarbe || '-'}</span>` : '')
+        }
+        <span class="student-badge badge-green">Gruppe: ${gruppeHtml}</span>
+        <span class="student-badge badge-orange">Trainer: ${trainerHtml}</span>
       </div>
 
       <div style="margin-top:10px;font-weight:700;">
@@ -6597,7 +7045,7 @@ return `
       <div class="training-icon">🗓️</div>
       <div>
         <div class="training-title">Trainings Woche</div>
-        <div class="training-number">${student.trainingsWoche || 0}</div>
+        <div class="training-number">${isMultiSport ? `<div class="stats-sport-total">Gesamt: ${student.trainingsWoche || 0}</div>${sportBreakdownHtml('week')}` : (student.trainingsWoche || 0)}</div>
       </div>
     </div>
 
@@ -6605,7 +7053,7 @@ return `
       <div class="training-icon">🗓️</div>
       <div>
         <div class="training-title">Trainings Monat</div>
-        <div class="training-number">${student.trainingsMonat || 0}</div>
+        <div class="training-number">${isMultiSport ? `<div class="stats-sport-total">Gesamt: ${student.trainingsMonat || 0}</div>${sportBreakdownHtml('month')}` : (student.trainingsMonat || 0)}</div>
       </div>
     </div>
 
@@ -6613,7 +7061,7 @@ return `
       <div class="training-icon">🗓️</div>
       <div>
         <div class="training-title">Trainings Jahr</div>
-        <div class="training-number">${student.trainingsJahr || 0}</div>
+        <div class="training-number">${isMultiSport ? `<div class="stats-sport-total">Gesamt: ${student.trainingsJahr || 0}</div>${sportBreakdownHtml('year')}` : (student.trainingsJahr || 0)}</div>
       </div>
     </div>
 
@@ -6621,7 +7069,9 @@ return `
       <div class="training-icon">🏆</div>
       <div>
         <div class="training-title">Rating</div>
-        <div class="training-number">${student.calculatedRating || 0}</div>
+        <div class="training-number" style="font-size:0.9em;line-height:1.6">
+          ${ratingHtml}
+        </div>
       </div>
     </div>
 
@@ -6645,7 +7095,7 @@ return `
         <div class="personal-info-icon">📋</div>
         <div>
           <div class="personal-info-label">Trainings gesamt</div>
-          <div class="personal-info-value">${student.trainingsGesamt || 0}</div>
+          <div class="personal-info-value">${gesamtBreakdown}</div>
         </div>
       </div>
 
@@ -6657,7 +7107,7 @@ return `
         </div>
       </div>
 
-      ${cfg.showWeight ? `
+      ${showWeightBlock ? `
       <div class="personal-info-row">
         <div class="personal-info-icon">⚖️</div>
         <div>
@@ -6679,7 +7129,7 @@ return `
 
 }
 
-async function editStudent(studentId){
+async function editStudent(studentId, contextSportId){
 
   
 
@@ -6710,7 +7160,7 @@ showCustomMessage('Schüler nicht gefunden');
 return;
 }
 
-openEditStudentForm(student);
+openEditStudentForm(student, contextSportId || null);
 
 }
 
@@ -6774,74 +7224,224 @@ console.log('Gefundene Fotos:', foundCount);
 
 }
 
-async function loadGroupsAndTrainersForEditStudent(student){
+// ── Custom Multi-Select helpers ───────────────────────────────────────────
 
-const gruppeSelect =
-document.getElementById('editGruppe');
-
-const trainerSelect =
-document.getElementById('editTrainer');
-
-if(!gruppeSelect || !trainerSelect) return;
-
-
-// группы
-let groupsQuery = db
-.from('groups')
-.select('*')
-.eq('aktiv','JA');
-
-if(student.sport_id){
-  groupsQuery = groupsQuery.eq('sport_id', student.sport_id);
+function toggleEditCms(id) {
+  const panel = document.getElementById(id + 'Panel');
+  if (!panel) return;
+  const wasOpen = panel.classList.contains('cms-open');
+  document.querySelectorAll('.cms-panel.cms-open').forEach(p => p.classList.remove('cms-open'));
+  if (!wasOpen) panel.classList.add('cms-open');
 }
 
-const { data: groups } = await groupsQuery.order('gruppenname');
+document.addEventListener('click', () => {
+  document.querySelectorAll('.cms-panel.cms-open').forEach(p => p.classList.remove('cms-open'));
+});
 
-
-// тренеры
-let trainersQuery = db
-.from('trainers')
-.select('*')
-.eq('aktiv','JA')
-.eq('rolle','Trainer');
-
-if(student.sport_id){
-  trainersQuery = trainersQuery.eq('sport_id', student.sport_id);
+function _cmsRebuildChips(chipsId, inputName, placeholder) {
+  const el = document.getElementById(chipsId);
+  if (!el) return;
+  const checked = [...document.querySelectorAll(`input[name="${inputName}"]:checked`)];
+  if (!checked.length) {
+    el.innerHTML = `<span class="cms-placeholder">${placeholder}</span>`;
+    return;
+  }
+  el.innerHTML = checked.map(cb => {
+    const lbl = escapeHtml(cb.dataset.label || cb.value);
+    const safeVal = (cb.value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const safePh  = placeholder.replace(/'/g, "\\'");
+    return `<span class="cms-chip">${lbl}<span class="cms-chip-x" onclick="event.stopPropagation();cmsRemoveChip('${inputName}','${safeVal}','${chipsId}','${safePh}')">×</span></span>`;
+  }).join('');
 }
 
-const { data: trainers } = await trainersQuery.order('name');
+function cmsRemoveChip(inputName, value, chipsId, placeholder) {
+  const cb = document.querySelector(`input[name="${inputName}"][value="${value}"]`);
+  if (cb) {
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _cmsRebuildChips(chipsId, inputName, placeholder);
+}
 
-gruppeSelect.innerHTML =
-'<option value="">Gruppe wählen...</option>';
+async function onEditSportChange() {
+  _cmsRebuildChips('editSportCmsChips', 'editSportCheck', 'Sportart wählen...');
+  const selected = [...document.querySelectorAll('input[name="editSportCheck"]:checked')].map(cb => cb.value);
+  await _reloadEditGruppePanel(selected);
+}
 
-trainerSelect.innerHTML =
-'<option value="">Trainer wählen...</option>';
+async function onEditGroupChange() {
+  _cmsRebuildChips('editGruppeCmsChips', 'editGruppeCheck', 'Gruppen wählen...');
+  await _reloadEditTrainerPanel();
+}
 
-(groups || []).forEach(g=>{
+function onEditTrainerChange() {
+  _cmsRebuildChips('editTrainerCmsChips', 'editTrainerCheck', 'Trainer wählen...');
+}
 
-gruppeSelect.innerHTML += `
+async function _reloadEditGruppePanel(sportIds) {
+  const panel = document.getElementById('editGruppeCmsPanel');
+  if (!panel) return;
 
-<option value="${g.gruppe_id}"
-${student.gruppe_id===g.gruppe_id?'selected':''}>
+  if (!sportIds || !sportIds.length) {
+    panel.innerHTML = '<span class="cms-no-items">Bitte Sportart wählen</span>';
+    _cmsRebuildChips('editGruppeCmsChips', 'editGruppeCheck', 'Gruppen wählen...');
+    await _refreshEditTrainerChips();
+    return;
+  }
 
-${g.gruppenname}
+  const { data: groups } = await db.from('groups')
+    .select('gruppe_id, gruppenname, sport_id')
+    .eq('aktiv', 'JA').eq('club_id', currentClub.club_id)
+    .in('sport_id', sportIds).order('gruppenname');
 
-</option>`;
+  const sportNameMap = {};
+  (adminAvailableSports || []).forEach(s => { sportNameMap[s.sport_id] = s.name; });
 
-});
+  const bySport = {};
+  (groups || []).forEach(g => {
+    if (!bySport[g.sport_id]) bySport[g.sport_id] = [];
+    bySport[g.sport_id].push(g);
+  });
 
-(trainers || []).forEach(t=>{
+  const showHeader = sportIds.length > 1;
 
-trainerSelect.innerHTML += `
+  if (!groups || !groups.length) {
+    panel.innerHTML = '<span class="cms-no-items">Keine Gruppen gefunden.</span>';
+  } else {
+    panel.innerHTML = sportIds.filter(sid => bySport[sid]).map(sid =>
+      (showHeader ? `<div class="cms-group-header">${escapeHtml(sportNameMap[sid] || sid)}</div>` : '') +
+      bySport[sid].map(g => `
+        <label class="cms-item">
+          <input type="checkbox" name="editGruppeCheck" value="${g.gruppe_id}"
+            data-label="${escapeHtml(g.gruppenname)}"
+            ${_editStudentOriginalGroupIds.includes(g.gruppe_id) ? 'checked' : ''}
+            onchange="onEditGroupChange()">
+          <span>${escapeHtml(g.gruppenname)}</span>
+        </label>
+      `).join('')
+    ).join('');
+  }
 
-<option value="${t.trainer_id}">
+  _cmsRebuildChips('editGruppeCmsChips', 'editGruppeCheck', 'Gruppen wählen...');
+  await _refreshEditTrainerChips();
+}
 
-${t.name}
+// Trainers are derived from groups via trainer_groups table — students have no trainer_id field.
+// This panel is informational + UI filter only; save logic only persists gruppe_id.
+async function _reloadEditTrainerPanel() {
+  const panel = document.getElementById('editTrainerCmsPanel');
+  if (!panel) return;
 
-</option>`;
+  const checkedGroupIds = [...document.querySelectorAll('input[name="editGruppeCheck"]:checked')]
+    .map(cb => cb.value).filter(Boolean);
 
-});
+  if (!checkedGroupIds.length) {
+    panel.innerHTML = '<span class="cms-no-items">Gruppen wählen, um Trainer zu sehen</span>';
+    _cmsRebuildChips('editTrainerCmsChips', 'editTrainerCheck', 'Trainer wählen...');
+    return;
+  }
 
+  const { data: links } = await db.from('trainer_groups')
+    .select('trainer_id, trainer_name, gruppe_id')
+    .in('gruppe_id', checkedGroupIds)
+    .eq('club_id', currentClub.club_id);
+
+  // Build map: trainer_id → { name, groupIds[] }
+  const trainerMap = {};
+  (links || []).forEach(l => {
+    if (!l.trainer_id || !l.trainer_name) return;
+    if (!trainerMap[l.trainer_id]) trainerMap[l.trainer_id] = { name: l.trainer_name, groupIds: [] };
+    trainerMap[l.trainer_id].groupIds.push(l.gruppe_id);
+  });
+
+  const trainerIds = Object.keys(trainerMap);
+
+  // Keep previously checked trainer IDs that are still available
+  const prevChecked = new Set(
+    [...document.querySelectorAll('input[name="editTrainerCheck"]:checked')].map(cb => cb.value)
+  );
+
+  if (!trainerIds.length) {
+    panel.innerHTML = '<span class="cms-no-items">Keine Trainer für diese Gruppen</span>';
+    _cmsRebuildChips('editTrainerCmsChips', 'editTrainerCheck', 'Trainer wählen...');
+    return;
+  }
+
+  panel.innerHTML = trainerIds.map(tid => {
+    const t = trainerMap[tid];
+    // Pre-check: was previously checked (and still valid), or was never touched → pre-check all
+    const checked = prevChecked.size ? prevChecked.has(tid) : true;
+    return `
+      <label class="cms-item">
+        <input type="checkbox" name="editTrainerCheck" value="${tid}"
+          data-label="${escapeHtml(t.name)}"
+          ${checked ? 'checked' : ''}
+          onchange="onEditTrainerChange()">
+        <span>${escapeHtml(t.name)}</span>
+      </label>`;
+  }).join('');
+
+  _cmsRebuildChips('editTrainerCmsChips', 'editTrainerCheck', 'Trainer wählen...');
+}
+
+// Legacy alias
+async function refreshEditTrainerInfo() { await _reloadEditTrainerPanel(); }
+async function _refreshEditTrainerChips() { await _reloadEditTrainerPanel(); }
+
+async function loadGroupsAndTrainersForEditStudent(student, contextSportId) {
+  const isTrainer = currentTrainer?.role === 'Trainer';
+  const sportNameMap = {};
+  (adminAvailableSports || []).forEach(s => { sportNameMap[s.sport_id] = s.name; });
+
+  if (isTrainer) {
+    // Show read-only sport label
+    const sportEl = document.getElementById('editSportReadonly');
+    if (sportEl) {
+      const sid = contextSportId
+        || String(currentTrainer?.sport_id || selectedLoginContext?.sportId || '').split(/[;,]/)[0].trim();
+      sportEl.innerHTML = sid
+        ? `<span class="cms-chip cms-chip-info">${escapeHtml(sportNameMap[sid] || sid)}</span>`
+        : '<span class="cms-placeholder">—</span>';
+    }
+    // Load only their sport's groups
+    const trainerSport = contextSportId
+      || String(currentTrainer?.sport_id || selectedLoginContext?.sportId || '').split(/[;,]/)[0].trim();
+    await _reloadEditGruppePanel(trainerSport ? [trainerSport] : []);
+
+  } else {
+    // Admin: populate sport CMS panel
+    const panel = document.getElementById('editSportCmsPanel');
+    if (!panel) return;
+
+    const allSports = adminAvailableSports || [];
+
+    // Determine which sports the student participates in (via their groups)
+    const studentSportIds = new Set();
+    if (_editStudentOriginalGroupIds.length) {
+      const { data: gRows } = await db.from('groups')
+        .select('gruppe_id, sport_id')
+        .in('gruppe_id', _editStudentOriginalGroupIds)
+        .eq('club_id', currentClub.club_id);
+      (gRows || []).forEach(g => { if (g.sport_id) studentSportIds.add(String(g.sport_id)); });
+    }
+
+    const preSports = studentSportIds.size
+      ? [...studentSportIds]
+      : allSports.map(s => String(s.sport_id));
+
+    panel.innerHTML = allSports.map(s => `
+      <label class="cms-item">
+        <input type="checkbox" name="editSportCheck" value="${s.sport_id}"
+          data-label="${escapeHtml(s.name)}"
+          ${studentSportIds.has(String(s.sport_id)) ? 'checked' : ''}
+          onchange="onEditSportChange()">
+        <span>${escapeHtml(s.name)}</span>
+      </label>
+    `).join('');
+
+    _cmsRebuildChips('editSportCmsChips', 'editSportCheck', 'Sportart wählen...');
+    await _reloadEditGruppePanel(preSports);
+  }
 }
 
 async function syncEditTrainerFromGroup(){
@@ -6970,7 +7570,9 @@ img.style.display = 'block';
 
 }
 
-function openEditStudentForm(student){
+function openEditStudentForm(student, contextSportId){
+_editStudentContextSportId   = contextSportId || null;
+_editStudentOriginalGroupIds = String(student.gruppe_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
 
 hideAllWorkScreens();
 
@@ -7026,20 +7628,44 @@ id="editGewicht"
 value="${student.aktuelles_gewicht || ''}">
 </div>
 
-<div>
-<label>Gruppe</label>
-<select
-id="editGruppe"
-onchange="syncEditTrainerFromGroup()">
-</select>
+${currentTrainer?.role !== 'Trainer' ? `
+<div class="edit-full-width">
+  <label>Sportart</label>
+  <div class="cms-wrap" id="editSportCms">
+    <div class="cms-trigger" onclick="event.stopPropagation();toggleEditCms('editSportCms')">
+      <div class="cms-chips" id="editSportCmsChips"><span class="cms-placeholder">Sportart wählen...</span></div>
+      <span class="cms-caret">▾</span>
+    </div>
+    <div class="cms-panel" id="editSportCmsPanel" onclick="event.stopPropagation()"></div>
+  </div>
+</div>
+` : `
+<div class="edit-full-width">
+  <label>Sportart</label>
+  <div class="cms-info-chips" id="editSportReadonly"><span class="cms-placeholder">Wird geladen...</span></div>
+</div>
+`}
+
+<div class="edit-full-width">
+  <label>Gruppen</label>
+  <div class="cms-wrap" id="editGruppeCms">
+    <div class="cms-trigger" onclick="event.stopPropagation();toggleEditCms('editGruppeCms')">
+      <div class="cms-chips" id="editGruppeCmsChips"><span class="cms-placeholder">Gruppen wählen...</span></div>
+      <span class="cms-caret">▾</span>
+    </div>
+    <div class="cms-panel" id="editGruppeCmsPanel" onclick="event.stopPropagation()"></div>
+  </div>
 </div>
 
-<div>
-<label>Trainer</label>
-<select
-id="editTrainer"
-onchange="syncEditGroupFromTrainer()">
-</select>
+<div class="edit-full-width">
+  <label>Trainer wählen</label>
+  <div class="cms-wrap" id="editTrainerCms">
+    <div class="cms-trigger" onclick="event.stopPropagation();toggleEditCms('editTrainerCms')">
+      <div class="cms-chips" id="editTrainerCmsChips"><span class="cms-placeholder">Trainer wählen...</span></div>
+      <span class="cms-caret">▾</span>
+    </div>
+    <div class="cms-panel" id="editTrainerCmsPanel" onclick="event.stopPropagation()"></div>
+  </div>
 </div>
 
 <div>
@@ -7130,7 +7756,7 @@ student.kyu_grad,
 student.guertelfarbe
 );
 
-loadGroupsAndTrainersForEditStudent(student);
+loadGroupsAndTrainersForEditStudent(student, contextSportId || null);
 
 loadStudentPhotosForEditStudent(student);
 updateEditStudentPhotoPreview();
@@ -7202,7 +7828,7 @@ kyuSelect.value = row.kyu_grad;
 
 }
 
-async function showStudentStats(id){
+async function showStudentStats(id, contextSportId){
   
 
 
@@ -7253,7 +7879,7 @@ if(box){
   box.innerHTML = 'Daten werden geladen...';
 }
 
-const html = await buildStudentStatsHtml(id);
+const html = await buildStudentStatsHtml(id, contextSportId || null);
 
 if(box){
   box.innerHTML = html;
@@ -7261,9 +7887,9 @@ if(box){
 
 }
 
-async function buildStudentStatsHtml(id){
+async function buildStudentStatsHtml(id, contextSportId){
 
-const student = await getStudentFullData(id);
+const student = await getStudentFullData(id, null, null, contextSportId || null);
 
 if(!student){
 return 'Schüler nicht gefunden';
@@ -7284,90 +7910,99 @@ console.error(error);
 return 'Fehler beim Laden der Statistik.';
 }
 
-const rows = (data || []).filter(row => {
+// Always build groupsMap — needed for sport filtering AND per-sport breakdown
+const statsGroupIds = [...new Set(
+  (data || []).map(r => String(r.gruppe_id || '')).filter(Boolean)
+)];
+let groupsMapForStats = {};
+if (statsGroupIds.length > 0) {
+  const { data: attGroups } = await db
+    .from('groups')
+    .select('gruppe_id, sport_id')
+    .in('gruppe_id', statsGroupIds)
+    .eq('club_id', currentClub.club_id);
+  (attGroups || []).forEach(g => {
+    groupsMapForStats[String(g.gruppe_id)] = g.sport_id;
+  });
+}
 
-const attendanceStudentId =
-String(row.student_id || '');
-
-const isSameStudent =
-possibleStudentIds.includes(attendanceStudentId);
-
-const isPresent =
-String(row.anwesenheit || '').toUpperCase() === 'JA';
-
-return isSameStudent && isPresent;
-
+// Deduplicate: one presence-entry per student+group+day
+const uniqueRows = {};
+(data || []).forEach(row => {
+  const attendanceStudentId = String(row.student_id || '');
+  if (!possibleStudentIds.includes(attendanceStudentId)) return;
+  if (String(row.anwesenheit || '').toUpperCase() !== 'JA') return;
+  const dateKey = String(row.datum || '').slice(0,10);
+  if (!dateKey) return;
+  const key = attendanceStudentId + '|' + String(row.gruppe_id || '') + '|' + dateKey;
+  uniqueRows[key] = row;
 });
-
-const unique = {};
-
-rows.forEach(row => {
-
-const dateKey =
-String(row.datum || '').slice(0,10);
-
-if(!dateKey) return;
-
-const key =
-String(row.student_id) + '|' +
-String(row.gruppe_id) + '|' +
-dateKey;
-
-unique[key] = row;
-
-});
-
-const attendance =
-Object.values(unique);
+const allAttendance = Object.values(uniqueRows);
 
 const now = new Date();
-
-const currentYear = now.getFullYear();
+const currentYear  = now.getFullYear();
 const currentMonth = now.getMonth();
-
-const startOfWeek = new Date(now);
-const day = startOfWeek.getDay() || 7;
-
-startOfWeek.setDate(startOfWeek.getDate() - day + 1);
+const startOfWeek  = new Date(now);
+startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() || 7) - 1));
 startOfWeek.setHours(0,0,0,0);
+
+// ── Per-sport breakdown (Alle Sportarten mode) ────────────────────────────
+// Build sportSportStats only when no contextSportId and student has multiple sports
+let studentSportStats = null;
+const allSportIds = [...new Set(
+  allAttendance.map(r => groupsMapForStats[String(r.gruppe_id || '')]).filter(Boolean)
+)];
+
+if (!contextSportId && allSportIds.length > 1) {
+  studentSportStats = {};
+  allSportIds.forEach(sid => {
+    const sport = (adminAvailableSports || []).find(s => String(s.sport_id) === String(sid));
+    studentSportStats[sid] = {
+      sportName: sport?.name || sid,
+      groups:    student.groupsBySport?.[sid]    || [],
+      trainers:  student.trainersBySport?.[sid]  || [],
+      week: 0, month: 0, year: 0, total: 0,
+      rating: (student.ratingBadges || []).find(b => String(b.sportId) === String(sid))?.count ?? 0
+    };
+  });
+
+  allAttendance.forEach(row => {
+    const rowSport = groupsMapForStats[String(row.gruppe_id || '')];
+    if (!rowSport || !studentSportStats[rowSport]) return;
+    const d = new Date(String(row.datum || '').slice(0,10));
+    if (isNaN(d.getTime())) return;
+    const st = studentSportStats[rowSport];
+    st.total++;
+    if (d.getFullYear() === currentYear) st.year++;
+    if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) st.month++;
+    if (d >= startOfWeek) st.week++;
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────
+
+// Filter attendance to context sport when applicable
+const filteredAttendance = contextSportId
+  ? allAttendance.filter(r => groupsMapForStats[String(r.gruppe_id || '')] === contextSportId)
+  : allAttendance;
 
 let trainingsWoche = 0;
 let trainingsMonat = 0;
-let trainingsJahr = 0;
+let trainingsJahr  = 0;
 
-attendance.forEach(row => {
-
-const dateText =
-String(row.datum || '').slice(0,10);
-
-const d = new Date(dateText);
-
-if(isNaN(d.getTime())) return;
-
-if(d >= startOfWeek){
-trainingsWoche++;
-}
-
-if(
-d.getFullYear() === currentYear &&
-d.getMonth() === currentMonth
-){
-trainingsMonat++;
-}
-
-if(d.getFullYear() === currentYear){
-trainingsJahr++;
-}
-
+filteredAttendance.forEach(row => {
+  const d = new Date(String(row.datum || '').slice(0,10));
+  if (isNaN(d.getTime())) return;
+  if (d >= startOfWeek) trainingsWoche++;
+  if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) trainingsMonat++;
+  if (d.getFullYear() === currentYear) trainingsJahr++;
 });
 
-student.trainingsWoche = trainingsWoche;
-student.trainingsMonat = trainingsMonat;
-student.trainingsJahr = trainingsJahr;
-student.trainingsGesamt = attendance.length;
-student.calculatedRating = attendance.length;
+student.trainingsWoche  = trainingsWoche;
+student.trainingsMonat  = trainingsMonat;
+student.trainingsJahr   = trainingsJahr;
+student.trainingsGesamt = filteredAttendance.length;
 
-return buildStudentInfoHtml(student);
+return buildStudentInfoHtml(student, contextSportId || null, studentSportStats);
 
 }
 
@@ -7559,9 +8194,11 @@ async function showAddStudentNameSuggestions() {
   const clubId  = currentClub?.club_id;
   const sportId = window._addStudentFormSportId;
 
-  let studentsQuery = db.from('students').select('*').eq('club_id', clubId);
-  if (sportId) studentsQuery = studentsQuery.eq('sport_id', sportId);
-  const { data: studentsData } = await studentsQuery.order('nachname', { ascending: true });
+  // Search across ALL sports in the club — a trainer adding a Boxen student
+  // must see if that person already exists as a Judo student in the same club.
+  const { data: studentsData } = await db
+    .from('students').select('*').eq('club_id', clubId)
+    .order('nachname', { ascending: true });
 
   const { data: archivData } = await db
     .from('archiv').select('*').eq('club_id', clubId)
@@ -7623,27 +8260,35 @@ async function selectAddStudentSuggestion(idx) {
   if (!student) return;
 
   const groupId = window._addStudentFormGroupId;
+  const sportId = window._addStudentFormSportId;
 
-  if (student._source === 'students' && student.aktiv === 'JA') {
-    const groupIds = String(student.gruppe_id || '')
-      .split(/[;,]/).map(x => x.trim()).filter(Boolean);
-    if (groupId && groupIds.includes(String(groupId))) {
-      const confirmed = await showCustomConfirm({
-        title: 'Teilnehmer bereits vorhanden',
-        message: `${student.nachname} ${student.vorname} ist bereits in dieser Gruppe aktiv. Möchten Sie trotzdem ein Duplikat anlegen?`,
-        confirmText: 'Duplikat anlegen',
-        cancelText: 'Abbrechen',
-        type: 'danger'
-      });
-      if (!confirmed) return;
-      fillAddStudentForm(student);
-      window._selectedExistingStudent = null;
-      return;
-    }
+  // Archived or inactive: fill form, saveNewStudent handles reactivation
+  if (student._source !== 'students' || student.aktiv !== 'JA') {
+    window._selectedExistingStudent = student;
+    fillAddStudentForm(student);
+    return;
   }
 
-  window._selectedExistingStudent = student;
-  fillAddStudentForm(student);
+  const studentGroupIds = String(student.gruppe_id || '')
+    .split(/[;,]/).map(x => x.trim()).filter(Boolean);
+
+  if (groupId && studentGroupIds.includes(String(groupId))) {
+    // Already in this exact group — warn before creating a duplicate
+    const confirmed = await showCustomConfirm({
+      title: 'Teilnehmer bereits vorhanden',
+      message: `${student.nachname} ${student.vorname} ist bereits in dieser Gruppe aktiv. Möchten Sie trotzdem ein Duplikat anlegen?`,
+      confirmText: 'Duplikat anlegen',
+      cancelText: 'Abbrechen',
+      type: 'danger'
+    });
+    if (!confirmed) return;
+    fillAddStudentForm(student);
+    window._selectedExistingStudent = null;
+    return;
+  }
+
+  // Active student in this club but NOT in this group — show multi-sport modal
+  await showDuplicateStudentModal(student, groupId, sportId);
 }
 
 function fillAddStudentForm(student) {
@@ -7679,6 +8324,193 @@ function fillAddStudentForm(student) {
 
   if (student.foto_url) updateNewStudentPhotoPreview();
 }
+
+// ─── Multi-sport helpers ─────────────────────────────────────────────────────
+
+/**
+ * Returns true if the student participates in the given sport.
+ * Handles both legacy single-value sport_id ("judo") and future
+ * multi-value sport_id ("judo;boxen").
+ * Passing null/empty sportId means "all sports" → always true.
+ */
+function studentHasSport(student, sportId) {
+  if (!sportId) return true;
+  const raw = String(student?.sport_id || '');
+  if (!raw) return false;
+  return raw.split(/[;,]/).map(x => x.trim()).includes(sportId);
+}
+
+// Checks student's group memberships against a groupsMap (gruppe_id → sport_id).
+// Needed because students.sport_id is the primary sport only; additional sports
+// are tracked via gruppe_id (multi-sport architecture).
+function studentHasSportByGroups(student, sportId, groupsMap) {
+  if (!sportId) return true;
+  const studentGroupIds = String(student.gruppe_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+  if (studentGroupIds.some(gid => groupsMap[gid] === sportId)) return true;
+  return studentHasSport(student, sportId);
+}
+
+// ─── Multi-sport duplicate protection ────────────────────────────────────────
+
+async function showDuplicateStudentModal(existingStudent, targetGroupId, targetSportId) {
+  const name    = `${existingStudent.vorname} ${existingStudent.nachname}`;
+  const geb     = existingStudent.geburtsdatum ? formatDateDE(existingStudent.geburtsdatum) : '—';
+  const vertrag = existingStudent.vertrag_status || '—';
+  const currentSports = String(existingStudent.sport_id || '—');
+
+  const groupIds = String(existingStudent.gruppe_id || '')
+    .split(/[;,]/).map(x => x.trim()).filter(Boolean);
+
+  let groupNames = '—';
+  if (groupIds.length > 0) {
+    const { data: gd } = await db
+      .from('groups').select('gruppe_id, gruppenname')
+      .in('gruppe_id', groupIds)
+      .eq('club_id', currentClub.club_id);
+    if (gd?.length) groupNames = gd.map(g => g.gruppenname || g.gruppe_id).join(', ');
+  }
+
+  let targetGroupName = targetGroupId || '—';
+  if (targetGroupId) {
+    const { data: tg } = await db
+      .from('groups').select('gruppenname').eq('gruppe_id', targetGroupId).maybeSingle();
+    if (tg?.gruppenname) targetGroupName = tg.gruppenname;
+  }
+
+  const isAdmin = currentTrainer?.role === 'Admin' || isSuperAdminAccess;
+
+  const result = await _showDuplicateConfirmModal({
+    studentName: name,
+    geburtsdatum: geb,
+    vertrag,
+    currentSports,
+    currentGroups: groupNames,
+    targetSport: targetSportId || '—',
+    targetGroup: targetGroupName,
+    isAdmin
+  });
+
+  if (result === 'add') {
+    // Close the "new student" form before showing the success message
+    const addScreen = document.getElementById('addStudentScreen');
+    if (addScreen) addScreen.classList.add('hidden');
+    await addExistingStudentToGroup(existingStudent, targetGroupId, targetSportId);
+  } else if (result === 'new') {
+    const confirmed2 = await showCustomConfirm({
+      title: 'Achtung: Neuer Datensatz',
+      message: 'Es wird ein neuer Datensatz erstellt. Bitte nur verwenden, wenn es sich wirklich um eine andere Person mit gleichem Namen handelt.',
+      confirmText: 'Trotzdem erstellen',
+      cancelText: 'Abbrechen',
+      type: 'danger'
+    });
+    if (!confirmed2) return;
+    window._selectedExistingStudent = null;
+    fillAddStudentForm(existingStudent);
+  }
+  // 'cancel' → do nothing
+}
+
+function _showDuplicateConfirmModal({ studentName, geburtsdatum, vertrag, currentSports, currentGroups, targetSport, targetGroup, isAdmin }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.75)',
+      'z-index:9999', 'display:flex', 'align-items:center', 'justify-content:center'
+    ].join(';');
+
+    overlay.innerHTML = `
+      <div style="background:#1a1a2e;border:1px solid #444;border-radius:12px;padding:24px;max-width:420px;width:92%;box-shadow:0 8px 32px rgba(0,0,0,0.7)">
+        <h3 style="color:#e2b96a;margin:0 0 14px;font-size:1.05em">⚠️ Schüler bereits im Verein vorhanden</h3>
+        <div style="background:#111827;border-radius:8px;padding:12px;margin-bottom:14px;font-size:0.88em;color:#ddd;line-height:2">
+          <div><span style="color:#aaa">Name:</span> <strong>${studentName}</strong></div>
+          <div><span style="color:#aaa">Geburtsdatum:</span> ${geburtsdatum}</div>
+          <div><span style="color:#aaa">Vertrag:</span> ${vertrag}</div>
+          <div><span style="color:#aaa">Sportarten:</span> ${currentSports}</div>
+          <div><span style="color:#aaa">Gruppen:</span> ${currentGroups}</div>
+        </div>
+        <p style="color:#ccc;margin:0 0 16px;font-size:0.9em;line-height:1.5">
+          Möchtest du diesen Schüler auch zur Gruppe
+          <strong style="color:#e2b96a">${targetGroup}</strong>
+          (${targetSport}) hinzufügen?
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button id="_dupAdd" style="padding:11px;border-radius:8px;border:none;cursor:pointer;background:linear-gradient(135deg,#0d7c38,#085a29);color:#fff;font-weight:600;font-size:0.9em">
+            ✅ Ja, bestehenden Schüler hinzufügen
+          </button>
+          ${isAdmin ? `<button id="_dupNew" style="padding:11px;border-radius:8px;border:none;cursor:pointer;background:linear-gradient(135deg,#7b1c1c,#c0392b);color:#fff;font-weight:600;font-size:0.9em">
+            ⚠️ Nein, trotzdem neuen Schüler erstellen
+          </button>` : ''}
+          <button id="_dupCancel" style="padding:11px;border-radius:8px;border:none;cursor:pointer;background:#2a2a3e;color:#aaa;font-weight:600;font-size:0.9em">
+            Abbrechen
+          </button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#_dupAdd').onclick = () => {
+      document.body.removeChild(overlay); resolve('add');
+    };
+    const newBtn = overlay.querySelector('#_dupNew');
+    if (newBtn) newBtn.onclick = () => {
+      document.body.removeChild(overlay); resolve('new');
+    };
+    overlay.querySelector('#_dupCancel').onclick = () => {
+      document.body.removeChild(overlay); resolve('cancel');
+    };
+  });
+}
+
+async function addExistingStudentToGroup(existingStudent, targetGroupId, targetSportId) {
+  // TODO: When student_sports table is created, replace this with:
+  //   INSERT INTO student_sports (student_id, sport_id, club_id)
+  //   INSERT INTO group_members  (student_id, gruppe_id)
+  //
+  // sport_id is NOT updated here because students.sport_id has a FK constraint
+  // → sports.sport_id and cannot hold semicolon-separated multi-values.
+  // Sport participation is tracked implicitly through gruppe_id → groups.sport_id.
+
+  const existingGroupIds = String(existingStudent.gruppe_id || '')
+    .split(/[;,]/).map(x => x.trim()).filter(Boolean);
+
+  if (targetGroupId && existingGroupIds.includes(String(targetGroupId))) {
+    showCustomMessage('Schüler ist bereits in dieser Gruppe eingetragen.');
+    return;
+  }
+
+  const newGruppeId = [...existingGroupIds, targetGroupId].filter(Boolean).join(';');
+
+  const { error } = await db
+    .from('students')
+    .update({ gruppe_id: newGruppeId })
+    .eq('id', existingStudent.id);
+
+  if (error) {
+    console.error('[addExistingStudentToGroup] Supabase error:', error);
+    showCustomMessage(
+      'Der Schüler konnte nicht zur Gruppe hinzugefügt werden. Bitte den Administrator kontaktieren.'
+    );
+    return;
+  }
+
+  const name = `${existingStudent.vorname} ${existingStudent.nachname}`;
+
+  showCustomMessage(
+    `✅ ${name} wurde zur Gruppe hinzugefügt.`,
+    async () => {
+      hideAllWorkScreens();
+      document.getElementById('attendanceScreen').classList.remove('hidden');
+      if (targetGroupId) {
+        await loadStudentsListForAttendance(targetGroupId);
+        await loadTodayAttendanceCount(targetGroupId);
+      }
+      // Refresh trainer's first-page student list (hidden but in DOM)
+      if (document.getElementById('groupStudentStatsResult')) await applyGroupFilter();
+    }
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function updateNewStudentPhotoPreview(){
 
@@ -7890,6 +8722,88 @@ async function saveNewStudent(groupId) {
   const existing = window._selectedExistingStudent;
   window._selectedExistingStudent = null;
 
+  // ── Duplicate guard: runs when trainer typed the name manually (no suggestion selected) ──
+  if (!existing) {
+    const enteredGeb = buildBirthDateForSupabase(
+      document.getElementById('newGeburtTag')?.value,
+      document.getElementById('newGeburtMonat')?.value,
+      document.getElementById('newGeburtJahr')?.value
+    );
+
+    const { data: dupeRows } = await db
+      .from('students')
+      .select('id, vorname, nachname, geburtsdatum, sport_id, gruppe_id, vertrag_status, aktiv')
+      .eq('club_id', currentClub.club_id)
+      .ilike('vorname', vorname)
+      .ilike('nachname', nachname);
+
+    if (dupeRows?.length > 0) {
+      const isAdmin = currentTrainer?.role === 'Admin' || isSuperAdminAccess;
+
+      // Strict match: same name AND same birth date → block for Trainer, modal for Admin
+      const fullMatch = dupeRows.find(s =>
+        enteredGeb && s.geburtsdatum &&
+        String(s.geburtsdatum).slice(0, 10) === String(enteredGeb).slice(0, 10)
+      );
+
+      const candidate = fullMatch || dupeRows[0];
+
+      if (fullMatch && !isAdmin) {
+        await showDuplicateStudentModal(fullMatch, groupId, sportId);
+        return;
+      }
+
+      // Name-only match or Admin with full match: show modal with "create new" option for Admin
+      let targetGroupLabel = groupId;
+      if (groupId) {
+        const { data: tgd } = await db
+          .from('groups').select('gruppenname').eq('gruppe_id', groupId).maybeSingle();
+        if (tgd?.gruppenname) targetGroupLabel = tgd.gruppenname;
+      }
+
+      const candGroupIds = String(candidate.gruppe_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+      let candGroupNames = '—';
+      if (candGroupIds.length > 0) {
+        const { data: cgd } = await db
+          .from('groups').select('gruppe_id, gruppenname')
+          .in('gruppe_id', candGroupIds).eq('club_id', currentClub.club_id);
+        if (cgd?.length) candGroupNames = cgd.map(g => g.gruppenname || g.gruppe_id).join(', ');
+      }
+
+      const result = await _showDuplicateConfirmModal({
+        studentName: `${candidate.vorname} ${candidate.nachname}`,
+        geburtsdatum: candidate.geburtsdatum ? formatDateDE(candidate.geburtsdatum) : '—',
+        vertrag: candidate.vertrag_status || '—',
+        currentSports: String(candidate.sport_id || '—'),
+        currentGroups: candGroupNames,
+        targetSport: sportId,
+        targetGroup: targetGroupLabel,
+        isAdmin: isAdmin || !fullMatch
+      });
+
+      if (result === 'add') {
+        const addScreen = document.getElementById('addStudentScreen');
+        if (addScreen) addScreen.classList.add('hidden');
+        await addExistingStudentToGroup(candidate, groupId, sportId);
+        return;
+      } else if (result === 'cancel') {
+        return;
+      }
+      // result === 'new': fall through to INSERT below
+      if (fullMatch) {
+        const confirmed2 = await showCustomConfirm({
+          title: 'Achtung: Identische Person',
+          message: 'Name und Geburtsdatum stimmen überein. Bitte nur fortfahren wenn es wirklich eine andere Person ist.',
+          confirmText: 'Trotzdem erstellen',
+          cancelText: 'Abbrechen',
+          type: 'danger'
+        });
+        if (!confirmed2) return;
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   let saveError = null;
 
   if (existing && existing._source === 'students' && existing.aktiv !== 'JA') {
@@ -7922,25 +8836,19 @@ async function saveNewStudent(groupId) {
   }
 
   showCustomMessage(
-  'Neuer Student wurde erfolgreich gespeichert.',
-  async function() {
+    'Neuer Student wurde erfolgreich gespeichert.',
+    async function() {
+      await showPromoTransition(async () => {
+        hideAllWorkScreens();
+        document.getElementById('attendanceScreen').classList.remove('hidden');
+        await loadStudentsListForAttendance(groupId);
+        await loadTodayAttendanceCount(groupId);
+      });
 
-    await showPromoTransition(async () => {
-
-      hideAllWorkScreens();
-
-      document
-        .getElementById('attendanceScreen')
-        .classList.remove('hidden');
-
-      await loadStudentsListForAttendance(groupId);
-      await loadTodayAttendanceCount(groupId);
-
-    });
-
-  }
-  
-);
+      // Refresh trainer's first-page student list (hidden but in DOM)
+      if (document.getElementById('groupStudentStatsResult')) await applyGroupFilter();
+    }
+  );
 
 }
 
@@ -7955,14 +8863,49 @@ function getStudentId(student) {
 
 async function saveEditedStudent(studentId){
 
+// Trainer selection (editTrainerCheck) is NOT saved here — students have no trainer_id field.
+// Trainers are derived from trainer_groups by the student's gruppe_id. Saving gruppe_id is enough.
+
+// ── Build gruppe_id from multi-checkbox selection ─────────────────────────
+const checkedGroupIds = [...document.querySelectorAll('input[name="editGruppeCheck"]:checked')]
+  .map(cb => cb.value).filter(Boolean);
+
+let finalGruppeId;
+const isTrainer = currentTrainer?.role === 'Trainer';
+const editContextSport = _editStudentContextSportId || null;
+
+if (isTrainer && editContextSport) {
+  // For Trainer: merge newly selected groups with other-sport groups from existing data.
+  // Fetch current student data to preserve groups from other sports.
+  const { data: currentStudent } = await db.from('students')
+    .select('gruppe_id').eq('id', studentId).maybeSingle();
+  const currentAllGroupIds = String(currentStudent?.gruppe_id || '')
+    .split(/[;,]/).map(x => x.trim()).filter(Boolean);
+
+  // Load all groups to find which ones belong to other sports
+  const { data: allGroupRows } = await db.from('groups')
+    .select('gruppe_id, sport_id').eq('club_id', currentClub.club_id);
+  const groupSportMap = {};
+  (allGroupRows || []).forEach(g => { groupSportMap[g.gruppe_id] = g.sport_id; });
+
+  // Keep other-sport groups, replace context-sport groups with new selection
+  const otherSportGroups = currentAllGroupIds
+    .filter(gid => groupSportMap[gid] !== editContextSport);
+  const merged = [...new Set([...otherSportGroups, ...checkedGroupIds])];
+  finalGruppeId = merged.join(';');
+} else {
+  // Admin: just use what was checked
+  finalGruppeId = checkedGroupIds.join(';');
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 const payload = {
   nachname: document.getElementById('editNachname')?.value?.trim() || '',
   vorname: document.getElementById('editVorname')?.value?.trim() || '',
   geburtsdatum: document.getElementById('editGeburtsdatum')?.value || null,
   aktuelles_gewicht: document.getElementById('editGewicht')?.value || null,
 
-  gruppe_id:
-document.getElementById('editGruppe')?.value || '',
+  gruppe_id: finalGruppeId,
 
 
 
@@ -8327,7 +9270,7 @@ async function loadSportStatsOverview() {
 
     const studentCount =
       (students || []).filter(s =>
-        s.sport_id === sport.sport_id
+        studentHasSport(s, sport.sport_id)
       ).length;
 
     return {
@@ -8404,13 +9347,18 @@ let studentsQuery = db
 
 if (selectedSport) {
   trainersQuery = trainersQuery.eq('sport_id', selectedSport);
-  groupsQuery = groupsQuery.eq('sport_id', selectedSport);
-  studentsQuery = studentsQuery.eq('sport_id', selectedSport);
+  groupsQuery   = groupsQuery.eq('sport_id', selectedSport);
+  // Students are NOT filtered via Supabase .eq() because sport_id may contain
+  // semicolon-separated values ("judo;boxen") that .eq() cannot match.
+  // Client-side filtering via studentHasSport() is done after the fetch.
 }
 
-const { data: trainers } = await trainersQuery;
-const { data: groups } = await groupsQuery;
-const { data: students } = await studentsQuery;
+const { data: trainers }    = await trainersQuery;
+const { data: groups }      = await groupsQuery;
+const { data: allStudents } = await studentsQuery;
+const students = selectedSport
+  ? (allStudents || []).filter(s => studentHasSport(s, selectedSport))
+  : (allStudents || []);
 
   const trainerCount = (trainers || []).filter(t =>
     String(t.rolle || '').toUpperCase() === 'TRAINER'
@@ -8501,8 +9449,13 @@ async function getClubFilteredStudents() {
     return [];
   }
 
+  const { data: _cfgRows } = await db
+    .from('groups').select('gruppe_id, sport_id').eq('club_id', currentClub.club_id);
+  const _cfgMap = {};
+  (_cfgRows || []).forEach(g => { _cfgMap[g.gruppe_id] = g.sport_id; });
+
   return (data || []).filter(student => {
-    if (selectedSport && student.sport_id !== selectedSport) {
+    if (selectedSport && !studentHasSportByGroups(student, selectedSport, _cfgMap)) {
       return false;
     }
 
@@ -8554,7 +9507,8 @@ async function applyStatsFilter() {
     containerId: 'statsStudentsList',
     showCheckbox: false,
     showGroup: true,
-    showComment: false
+    showComment: false,
+    contextSportId: selectedSport || null
   });
 }
 
@@ -8587,7 +9541,8 @@ async function showFilteredStudentsForStatistics() {
     containerId: 'statsStudentsList',
     showCheckbox: false,
     showGroup: true,
-    showComment: false
+    showComment: false,
+    contextSportId: adminSelectedSport || null
   });
 }
 
@@ -9284,7 +10239,7 @@ infoSubtitle.textContent =
   document.getElementById('editTrainerVornameNew').value = nameParts.vorname || '';
   document.getElementById('editTrainerTelefonNew').value = trainer.telefon || '';
   document.getElementById('editTrainerEmailNew').value = trainer.email || '';
-  document.getElementById('editTrainerPinNew').value = trainer.pin || '';
+  document.getElementById('editTrainerPinNew').value = ''; // PIN nicht anzeigen (gehashed)
   document.getElementById('editTrainerRoleNew').value = trainer.rolle || 'Trainer';
 
   const selectedGroupIds = (trainerGroupsResult.data || [])
@@ -9361,26 +10316,32 @@ async function saveEditedTrainer() {
   const vorname = document.getElementById('editTrainerVornameNew')?.value?.trim() || '';
   const telefon = document.getElementById('editTrainerTelefonNew')?.value?.trim() || '';
   const email = document.getElementById('editTrainerEmailNew')?.value?.trim() || '';
-  const pin = document.getElementById('editTrainerPinNew')?.value?.trim() || '';
+  const pinRaw = document.getElementById('editTrainerPinNew')?.value?.trim() || '';
   const rolle = document.getElementById('editTrainerRoleNew')?.value || '';
 
   const name = (nachname + ' ' + vorname).trim();
 
-  if (!trainerId || !name || !pin) {
-    showCustomMessage('Bitte Name und PIN eingeben.');
+  if (!trainerId || !name) {
+    showCustomMessage('Bitte Name eingeben.');
     return;
+  }
+  if (pinRaw && pinRaw.length !== 6) {
+    showCustomMessage('PIN muss genau 6 Stellen haben (oder leer lassen).');
+    return;
+  }
+
+  const updatePayload = { name, telefon, email, rolle, aktiv: 'JA' };
+  if (pinRaw) {
+    const pinPayload = await buildPinHashPayload(pinRaw);
+    updatePayload.pin_hash = pinPayload.pin_hash;
+    updatePayload.pin_salt = pinPayload.pin_salt;
+    // Altes Klartext-Feld leeren
+    updatePayload.pin = null;
   }
 
   const { error: trainerError } = await db
     .from('trainers')
-    .update({
-      name,
-      telefon,
-      email,
-      pin,
-      rolle,
-      aktiv: 'JA'
-    })
+    .update(updatePayload)
     .eq('trainer_id', trainerId);
 
   if (trainerError) {
@@ -9571,9 +10532,7 @@ async function showGroupOverviewScreen() {
   let students = studentsResult.data || [];
 
   if (selectedSport) {
-    students = students.filter(student =>
-      String(student.sport_id || '') === String(selectedSport)
-    );
+    students = students.filter(student => studentHasSport(student, selectedSport));
   }
 
   const trainerGroups = trainerGroupsResult.data || [];
@@ -11319,9 +12278,13 @@ async function saveNewTrainer() {
     showCustomMessage('Bitte PIN eingeben.');
     return;
   }
+  if (pin.length !== 6) {
+    showCustomMessage('PIN muss genau 6 Stellen haben.');
+    return;
+  }
 
-  const trainerId =
-    'TR-' + Date.now().toString().slice(-6);
+  const trainerId = 'TR-' + Date.now().toString().slice(-6);
+  const pinPayload = await buildPinHashPayload(pin);
 
   const { error: trainerError } = await db
     .from('trainers')
@@ -11330,7 +12293,8 @@ async function saveNewTrainer() {
       name,
       telefon,
       email,
-      pin,
+      pin_hash: pinPayload.pin_hash,
+      pin_salt: pinPayload.pin_salt,
       rolle,
       sport_id: sportId,
       aktiv: 'JA',
@@ -13246,8 +14210,8 @@ async function saveSANewClub() {
   if (!/^[a-z0-9-]+$/.test(clubId))
     return setError('Club-ID: nur Kleinbuchstaben, Zahlen und Bindestriche.');
   if (!adminNachname) return setError('Nachname des Administrators ist Pflichtfeld.');
-  if (!adminPin || adminPin.length < 4)
-    return setError('PIN muss mindestens 4 Zeichen haben.');
+  if (!adminPin || adminPin.length < 6)
+    return setError('PIN muss mindestens 6 Stellen haben.');
 
   // Club-ID Eindeutigkeit prüfen
   const { data: existing } = await db
@@ -13306,6 +14270,7 @@ async function saveSANewClub() {
   // 4. INSERT erster Admin in trainers
   const adminName      = (adminNachname + ' ' + adminVorname).trim();
   const adminTrainerId = 'TR-' + Date.now().toString().slice(-6);
+  const adminPinPayload = await buildPinHashPayload(adminPin);
 
   const { error: trainerError } = await db
     .from('trainers')
@@ -13314,7 +14279,8 @@ async function saveSANewClub() {
       name:       adminName,
       telefon:    adminTelefon,
       email:      adminEmail,
-      pin:        adminPin,
+      pin_hash:   adminPinPayload.pin_hash,
+      pin_salt:   adminPinPayload.pin_salt,
       rolle:      'Admin',
       aktiv:      'JA',
       club_id:    clubId
@@ -13701,7 +14667,12 @@ async function saveSAEditClub() {
     if (adminTrainerId) {
       // UPDATE bestehenden Admin
       const adminUpdate = { name: adminName, telefon: adminTelefon, email: adminEmail };
-      if (adminPin.length >= 4) adminUpdate.pin = adminPin;
+      if (adminPin.length >= 6) {
+        const pp = await buildPinHashPayload(adminPin);
+        adminUpdate.pin_hash = pp.pin_hash;
+        adminUpdate.pin_salt = pp.pin_salt;
+        adminUpdate.pin = null;
+      }
       const { error: aErr } = await db
         .from('trainers')
         .update(adminUpdate)
@@ -13710,9 +14681,10 @@ async function saveSAEditClub() {
       if (aErr) return setError('Club gespeichert ✓, aber Admin-Update fehlgeschlagen: ' + aErr.message);
     } else {
       // INSERT neuen Admin
-      if (!adminPin || adminPin.length < 4)
-        return setError('Club gespeichert ✓. Für neuen Admin bitte PIN (min. 4 Zeichen) eingeben.');
+      if (!adminPin || adminPin.length < 6)
+        return setError('Club gespeichert ✓. Für neuen Admin bitte PIN (min. 6 Stellen) eingeben.');
       const newTrainerId = 'TR-' + Date.now().toString().slice(-6);
+      const pp = await buildPinHashPayload(adminPin);
       const { error: aErr } = await db
         .from('trainers')
         .insert([{
@@ -13720,7 +14692,8 @@ async function saveSAEditClub() {
           name:       adminName,
           telefon:    adminTelefon,
           email:      adminEmail,
-          pin:        adminPin,
+          pin_hash:   pp.pin_hash,
+          pin_salt:   pp.pin_salt,
           rolle:      'Admin',
           aktiv:      'JA',
           club_id:    clubId

@@ -134,19 +134,36 @@
     </div>
 
     <h2 id="st2LoginTitle" class="st2-login-title">
-      Bitte wählen Sie Ihren Trainer
+      Trainer-Login
     </h2>
 
-    <select id="trainerSelect" class="st2-select"></select>
+    <!-- Gruppe-Auswahl (nur für Sport-Kontext) -->
+    <div id="st2GruppeBlock" class="hidden">
+      <label class="st2-pin-label">Gruppe auswählen</label>
+      <select id="gruppeLoginSelect" class="st2-select"></select>
+    </div>
 
-    <label class="st2-pin-label">PIN-Code eingeben</label>
+    <label class="st2-pin-label">Trainer-Login</label>
+    <div class="st2-pin-row">
+      <input
+        id="trainerLoginInput"
+        class="st2-pin-input"
+        type="text"
+        placeholder="z.B. Thomas G oder Thomas Graziani"
+        autocomplete="off"
+        spellcheck="false">
+    </div>
+
+    <label class="st2-pin-label">PIN-Code eingeben (6-stellig)</label>
 
     <div class="st2-pin-row">
       <input
         id="pinInput"
         class="st2-pin-input"
         type="password"
-        placeholder="PIN-Code">
+        placeholder="PIN-Code"
+        maxlength="6"
+        inputmode="numeric">
 
       <button
         type="button"
@@ -512,10 +529,10 @@ Bearbeite Trainerdaten und Gruppenzuordnung.
       </div>
 
       <div class="add-trainer-field">
-        <label>PIN</label>
+        <label>PIN (6-stellig)</label>
         <div class="add-trainer-input-row">
           <div class="add-trainer-field-icon">🔑</div>
-          <input id="editTrainerPinNew" placeholder="PIN">
+          <input id="editTrainerPinNew" placeholder="Neuer PIN (leer = unverändert)" maxlength="6" inputmode="numeric" type="password">
         </div>
       </div>
 
@@ -651,10 +668,10 @@ Bearbeite Trainerdaten und Gruppenzuordnung.
 </div>
 
       <div class="add-trainer-field">
-        <label>PIN</label>
+        <label>PIN (6-stellig, Pflicht)</label>
         <div class="add-trainer-input-row">
           <div class="add-trainer-field-icon">🔑</div>
-          <input id="newTrainerPin" placeholder="PIN">
+          <input id="newTrainerPin" placeholder="6-stelliger PIN" maxlength="6" inputmode="numeric" type="password">
         </div>
       </div>
 

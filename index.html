@@ -2704,6 +2704,71 @@ Abbrechen
 
 </div>
 
+<div id="foerdermitgliedFormOverlay" class="custom-message-overlay foerder-modal hidden">
+  <div class="foerder-form-box">
+    <h3>Fördermitglied hinzufügen</h3>
+
+    <div class="student-form-grid">
+      <div>
+        <label>Vorname</label>
+        <input id="foerderVorname" class="foerder-input" placeholder="Vorname"
+          autocomplete="off" spellcheck="false" oninput="showFoerderSuggestions()">
+      </div>
+
+      <div>
+        <label>Nachname</label>
+        <input id="foerderNachname" class="foerder-input" placeholder="Nachname"
+          autocomplete="off" spellcheck="false" oninput="showFoerderSuggestions()">
+      </div>
+
+      <div id="foerderSuggestions" class="foerder-suggestions hidden"></div>
+
+      <div>
+        <label>Geburtsdatum</label>
+        <input id="foerderGeburtsdatum" class="foerder-input" type="date" autocomplete="off">
+      </div>
+
+      <div>
+        <label>Telefon</label>
+        <input id="foerderTelefon" class="foerder-input" placeholder="Telefon"
+          autocomplete="off" spellcheck="false">
+      </div>
+
+      <div>
+        <label>E-Mail</label>
+        <input id="foerderEmail" class="foerder-input" type="email" placeholder="E-Mail"
+          autocomplete="off" spellcheck="false">
+      </div>
+
+      <div>
+        <label>Geschlecht</label>
+        <select id="foerderGeschlecht" class="foerder-select" autocomplete="off">
+          <option value="Keine Angabe">Keine Angabe</option>
+          <option value="Männlich">Männlich</option>
+          <option value="Weiblich">Weiblich</option>
+          <option value="Divers">Divers</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Fördermitglied seit</label>
+        <input id="foerderSeit" class="foerder-input" type="date" autocomplete="off">
+      </div>
+    </div>
+
+    <label>Kommentar</label>
+    <input id="foerderKommentar" class="foerder-input" placeholder="Kommentar (Buchhaltung)"
+      autocomplete="off" spellcheck="false">
+
+    <div id="foerderSelectedStatus" class="foerder-selected-status hidden"></div>
+
+    <div id="foerderFormError" style="color:#ff6b6b; margin-top:10px; font-size:13px;"></div>
+
+    <button class="save" onclick="saveFoerdermitglied()">Speichern</button>
+    <button class="cancel" onclick="closeFoerdermitgliedForm()">Abbrechen</button>
+  </div>
+</div>
+
 <div id="customConfirmOverlay" class="custom-message-overlay hidden">
   <div class="custom-message-box">
     <div class="custom-message-icon" id="customConfirmIcon">⚠</div>

@@ -4455,10 +4455,56 @@ const BUTTONS_URL =
   'https://whorwleydkziejjafsea.supabase.co/storage/v1/object/public/Buttons/';
 
   let buchhaltungSelectedSport = '';
+  let buchhaltungActiveCategory = 'ALL'; // 'ALL' | 'NEW' | 'INACTIVE' | 'ACTIVE' | 'FOERDER'
+  let buchhaltungSearchQuery = '';
+  let _buchhaltungSearchDebounce = null;
 
 function setBuchhaltungSportFilter(sportId) {
   buchhaltungSelectedSport = sportId || '';
   loadBuchhaltungData();
+}
+
+function setBuchhaltungCategoryFilter(category) {
+  buchhaltungActiveCategory = buchhaltungActiveCategory === category ? 'ALL' : (category || 'ALL');
+  loadBuchhaltungData();
+}
+
+function setBuchhaltungSearchQuery(value) {
+  clearTimeout(_buchhaltungSearchDebounce);
+  _buchhaltungSearchDebounce = setTimeout(() => {
+    buchhaltungSearchQuery = String(value || '').trim();
+    loadBuchhaltungData();
+  }, 250);
+}
+
+function clearBuchhaltungSearchQuery() {
+  clearTimeout(_buchhaltungSearchDebounce);
+  buchhaltungSearchQuery = '';
+  const input = document.getElementById('buchhaltungSearchInput');
+  if (input) input.value = '';
+  loadBuchhaltungData();
+}
+
+// Sucht über Nachname/Vorname (in beiden Reihenfolgen), email, telefon.
+function buchhaltungMatchesSearch(s, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+
+  const vorname = String(s.vorname || '').toLowerCase();
+  const nachname = String(s.nachname || '').toLowerCase();
+  const email = String(s.email || '').toLowerCase();
+  const telefon = String(s.telefon || '').toLowerCase();
+  const full1 = (vorname + ' ' + nachname).trim();
+  const full2 = (nachname + ' ' + vorname).trim();
+
+  return (
+    vorname.includes(q) ||
+    nachname.includes(q) ||
+    email.includes(q) ||
+    telefon.includes(q) ||
+    full1.includes(q) ||
+    full2.includes(q)
+  );
 }
 
 function getBuchhaltungSportName(sports) {
@@ -4477,9 +4523,147 @@ function getBuchhaltungSportIcon(sportId) {
   return STARTSEITE_ICON_FILES[sportId] || STARTSEITE_CARD_FILES[sportId] || '';
 }
 
+// --- Buchhaltung-Deduplizierung -------------------------------------------
+// Schützt nur die Anzeige in der Buchhaltung. Es wird NICHTS in Supabase
+// gelöscht oder verändert — bei echten Dubletten wird nur ein console.warn
+// ausgegeben, damit die Ursache später separat untersucht werden kann.
+
+function buchhaltungComboKey(row) {
+  return [
+    currentClub?.club_id,
+    row.vorname, row.nachname, row.geburtsdatum, row.email, row.telefon
+  ].map(x => String(x || '').trim().toLowerCase()).join('|');
+}
+
+// Einheitlicher Personenschlüssel für die Buchhaltung: id > student_id > combo.
+// Wird sowohl zur Dublettenerkennung als auch zum Ausschluss zwischen den
+// Buchhaltungs-Blöcken (Fördermitglieder/Inaktiv/Neu/Aktiv) verwendet.
+function getBuchhaltungPersonKey(student) {
+  if (student.id) return 'id:' + student.id;
+  if (student.student_id) return 'sid:' + student.student_id;
+  return 'combo:' + buchhaltungComboKey(student);
+}
+
+function buchhaltungStudentDedupeKey(row) {
+  return getBuchhaltungPersonKey(row);
+}
+
+// --- Feld-Interpretation für die Buchhaltung -------------------------------
+// NULL/leer bei alten Datensätzen darf niemanden aus der Buchhaltung
+// verschwinden lassen — nur ein explizit gesetzter Gegenwert (z. B. 'NEIN')
+// schließt aus. Die Vertrags-Werte spiegeln exakt den grünen Punkt aus der
+// Schülerliste (getStudentStatusIcon): 'OK', 'JA', 'SIGNED'.
+
+function buchhaltungIsAktiv(s) {
+  if (s.aktiv === null || s.aktiv === undefined || s.aktiv === '') return true;
+  return String(s.aktiv).toUpperCase() === 'JA';
+}
+
+function buchhaltungIsVertragOk(s) {
+  const v = String(s.vertrag_status || '').toUpperCase();
+  return v === 'OK' || v === 'JA' || v === 'SIGNED';
+}
+
+function buchhaltungIsFoerdermitglied(s) {
+  return String(s.mitglied_typ || '').toUpperCase() === 'FOERDERMITGLIED';
+}
+
+function buchhaltungIsExcludedMitgliedTyp(s) {
+  const t = String(s.mitglied_typ || '').toUpperCase();
+  return t === 'FOERDERMITGLIED' || t === 'INAKTIV' || t === 'ARCHIV';
+}
+
+function buchhaltungIsTrainingRelevant(s) {
+  return String(s.training_relevant || 'JA').toUpperCase() !== 'NEIN';
+}
+
+function buchhaltungIsRelevant(s) {
+  return String(s.buchhaltung_relevant || 'JA').toUpperCase() !== 'NEIN';
+}
+
+function scoreBuchhaltungRow(row) {
+  let score = 0;
+
+  ['vorname', 'nachname', 'geburtsdatum', 'email', 'telefon', 'gruppe_id', 'sport_id', 'trainer', 'eintrittsdatum', 'vertrag_status']
+    .forEach(f => { if (row[f]) score++; });
+
+  if (row.trainer) score += 2;
+  if (row.gruppe_id) score += 2;
+
+  const dateVal = row.updated_at || row.buchhaltung_datum || row.created_at || row.eintrittsdatum || null;
+  return { score, dateVal };
+}
+
+function dedupeBuchhaltungRows(rows, sectionLabel, keyFn) {
+  const groups = {};
+  const order = [];
+
+  rows.forEach(row => {
+    const key = keyFn(row);
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(row);
+  });
+
+  const result = [];
+
+  order.forEach(key => {
+    const group = groups[key];
+
+    if (group.length === 1) {
+      result.push(group[0]);
+      return;
+    }
+
+    console.warn('Buchhaltung duplicate detected', {
+      section: sectionLabel,
+      key,
+      count: group.length,
+      records: group
+    });
+
+    let best = group[0];
+    let bestScore = scoreBuchhaltungRow(best);
+
+    for (let i = 1; i < group.length; i++) {
+      const s = scoreBuchhaltungRow(group[i]);
+      const better =
+        s.score > bestScore.score ||
+        (s.score === bestScore.score && s.dateVal && (!bestScore.dateVal || new Date(s.dateVal) > new Date(bestScore.dateVal)));
+      if (better) { best = group[i]; bestScore = s; }
+    }
+
+    // Multi-Sport bleibt sichtbar: Gruppen/Sportarten aller Dubletten werden
+    // zusammengeführt, statt eine davon zu verwerfen.
+    const mergedGroupIds = [...new Set(
+      group.flatMap(r => String(r.gruppe_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean))
+    )];
+    const mergedSportIds = [...new Set(
+      group.flatMap(r => String(r.sport_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean))
+    )];
+
+    result.push({
+      ...best,
+      gruppe_id: mergedGroupIds.length ? mergedGroupIds.join(';') : best.gruppe_id,
+      sport_id: mergedSportIds.length ? mergedSportIds.join(';') : best.sport_id
+    });
+  });
+
+  return result;
+}
+
 async function loadBuchhaltungData() {
   const box = document.getElementById('buchhaltungList');
   if (!box) return;
+
+  // Fokus/Cursor des Suchfelds merken — box.innerHTML wird komplett neu
+  // aufgebaut, daher würde das Tippen sonst nach jedem Reload abreißen.
+  const _searchFocusState = (() => {
+    const el = document.activeElement;
+    if (el && el.id === 'buchhaltungSearchInput') {
+      return { start: el.selectionStart, end: el.selectionEnd };
+    }
+    return null;
+  })();
 
   box.innerHTML = 'Buchhaltung wird geladen...';
 
@@ -4524,22 +4708,69 @@ async function loadBuchhaltungData() {
   const trainerGroups = trainerGroupsResult.data || [];
   const sports = sportsResult.data || [];
 
+  // ── Einheitliche Sport/Gruppen-Quelle für Buchhaltung ────────────────────
+  // Die alte students.sport_id ist nur ein historisches Feld und kann von der
+  // tatsächlichen Gruppenzuordnung abweichen (z. B. nach einem Sportwechsel).
+  // Filter UND Gruppe-Spalte müssen denselben Stand verwenden.
+  const groupNameMap = {};
+  const groupStatusMap = {};
+  const groupSportMap = {};
+  groups.forEach(g => {
+    groupNameMap[String(g.gruppe_id)] = g.gruppenname || g.gruppe_id;
+    groupStatusMap[String(g.gruppe_id)] = String(g.aktiv || '').toUpperCase();
+    groupSportMap[String(g.gruppe_id)] = g.sport_id || '';
+  });
+
+  const sportNameMap = {};
+  sports.forEach(s => {
+    if (s.sport_id) sportNameMap[String(s.sport_id)] = s.name || s.sport_id;
+  });
+
+  // Liefert die aktuellen Sport/Gruppen-Verknüpfungen einer Person:
+  // 1. Priorität: tatsächliche Gruppen (gruppe_id → groups.sport_id).
+  // 2. Fallback NUR wenn keine Gruppenzuordnung existiert: altes students.sport_id.
+  function getBuchhaltungStudentSportLinks(student) {
+    const groupIds = String(student.gruppe_id || '')
+      .split(/[;,]/)
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    const groupLinks = groupIds
+      .map(gid => {
+        const sportId = groupSportMap[gid] || '';
+        if (!sportId) return null;
+        return {
+          sport_id: sportId,
+          sport_name: sportNameMap[sportId] || sportId,
+          gruppe_id: gid,
+          gruppenname: groupNameMap[gid] || gid
+        };
+      })
+      .filter(Boolean);
+
+    if (groupLinks.length > 0) return groupLinks;
+
+    // Keine aktuelle Gruppenzuordnung gefunden — auf alte sport_id zurückfallen.
+    const fallbackSportIds = String(student.sport_id || '')
+      .split(/[;,]/)
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    return fallbackSportIds.map(sid => ({
+      sport_id: sid,
+      sport_name: sportNameMap[sid] || sid,
+      gruppe_id: null,
+      gruppenname: null
+    }));
+  }
+
   function hasSelectedSport(row) {
-  if (!buchhaltungSelectedSport) return true;
+    if (!buchhaltungSelectedSport) return true;
 
-  const sportValue =
-    row.sport_id ||
-    row.sport ||
-    row.sportart ||
-    '';
-
-  const sportIds = String(sportValue)
-    .split(/[;,]/)
-    .map(x => x.trim())
-    .filter(Boolean);
-
-  return sportIds.includes(buchhaltungSelectedSport);
-}
+    return getBuchhaltungStudentSportLinks(row).some(link =>
+      String(link.sport_id) === String(buchhaltungSelectedSport)
+    );
+  }
 
 function findStudentForArchiv(row) {
   return students.find(s =>
@@ -4565,12 +4796,47 @@ function hasSelectedSportArchiv(row) {
 const filteredStudents = students.filter(hasSelectedSport);
 const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
 
-  const groupNameMap = {};
-  const groupStatusMap = {};
-  groups.forEach(g => {
-    groupNameMap[String(g.gruppe_id)] = g.gruppenname || g.gruppe_id;
-    groupStatusMap[String(g.gruppe_id)] = String(g.aktiv || '').toUpperCase();
-  });
+function archivDedupeKey(row) {
+  const original = findStudentForArchiv(row);
+  if (original?.id) return 'id:' + original.id;
+  if (row.student_id) return 'sid:' + row.student_id;
+  return 'combo:' + buchhaltungComboKey(row);
+}
+
+// Schutz gegen mehrfach angezeigte Personen (z. B. mehrere Archiv-Einträge
+// für denselben Schüler nach wiederholter Deaktivierung/Reaktivierung).
+// Es werden hier keine Datensätze gelöscht, nur die Anzeige zusammengeführt.
+const dedupedFilteredStudents = dedupeBuchhaltungRows(filteredStudents, 'Aktive/Neue Schüler', buchhaltungStudentDedupeKey);
+const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', buchhaltungStudentDedupeKey);
+
+  // TEMPORÄRE DIAGNOSE — Sport/Gruppen-Mismatch (Bogdan Milus111). Kann nach
+  // Bestätigung der Korrektur entfernt werden.
+  (function diagnoseBuchhaltungSportMismatch() {
+    const matches = students.filter(s =>
+      String(s.nachname || '').toLowerCase().includes('milus111') ||
+      String(s.vorname || '').toLowerCase().includes('bogdan')
+    );
+    if (!matches.length) return;
+
+    const rows = matches.map(s => {
+      const links = getBuchhaltungStudentSportLinks(s);
+      return {
+        id: s.id,
+        student_id: s.student_id,
+        vorname: s.vorname,
+        nachname: s.nachname,
+        'students.sport_id': s.sport_id,
+        gruppe_id: s.gruppe_id,
+        gruppenname: links.map(l => l.gruppenname || '-').join('; '),
+        calculatedSportLinks: links.map(l => `${l.sport_name}${l.gruppe_id ? ':' + l.gruppenname : ' (fallback)'}`).join(' | '),
+        selectedBuchhaltungSport: buchhaltungSelectedSport || 'Alle Sportarten',
+        passesSportFilter: hasSelectedSport(s),
+        displayedGroupText: getSportGroupText(s)
+      };
+    });
+
+    console.table(rows);
+  })();
 
   function getAgeFromStudent(student) {
     if (student.alter) return student.alter;
@@ -4591,22 +4857,36 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
     return age;
   }
 
-  function getGroupText(student) {
-    const ids = String(student.gruppe_id || '')
-      .split(/[;,]/)
-      .map(x => x.trim())
-      .filter(Boolean);
+  // Zeigt "Sportart: Gruppe" pro Sport/Gruppen-Verknüpfung (mehrzeilig bei
+  // Multi-Sport). Nutzt denselben Helper wie der Sport-Filter (hasSelectedSport),
+  // damit Anzeige und Filter niemals auseinanderlaufen.
+  function getSportGroupText(student) {
+    const allLinks = getBuchhaltungStudentSportLinks(student);
+    if (!allLinks.length) return '-';
 
-    if (!ids.length) return '-';
+    const links = buchhaltungSelectedSport
+      ? allLinks.filter(l => String(l.sport_id) === String(buchhaltungSelectedSport))
+      : allLinks;
 
-    return ids.map(id => {
-      const name = escapeHtml(String(groupNameMap[id] || id));
-      const aktiv = groupStatusMap[id];
-      if (aktiv === undefined || aktiv !== 'JA') {
-        return `<span class="gruppe-geloescht-name">${name}</span> <span class="gruppe-geloescht-label">(gelöscht)</span>`;
+    if (!links.length) return '-';
+
+    return links.map(l => {
+      const sportName = escapeHtml(l.sport_name || l.sport_id);
+
+      if (!l.gruppe_id) {
+        // Fallback-Link ohne aktuelle Gruppenzuordnung (alte sport_id).
+        return sportName;
       }
-      return name;
-    }).join(', ');
+
+      const groupName = escapeHtml(l.gruppenname || l.gruppe_id);
+      const aktiv = groupStatusMap[l.gruppe_id];
+
+      const groupHtml = (aktiv === undefined || aktiv !== 'JA')
+        ? `<span class="gruppe-geloescht-name">${groupName}</span> <span class="gruppe-geloescht-label">(gelöscht)</span>`
+        : groupName;
+
+      return `${sportName}: ${groupHtml}`;
+    }).join('<br>');
   }
 
   function getTrainerText(student) {
@@ -4662,7 +4942,7 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
       vorname: student.vorname || '',
       geschlecht: student.geschlecht || '',
       alter: getAgeFromStudent(student),
-      gruppe: getGroupText(student),
+      gruppe: getSportGroupText(student),
       trainer: getTrainerText(student),
       eintritt: student.eintrittsdatum
         ? new Date(student.eintrittsdatum).toLocaleDateString('de-DE')
@@ -4671,23 +4951,128 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
     };
   }
 
-  const withoutContract = filteredStudents
-    .filter(s =>
-      String(s.aktiv || '').toUpperCase() === 'JA' &&
-      String(s.vertrag_status || '').toUpperCase() !== 'OK' &&
-      String(s.buchhaltung_relevant || 'JA').toUpperCase() !== 'NEIN'
-    )
-    .map(mapStudent);
+  // ── Status-Priorität für die Buchhaltung ──────────────────────────────────
+  // 1. FOERDERMITGLIED  2. INAKTIV/ARCHIV  3. Neue Schüler ohne Vertrag  4. Aktive Schüler mit Vertrag
+  // Eine Person darf am Ende nur in genau einem Block erscheinen.
 
-  const withContract = filteredStudents
-    .filter(s =>
-      String(s.aktiv || '').toUpperCase() === 'JA' &&
-      String(s.vertrag_status || '').toUpperCase() === 'OK'
-    )
-    .map(mapStudent);
+  const foerderRaw = dedupedAllStudents.filter(s =>
+    buchhaltungIsFoerdermitglied(s) &&
+    buchhaltungIsRelevant(s) &&
+    buchhaltungIsAktiv(s)
+  );
+  const foerderKeys = new Set(foerderRaw.map(getBuchhaltungPersonKey));
 
-  const archivedOpen = filteredArchiv
-    .filter(a => String(a.buchhaltung_status || '').toUpperCase() !== 'ERLEDIGT')
+  const dedupedArchivOpen = dedupeBuchhaltungRows(
+    filteredArchiv.filter(a => String(a.buchhaltung_status || '').toUpperCase() !== 'ERLEDIGT'),
+    'Inaktive/archivierte Schüler',
+    archivDedupeKey
+  );
+  const archivOpenKeys = new Set(
+    dedupedArchivOpen.map(a => archivDedupeKey(a)).filter(k => !foerderKeys.has(k))
+  );
+
+  // Schüler, die direkt in students als inaktiv markiert sind (auch ohne offenen Archiv-Eintrag).
+  const inactiveStudentRaw = dedupedAllStudents.filter(s =>
+    !buchhaltungIsAktiv(s) &&
+    !foerderKeys.has(getBuchhaltungPersonKey(s))
+  );
+  const inactiveStudentKeys = new Set(inactiveStudentRaw.map(getBuchhaltungPersonKey));
+
+  const inactiveKeys = new Set([...archivOpenKeys, ...inactiveStudentKeys]);
+
+  const withoutContractRaw = dedupedFilteredStudents.filter(s =>
+    buchhaltungIsAktiv(s) &&
+    !buchhaltungIsVertragOk(s) &&
+    buchhaltungIsRelevant(s) &&
+    !foerderKeys.has(getBuchhaltungPersonKey(s)) &&
+    !inactiveKeys.has(getBuchhaltungPersonKey(s))
+  );
+  const withoutContractKeys = new Set(withoutContractRaw.map(getBuchhaltungPersonKey));
+
+  const withContractCandidates = dedupedFilteredStudents.filter(s =>
+    buchhaltungIsAktiv(s) &&
+    buchhaltungIsRelevant(s) &&
+    buchhaltungIsVertragOk(s) &&
+    !buchhaltungIsExcludedMitgliedTyp(s) &&
+    buchhaltungIsTrainingRelevant(s)
+  );
+
+  const withContractRaw = withContractCandidates.filter(s => {
+    const key = getBuchhaltungPersonKey(s);
+    const excluded =
+      foerderKeys.has(key) || inactiveKeys.has(key) || withoutContractKeys.has(key);
+
+    if (inactiveKeys.has(key)) {
+      const conflictArchiv = dedupedArchivOpen.find(a => archivDedupeKey(a) === key);
+      const conflictInactiveStudent = inactiveStudentRaw.find(r => getBuchhaltungPersonKey(r) === key);
+      console.warn('Buchhaltung status conflict detected', {
+        key,
+        activeRecord: s,
+        conflictingRecord: conflictArchiv || conflictInactiveStudent || null
+      });
+    }
+
+    return !excluded;
+  });
+
+  // ── Abgleich mit dem grünen Punkt der Schülerliste (getStudentStatusIcon) ──
+  // Wenn jemand dort als "Vertrag OK" gilt, aber hier nicht in Aktive Schüler
+  // mit Vertrag landet, wird die genaue Ausschluss-Ursache protokolliert.
+  const activeKeysFinal = new Set(withContractRaw.map(getBuchhaltungPersonKey));
+
+  dedupedFilteredStudents.forEach(s => {
+    const key = getBuchhaltungPersonKey(s);
+    const looksLikeGreenDotActive =
+      buchhaltungIsAktiv(s) &&
+      buchhaltungIsVertragOk(s) &&
+      !buchhaltungIsFoerdermitglied(s) &&
+      !inactiveKeys.has(key);
+
+    if (looksLikeGreenDotActive && !activeKeysFinal.has(key)) {
+      let reason = 'unbekannt';
+      if (!buchhaltungIsRelevant(s)) reason = 'buchhaltung_relevant = NEIN';
+      else if (!buchhaltungIsTrainingRelevant(s)) reason = 'training_relevant = NEIN';
+      else if (buchhaltungIsExcludedMitgliedTyp(s)) reason = 'mitglied_typ = ' + s.mitglied_typ;
+      else if (withoutContractKeys.has(key)) reason = 'bereits in "Neue Schüler ohne Vertrag" eingeordnet';
+
+      console.warn('Buchhaltung active mismatch', {
+        id: s.id, vorname: s.vorname, nachname: s.nachname, reason, record: s
+      });
+    }
+  });
+
+  // Suchfilter (Nachname/Vorname/Email/Telefon) — wirkt zusätzlich zur
+  // Kategorie-Karte und zum Sport-Filter, ändert aber nicht die
+  // Ausschluss-Logik zwischen den Blöcken (die basiert weiterhin auf den
+  // ungefilterten *Raw-Listen oben).
+  const withoutContractView = buchhaltungSearchQuery
+    ? withoutContractRaw.filter(s => buchhaltungMatchesSearch(s, buchhaltungSearchQuery))
+    : withoutContractRaw;
+  const withContractView = buchhaltungSearchQuery
+    ? withContractRaw.filter(s => buchhaltungMatchesSearch(s, buchhaltungSearchQuery))
+    : withContractRaw;
+  const foerderView = buchhaltungSearchQuery
+    ? foerderRaw.filter(s => buchhaltungMatchesSearch(s, buchhaltungSearchQuery))
+    : foerderRaw;
+
+  const withoutContract = withoutContractView.map(mapStudent);
+  const withContract = withContractView.map(mapStudent);
+
+  const foerdermitglieder = foerderView.map(s => ({
+    id: s.id,
+    nachname: s.nachname || '',
+    vorname: s.vorname || '',
+    telefon: s.telefon || '',
+    email: s.email || '',
+    gruppe: getSportGroupText(s),
+    foerdermitgliedSeitText: s.foerdermitglied_seit
+      ? new Date(s.foerdermitglied_seit).toLocaleDateString('de-DE')
+      : '-',
+    buchhaltung_kommentar: s.buchhaltung_kommentar || ''
+  }));
+
+  const archivedOpenAll = dedupedArchivOpen
+    .filter(a => !foerderKeys.has(archivDedupeKey(a)))
     .map(a => {
       const original = findStudentByCode(a.student_id);
       const base = original || a;
@@ -4699,8 +5084,10 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
         nachname: base.nachname || '',
         vorname: base.vorname || '',
         geschlecht: base.geschlecht || '',
+        email: base.email || '',
+        telefon: base.telefon || '',
         alter: getAgeFromStudent(base),
-        gruppe: getGroupText(base),
+        gruppe: getSportGroupText(base),
         trainer: getTrainerText(base),
         eintritt: base.eintrittsdatum
           ? new Date(base.eintrittsdatum).toLocaleDateString('de-DE')
@@ -4708,6 +5095,13 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
         trainings: original ? countTrainings(original) : 0
       };
     });
+
+  const archivedOpen = buchhaltungSearchQuery
+    ? archivedOpenAll.filter(r => buchhaltungMatchesSearch(r, buchhaltungSearchQuery))
+    : archivedOpenAll;
+
+  const buchhaltungTotalResultsCount =
+    withoutContract.length + withContract.length + foerdermitglieder.length + archivedOpen.length;
 
   box.innerHTML = `
     <div class="buch-modern-page">
@@ -4731,8 +5125,25 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
           ${getBuchhaltungSportName(sports)}
         </div>
       </div>
+
+      <div class="buch-search-box">
+        <input
+          id="buchhaltungSearchInput"
+          class="buch-search-input"
+          type="text"
+          placeholder="Schüler suchen..."
+          value="${escapeHtml(buchhaltungSearchQuery)}"
+          oninput="setBuchhaltungSearchQuery(this.value)">
+        ${
+          buchhaltungSearchQuery
+            ? `<button class="buch-search-clear" onclick="clearBuchhaltungSearchQuery()" title="Suche löschen">✕</button>`
+            : ''
+        }
+      </div>
+
       <div class="buch-summary-grid">
-        <div class="buch-summary-card red">
+        <div class="buch-summary-card red ${buchhaltungActiveCategory === 'NEW' ? 'active-filter' : ''}"
+          onclick="setBuchhaltungCategoryFilter('NEW')">
           <div class="buch-summary-icon">👥</div>
           <div>
             <div>Neue Schüler ohne Vertrag</div>
@@ -4740,7 +5151,8 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
           </div>
         </div>
 
-        <div class="buch-summary-card yellow">
+        <div class="buch-summary-card yellow ${buchhaltungActiveCategory === 'INACTIVE' ? 'active-filter' : ''}"
+          onclick="setBuchhaltungCategoryFilter('INACTIVE')">
           <div class="buch-summary-icon">📁</div>
           <div>
             <div>Inaktive / archivierte Schüler</div>
@@ -4748,11 +5160,24 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
           </div>
         </div>
 
-        <div class="buch-summary-card green">
+        <div class="buch-summary-card green ${buchhaltungActiveCategory === 'ACTIVE' ? 'active-filter' : ''}"
+          onclick="setBuchhaltungCategoryFilter('ACTIVE')">
           <div class="buch-summary-icon">✅</div>
           <div>
             <div>Aktive Schüler mit Vertrag</div>
             <strong>${withContract.length}</strong>
+          </div>
+        </div>
+
+        <div class="buch-summary-card blue ${buchhaltungActiveCategory === 'FOERDER' ? 'active-filter' : ''}"
+          onclick="setBuchhaltungCategoryFilter('FOERDER')">
+          <div class="buch-summary-icon buch-foerder-icon">
+            <span class="foerder-people">👥</span>
+            <span class="foerder-star">⭐</span>
+          </div>
+          <div>
+            <div>Fördermitglieder</div>
+            <strong>${foerdermitglieder.length}</strong>
           </div>
         </div>
       </div>
@@ -4794,32 +5219,56 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
         </div>
       </div>
 
-      ${buildBuchhaltungSectionModern(
-        'red',
-        '👥',
-        'Neue Schüler ohne Vertrag',
-        withoutContract,
-        true,
-        'contract'
-      )}
+      ${
+        (buchhaltungSearchQuery && buchhaltungTotalResultsCount === 0)
+          ? `<div class="buch-empty buch-empty-global">Keine Person gefunden.</div>`
+          : `
+            ${
+              (buchhaltungActiveCategory === 'ALL' || buchhaltungActiveCategory === 'NEW')
+                ? buildBuchhaltungSectionModern(
+                    'red',
+                    '👥',
+                    'Neue Schüler ohne Vertrag',
+                    withoutContract,
+                    true,
+                    'contract'
+                  )
+                : ''
+            }
 
-      ${buildBuchhaltungSectionModern(
-        'yellow',
-        '📁',
-        'Inaktive / archivierte Schüler',
-        archivedOpen,
-        true,
-        'archive'
-      )}
+            ${
+              (buchhaltungActiveCategory === 'ALL' || buchhaltungActiveCategory === 'INACTIVE')
+                ? buildBuchhaltungSectionModern(
+                    'yellow',
+                    '📁',
+                    'Inaktive / archivierte Schüler',
+                    archivedOpen,
+                    true,
+                    'archive'
+                  )
+                : ''
+            }
 
-      ${buildBuchhaltungSectionModern(
-        'green',
-        '✅',
-        'Aktive Schüler mit Vertrag',
-        withContract,
-        false,
-        'active'
-      )}
+            ${
+              (buchhaltungActiveCategory === 'ALL' || buchhaltungActiveCategory === 'ACTIVE')
+                ? buildBuchhaltungSectionModern(
+                    'green',
+                    '✅',
+                    'Aktive Schüler mit Vertrag',
+                    withContract,
+                    false,
+                    'active'
+                  )
+                : ''
+            }
+
+            ${
+              (buchhaltungActiveCategory === 'ALL' || buchhaltungActiveCategory === 'FOERDER')
+                ? buildFoerdermitgliederSection(foerdermitglieder)
+                : ''
+            }
+          `
+      }
 
     </div>
    `;
@@ -4834,6 +5283,16 @@ const filteredArchiv = archiv.filter(hasSelectedSportArchiv);
     buchLogo.style.setProperty('right', '10px', 'important');
     buchLogo.style.setProperty('top', '-20px', 'important');
     buchLogo.style.setProperty('z-index', '999', 'important');
+  }
+
+  if (_searchFocusState) {
+    const newSearchInput = document.getElementById('buchhaltungSearchInput');
+    if (newSearchInput) {
+      newSearchInput.focus();
+      try {
+        newSearchInput.setSelectionRange(_searchFocusState.start, _searchFocusState.end);
+      } catch (e) { /* ignore */ }
+    }
   }
 }
 
@@ -4976,6 +5435,365 @@ async function confirmBuchhaltungArchived(archivId) {
   }
 
   await loadBuchhaltungData();
+}
+
+function buildFoerdermitgliederSection(list) {
+  return `
+    <div class="buch-section blue">
+      <div class="buch-section-title">
+        <div>
+          <span class="buch-section-icon">👥⭐</span>
+          Fördermitglieder
+          <span class="buch-count">${list.length}</span>
+        </div>
+        <button class="buch-img-btn-add" onclick="openFoerdermitgliedForm()">+ Fördermitglied hinzufügen</button>
+      </div>
+
+      <div class="buch-table">
+        <div class="buch-foerder-row buch-head">
+          <div>Nachname</div>
+          <div>Vorname</div>
+          <div>Sport/Gruppe</div>
+          <div>Telefon</div>
+          <div>E-Mail</div>
+          <div>Seit</div>
+          <div>Kommentar</div>
+          <div>Aktion</div>
+        </div>
+
+        ${
+          list.length
+            ? list.map(s => buildFoerdermitgliedRow(s)).join('')
+            : `<div class="buch-empty">Keine Fördermitglieder gefunden.</div>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function buildFoerdermitgliedRow(s) {
+  const safeId = s.id || '';
+  return `
+    <div class="buch-foerder-row">
+      <div><b>${escapeHtml(s.nachname || '-')}</b></div>
+      <div>${escapeHtml(s.vorname || '-')}</div>
+      <div>${s.gruppe || '-'}</div>
+      <div>${escapeHtml(s.telefon || '-')}</div>
+      <div>${escapeHtml(s.email || '-')}</div>
+      <div>${s.foerdermitgliedSeitText || '-'}</div>
+      <div>${escapeHtml(s.buchhaltung_kommentar || '-')}</div>
+      <div class="buch-foerder-actions">
+        <button class="buch-img-btn statistic" onclick="navigateWithPromo(()=>showStudentStats('${safeId}'))" title="Statistik">
+          <img src="${BUTTONS_URL}Stud_Statistik.png" alt="Statistik">
+        </button>
+        <button class="buch-img-btn-delete" onclick="beendeFoerdermitglied('${safeId}')" title="Beenden / Archivieren">❌</button>
+      </div>
+    </div>
+  `;
+}
+
+function openFoerdermitgliedForm() {
+  const ids = [
+    'foerderVorname', 'foerderNachname', 'foerderGeburtsdatum',
+    'foerderTelefon', 'foerderEmail', 'foerderKommentar'
+  ];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+  const geschlechtEl = document.getElementById('foerderGeschlecht');
+  if (geschlechtEl) geschlechtEl.value = 'Keine Angabe';
+
+  const seitEl = document.getElementById('foerderSeit');
+  if (seitEl) seitEl.value = todayBerlin();
+
+  const errEl = document.getElementById('foerderFormError');
+  if (errEl) errEl.textContent = '';
+
+  window._selectedFoerderStudentId = null;
+  window._foerderSuggestionsCache = {};
+
+  const suggestionsBox = document.getElementById('foerderSuggestions');
+  if (suggestionsBox) { suggestionsBox.innerHTML = ''; suggestionsBox.classList.add('hidden'); }
+
+  const statusEl = document.getElementById('foerderSelectedStatus');
+  if (statusEl) { statusEl.textContent = ''; statusEl.classList.add('hidden'); }
+
+  document.getElementById('foerdermitgliedFormOverlay')?.classList.remove('hidden');
+}
+
+function closeFoerdermitgliedForm() {
+  window._selectedFoerderStudentId = null;
+
+  const suggestionsBox = document.getElementById('foerderSuggestions');
+  if (suggestionsBox) { suggestionsBox.innerHTML = ''; suggestionsBox.classList.add('hidden'); }
+
+  document.getElementById('foerdermitgliedFormOverlay')?.classList.add('hidden');
+}
+
+async function showFoerderSuggestions() {
+  const box = document.getElementById('foerderSuggestions');
+  if (!box) return;
+
+  const vorname = document.getElementById('foerderVorname')?.value?.trim().toLowerCase() || '';
+  const nachname = document.getElementById('foerderNachname')?.value?.trim().toLowerCase() || '';
+
+  if ((vorname + nachname).length < 2) {
+    box.innerHTML = '';
+    box.classList.add('hidden');
+    return;
+  }
+
+  const email = document.getElementById('foerderEmail')?.value?.trim().toLowerCase() || '';
+  const telefon = document.getElementById('foerderTelefon')?.value?.trim().toLowerCase() || '';
+  const geburtsdatum = document.getElementById('foerderGeburtsdatum')?.value || '';
+
+  const { data } = await db
+    .from('students')
+    .select('*')
+    .eq('club_id', currentClub.club_id);
+
+  const filtered = (data || []).filter(s => {
+    const sVor = String(s.vorname || '').toLowerCase();
+    const sNach = String(s.nachname || '').toLowerCase();
+    const sEmail = String(s.email || '').toLowerCase();
+    const sTel = String(s.telefon || '').toLowerCase();
+    const sGeb = String(s.geburtsdatum || '').slice(0, 10);
+
+    if (vorname && !sVor.includes(vorname)) return false;
+    if (nachname && !sNach.includes(nachname)) return false;
+    if (email && !sEmail.includes(email)) return false;
+    if (telefon && !sTel.includes(telefon)) return false;
+    if (geburtsdatum && sGeb !== geburtsdatum) return false;
+
+    return true;
+  });
+
+  if (!filtered.length) {
+    box.innerHTML = '';
+    box.classList.add('hidden');
+    return;
+  }
+
+  window._foerderSuggestionsCache = {};
+  const shown = filtered.slice(0, 8);
+  shown.forEach((s, i) => { window._foerderSuggestionsCache[i] = s; });
+
+  box.innerHTML = shown.map((s, i) => {
+    const name = `${s.vorname || ''} ${s.nachname || ''}`.trim();
+    const geb = s.geburtsdatum ? formatDateDE(s.geburtsdatum) : '—';
+    const vertrag = s.vertrag_status || '—';
+    const status = s.mitglied_typ || s.aktiv || '—';
+
+    return `
+      <div class="foerder-suggestion-item" onclick="selectFoerderSuggestion(${i})">
+        ${escapeHtml(name)} · ${geb} · Vertrag: ${escapeHtml(vertrag)} · Status: ${escapeHtml(status)}
+      </div>`;
+  }).join('');
+
+  box.classList.remove('hidden');
+}
+
+function selectFoerderSuggestion(idx) {
+  const student = window._foerderSuggestionsCache?.[idx];
+  if (!student) return;
+
+  document.getElementById('foerderVorname').value = student.vorname || '';
+  document.getElementById('foerderNachname').value = student.nachname || '';
+  document.getElementById('foerderGeburtsdatum').value = student.geburtsdatum
+    ? String(student.geburtsdatum).slice(0, 10) : '';
+  document.getElementById('foerderTelefon').value = student.telefon || '';
+  document.getElementById('foerderEmail').value = student.email || '';
+  if (student.geschlecht) document.getElementById('foerderGeschlecht').value = student.geschlecht;
+
+  window._selectedFoerderStudentId = student.id;
+
+  const box = document.getElementById('foerderSuggestions');
+  if (box) { box.innerHTML = ''; box.classList.add('hidden'); }
+
+  const statusEl = document.getElementById('foerderSelectedStatus');
+  if (statusEl) {
+    statusEl.textContent = 'Diese Person wird als Fördermitglied übernommen.';
+    statusEl.classList.remove('hidden');
+  }
+}
+
+async function saveFoerdermitglied() {
+  const vorname = document.getElementById('foerderVorname')?.value?.trim() || '';
+  const nachname = document.getElementById('foerderNachname')?.value?.trim() || '';
+  const geburtsdatum = document.getElementById('foerderGeburtsdatum')?.value || '';
+  const telefon = document.getElementById('foerderTelefon')?.value?.trim() || '';
+  const email = document.getElementById('foerderEmail')?.value?.trim() || '';
+  const geschlecht = document.getElementById('foerderGeschlecht')?.value || 'Keine Angabe';
+  const kommentar = document.getElementById('foerderKommentar')?.value?.trim() || '';
+  const seit = document.getElementById('foerderSeit')?.value || todayBerlin();
+
+  const errEl = document.getElementById('foerderFormError');
+  const setError = msg => { if (errEl) errEl.textContent = msg; };
+  if (errEl) errEl.textContent = '';
+
+  if (!vorname || !nachname) {
+    setError('Bitte Vorname und Nachname eingeben.');
+    return;
+  }
+
+  if (window._selectedFoerderStudentId) {
+    const { error: updateErr } = await db
+      .from('students')
+      .update({
+        mitglied_typ: 'FOERDERMITGLIED',
+        training_relevant: 'NEIN',
+        buchhaltung_relevant: 'JA',
+        aktiv: 'JA',
+        vertrag_status: 'OK',
+        foerdermitglied_seit: seit,
+        buchhaltung_kommentar: kommentar
+      })
+      .eq('id', window._selectedFoerderStudentId);
+
+    if (updateErr) {
+      setError('Fehler beim Speichern: ' + updateErr.message);
+      return;
+    }
+
+    closeFoerdermitgliedForm();
+    await loadBuchhaltungData();
+    showCustomMessage('Person wurde als Fördermitglied übernommen.');
+    return;
+  }
+
+  const { data: allStudents, error: fetchErr } = await db
+    .from('students')
+    .select('*')
+    .eq('club_id', currentClub.club_id);
+
+  if (fetchErr) {
+    setError('Fehler beim Prüfen auf Duplikate: ' + fetchErr.message);
+    return;
+  }
+
+  const match = (allStudents || []).find(s => {
+    if (email && s.email && String(s.email).trim().toLowerCase() === email.toLowerCase()) return true;
+    if (telefon && s.telefon && String(s.telefon).trim() === telefon) return true;
+    if (
+      vorname && nachname && geburtsdatum &&
+      s.vorname && s.nachname && s.geburtsdatum &&
+      String(s.vorname).trim().toLowerCase() === vorname.toLowerCase() &&
+      String(s.nachname).trim().toLowerCase() === nachname.toLowerCase() &&
+      String(s.geburtsdatum).slice(0, 10) === geburtsdatum
+    ) return true;
+    return false;
+  });
+
+  if (match) {
+    const confirmed = await showCustomConfirm({
+      title: 'Person existiert bereits',
+      message: 'Diese Person existiert bereits. Möchten Sie diese Person als Fördermitglied übernehmen?',
+      confirmText: 'Ja, übernehmen',
+      cancelText: 'Abbrechen',
+      type: 'confirm'
+    });
+    if (!confirmed) return;
+
+    const { error: updateErr } = await db
+      .from('students')
+      .update({
+        mitglied_typ: 'FOERDERMITGLIED',
+        training_relevant: 'NEIN',
+        buchhaltung_relevant: 'JA',
+        aktiv: 'JA',
+        vertrag_status: 'OK',
+        foerdermitglied_seit: seit,
+        buchhaltung_kommentar: kommentar
+      })
+      .eq('id', match.id);
+
+    if (updateErr) {
+      setError('Fehler beim Speichern: ' + updateErr.message);
+      return;
+    }
+  } else {
+    const { error: insertErr } = await db.from('students').insert([{
+      vorname,
+      nachname,
+      geburtsdatum: geburtsdatum || null,
+      telefon,
+      email,
+      geschlecht,
+      buchhaltung_kommentar: kommentar,
+      mitglied_typ: 'FOERDERMITGLIED',
+      training_relevant: 'NEIN',
+      buchhaltung_relevant: 'JA',
+      aktiv: 'JA',
+      vertrag_status: 'OK',
+      foerdermitglied_seit: seit,
+      club_id: currentClub.club_id
+    }]);
+
+    if (insertErr) {
+      setError('Fehler beim Speichern: ' + insertErr.message);
+      return;
+    }
+  }
+
+  closeFoerdermitgliedForm();
+  await loadBuchhaltungData();
+  showCustomMessage('Fördermitglied wurde erfolgreich gespeichert.');
+}
+
+async function beendeFoerdermitglied(studentId) {
+  if (!studentId) return;
+
+  const { data: current, error: fetchErr } = await db
+    .from('students')
+    .select('vorname, nachname, buchhaltung_kommentar')
+    .eq('id', studentId)
+    .maybeSingle();
+
+  if (fetchErr || !current) {
+    showCustomMessage('Fehler: Person nicht gefunden.');
+    return;
+  }
+
+  const fullName = `${current.nachname || ''} ${current.vorname || ''}`.trim() || 'Unbekannt';
+
+  const confirmed = await showCustomConfirm({
+    title: 'Fördermitglied beenden',
+    message: `Möchten Sie das Fördermitglied wirklich beenden und archivieren?\n\n${fullName}\n\nDer Vertrag gilt danach als beendet.`,
+    confirmText: 'Ja, beenden',
+    cancelText: 'Abbrechen',
+    type: 'danger'
+  });
+  if (!confirmed) return;
+
+  const today = todayBerlin();
+  const todayDE = new Date(today).toLocaleDateString('de-DE');
+  const note = 'Fördermitgliedschaft beendet am ' + todayDE;
+  const mergedKommentar = current.buchhaltung_kommentar
+    ? current.buchhaltung_kommentar + ' | ' + note
+    : note;
+
+  // Datensatz bleibt erhalten — nur Status auf "beendet/archiviert" gesetzt,
+  // kein physisches Löschen.
+  const { error } = await db
+    .from('students')
+    .update({
+      mitglied_typ: 'ARCHIV',
+      aktiv: 'NEIN',
+      buchhaltung_relevant: 'NEIN',
+      training_relevant: 'NEIN',
+      vertrag_status: 'BEENDET',
+      foerdermitglied_ende: today,
+      archiviert_am: today,
+      buchhaltung_kommentar: mergedKommentar
+    })
+    .eq('id', studentId);
+
+  if (error) {
+    showCustomMessage('Fehler beim Beenden: ' + error.message);
+    return;
+  }
+
+  await loadBuchhaltungData();
+  showCustomMessage(`${fullName} wurde als Fördermitglied beendet und archiviert.`);
 }
 
 let customMessageCallback = null;
@@ -5369,6 +6187,9 @@ async function renderWeight(groupId) {
 
   const students = (data || []).filter(function(student){
 
+    if (String(student.mitglied_typ || '').toUpperCase() === 'FOERDERMITGLIED') return false;
+    if (String(student.training_relevant || 'JA').toUpperCase() === 'NEIN') return false;
+
     const groups =
       String(student.gruppe_id || '')
         .split(/[;,]/)
@@ -5619,6 +6440,9 @@ const todayAttendanceMap = {};
 
 
   const students = (data || []).filter(function(student) {
+    if (String(student.mitglied_typ || '').toUpperCase() === 'FOERDERMITGLIED') return false;
+    if (String(student.training_relevant || 'JA').toUpperCase() === 'NEIN') return false;
+
     const ids = String(student.gruppe_id || '')
       .split(/[;,]/)
       .map(x => x.trim())
@@ -8002,7 +8826,34 @@ student.trainingsMonat  = trainingsMonat;
 student.trainingsJahr   = trainingsJahr;
 student.trainingsGesamt = filteredAttendance.length;
 
-return buildStudentInfoHtml(student, contextSportId || null, studentSportStats);
+const baseHtml = buildStudentInfoHtml(student, contextSportId || null, studentSportStats);
+
+// Fördermitglieder sind nicht trainingsrelevant — ergänzende, rein additive
+// Info-Box statt der normalen Trainingshistorie (ändert buildStudentInfoHtml nicht).
+if (String(student.mitglied_typ || '').toUpperCase() === 'FOERDERMITGLIED') {
+  const seitText = student.foerdermitglied_seit
+    ? new Date(student.foerdermitglied_seit).toLocaleDateString('de-DE')
+    : '-';
+  const endeText = student.foerdermitglied_ende
+    ? new Date(student.foerdermitglied_ende).toLocaleDateString('de-DE')
+    : null;
+
+  const trainingsHinweis = student.trainingsGesamt > 0
+    ? ''
+    : `<div class="foerder-stats-hint">Für dieses Fördermitglied gibt es keine Trainingshistorie.</div>`;
+
+  return `
+    <div class="foerder-stats-box">
+      <div class="foerder-stats-title">👥⭐ Fördermitglied</div>
+      <div class="foerder-stats-row"><b>Fördermitglied seit:</b> ${seitText}</div>
+      ${endeText ? `<div class="foerder-stats-row"><b>Fördermitgliedschaft beendet:</b> ${endeText}</div>` : ''}
+      ${trainingsHinweis}
+    </div>
+    ${baseHtml}
+  `;
+}
+
+return baseHtml;
 
 }
 
@@ -9356,9 +10207,12 @@ if (selectedSport) {
 const { data: trainers }    = await trainersQuery;
 const { data: groups }      = await groupsQuery;
 const { data: allStudents } = await studentsQuery;
-const students = selectedSport
+const sportFiltered = selectedSport
   ? (allStudents || []).filter(s => studentHasSport(s, selectedSport))
   : (allStudents || []);
+const students = sportFiltered.filter(s =>
+  String(s.mitglied_typ || '').toUpperCase() !== 'FOERDERMITGLIED'
+);
 
   const trainerCount = (trainers || []).filter(t =>
     String(t.rolle || '').toUpperCase() === 'TRAINER'
@@ -9778,11 +10632,16 @@ async function showTrainerAdmin() {
     if (s.sport_id) sportsMap[s.sport_id] = s.name || s.sport_id;
   });
 
+  const trainerStudents = (studentsResult.data || []).filter(s =>
+    String(s.mitglied_typ || '').toUpperCase() !== 'FOERDERMITGLIED' &&
+    String(s.training_relevant || 'JA').toUpperCase() !== 'NEIN'
+  );
+
   box.innerHTML = renderTrainerCards(
     trainersResult.data || [],
     groupsResult.data || [],
     linksResult.data || [],
-    studentsResult.data || [],
+    trainerStudents,
     sportsMap
   );
 
@@ -10530,6 +11389,11 @@ async function showGroupOverviewScreen() {
   const groups = groupsResult.data || [];
 
   let students = studentsResult.data || [];
+
+  students = students.filter(s =>
+    String(s.mitglied_typ || '').toUpperCase() !== 'FOERDERMITGLIED' &&
+    String(s.training_relevant || 'JA').toUpperCase() !== 'NEIN'
+  );
 
   if (selectedSport) {
     students = students.filter(student => studentHasSport(student, selectedSport));

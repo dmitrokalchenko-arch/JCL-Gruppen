@@ -4992,22 +4992,37 @@ transform:scale(1.05);
 
 .buch-summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 28px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
   margin-bottom: 28px;
 }
 
 .buch-summary-card {
   min-height: 108px;
   display: grid;
-  grid-template-columns: 82px 1fr;
+  grid-template-columns: 64px 1fr;
   align-items: center;
-  gap: 20px;
-  padding: 22px;
+  gap: 14px;
+  padding: 16px;
   border-radius: 14px;
   background: rgba(7, 14, 30, 0.72);
   border: 1px solid rgba(255,255,255,0.13);
   box-shadow: 0 18px 44px rgba(0,0,0,.28);
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+
+.buch-summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 50px rgba(0,0,0,.36);
+}
+
+.buch-summary-card.active-filter {
+  border-width: 2px;
+  box-shadow:
+    0 0 0 2px rgba(214, 164, 0, .35),
+    0 22px 52px rgba(0,0,0,.4),
+    0 0 18px rgba(214, 164, 0, .35);
 }
 
 .buch-summary-card.red {
@@ -5025,14 +5040,19 @@ transform:scale(1.05);
   background: linear-gradient(135deg, rgba(10,72,45,.50), rgba(7,14,30,.72));
 }
 
+.buch-summary-card.blue {
+  border-color: rgba(95, 110, 255, .48);
+  background: linear-gradient(135deg, rgba(28,28,90,.55), rgba(7,14,30,.72));
+}
+
 .buch-summary-icon {
-  width: 62px;
-  height: 62px;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-size: 30px;
+  font-size: 24px;
   border: 1px solid currentColor;
 }
 
@@ -5051,10 +5071,33 @@ transform:scale(1.05);
   color: #33df75;
 }
 
+.buch-summary-card.blue .buch-summary-icon,
+.buch-summary-card.blue strong {
+  color: #6c7bff;
+}
+
+.buch-foerder-icon {
+  position: relative;
+  overflow: hidden;
+}
+
+.buch-foerder-icon .foerder-people {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.buch-foerder-icon .foerder-star {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  font-size: 13px;
+  line-height: 1;
+}
+
 .buch-summary-card strong {
   display: block;
-  margin-top: 8px;
-  font-size: 38px;
+  margin-top: 6px;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -5079,6 +5122,10 @@ transform:scale(1.05);
   border-color: rgba(45, 220, 115, .50);
 }
 
+.buch-section.blue {
+  border-color: rgba(95, 110, 255, .50);
+}
+
 .buch-section-title {
   display: flex;
   justify-content: space-between;
@@ -5101,6 +5148,278 @@ transform:scale(1.05);
 .buch-section.green .buch-section-title {
   color: #33df75;
   background: rgba(10, 72, 45, .28);
+}
+
+.buch-section.blue .buch-section-title {
+  color: #6c7bff;
+  background: rgba(28, 28, 90, .28);
+}
+
+.buch-foerder-row {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 1.1fr)
+    minmax(120px, 1.1fr)
+    minmax(150px, 1.3fr)
+    minmax(120px, 1fr)
+    minmax(160px, 1.3fr)
+    110px
+    minmax(160px, 1.6fr)
+    100px;
+  gap: 12px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.82);
+  font-size: 14px;
+}
+
+.buch-foerder-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.buch-img-btn-delete {
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 10px !important;
+  background: rgba(255, 60, 75, .14) !important;
+  color: #ff4458 !important;
+  font-size: 15px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform .15s ease, background .15s ease;
+}
+
+.buch-img-btn-delete:hover {
+  background: rgba(255, 60, 75, .26) !important;
+  transform: scale(1.08);
+}
+
+.foerder-stats-box {
+  background: rgba(28, 28, 90, .35);
+  border: 1px solid rgba(95, 110, 255, .45);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  color: rgba(255,255,255,.9);
+}
+
+.foerder-stats-title {
+  font-weight: 900;
+  color: #6c7bff;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.foerder-stats-row {
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.foerder-stats-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255,255,255,.6);
+  font-style: italic;
+}
+
+.buch-foerder-row.buch-head {
+  min-height: 44px;
+  font-weight: 900;
+  color: white;
+  background: rgba(0,0,0,.18);
+}
+
+.buch-foerder-row:last-child {
+  border-bottom: none;
+}
+
+.buch-img-btn-add {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(108,123,255,0.5);
+  background: rgba(108,123,255,0.12);
+  color: #8b96ff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.buch-img-btn-add:hover {
+  background: rgba(108,123,255,0.22);
+  box-shadow: 0 0 8px rgba(108,123,255,0.3);
+}
+
+/* Fördermitglied-Formular */
+
+.foerder-modal .foerder-form-box {
+  width: 560px;
+  max-width: 92vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.foerder-form-box {
+  background: rgba(3, 12, 30, .96);
+  border: 2px solid rgba(214, 164, 0, .6);
+  border-radius: 14px;
+  padding: 22px;
+  color: rgba(255, 255, 255, .92);
+}
+
+.foerder-form-box h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #d6a900;
+}
+
+.foerder-form-box label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 5px;
+  color: rgba(255, 255, 255, .78);
+  font-size: 13px;
+}
+
+.foerder-input,
+.foerder-select,
+.foerder-textarea {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: rgba(10, 16, 32, .85);
+  border: 1px solid rgba(214, 164, 0, .45);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.foerder-form-box .student-form-grid {
+  margin-bottom: 14px;
+}
+
+.foerder-textarea {
+  height: auto;
+  min-height: 42px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.foerder-input::placeholder,
+.foerder-textarea::placeholder {
+  color: rgba(255, 255, 255, .35);
+}
+
+.foerder-input:focus,
+.foerder-select:focus,
+.foerder-textarea:focus {
+  border-color: #d6a900;
+  box-shadow: 0 0 0 3px rgba(214, 164, 0, .22);
+}
+
+.foerder-select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><polygon points='0,0 10,0 5,6' fill='%23d6a900'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 32px;
+}
+
+.foerder-select option {
+  background: #0a1020;
+  color: #fff;
+}
+
+.foerder-input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(.8) sepia(1) saturate(4) hue-rotate(5deg);
+  cursor: pointer;
+}
+
+.foerder-suggestions {
+  grid-column: 1 / -1;
+  position: relative;
+  margin-top: -6px;
+  margin-bottom: 4px;
+  background: rgba(4, 10, 24, .98);
+  border: 1px solid #d6a900;
+  border-radius: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.foerder-suggestions.hidden {
+  display: none;
+}
+
+.foerder-suggestion-item {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, .88);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  cursor: pointer;
+}
+
+.foerder-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.foerder-suggestion-item:hover {
+  background: rgba(214, 164, 0, .14);
+}
+
+.foerder-selected-status {
+  margin-top: 4px;
+  margin-bottom: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(72, 199, 142, 0.12);
+  border: 1px solid rgba(72, 199, 142, 0.4);
+  color: #48c78e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.foerder-selected-status.hidden {
+  display: none;
+}
+
+.foerder-form-box .save {
+  width: 100%;
+  margin-top: 16px;
+  height: 42px;
+  background: linear-gradient(135deg, #0d7c38, #085a29);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.foerder-form-box .cancel {
+  width: 100%;
+  margin-top: 12px;
+  height: 42px;
+  background: rgba(255, 255, 255, .10);
+  color: rgba(255, 255, 255, .80);
+  border: none;
+  border-radius: 7px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .buch-section-icon {
@@ -5204,10 +5523,72 @@ transform:scale(1.05);
   color: rgba(255,255,255,.65);
 }
 
+.buch-empty-global {
+  padding: 32px;
+  text-align: center;
+  font-size: 16px;
+  color: rgba(255,255,255,.7);
+  background: rgba(7, 14, 30, 0.72);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 14px;
+}
+
+.buch-search-box {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: 20px;
+}
+
+.buch-search-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 38px 0 14px;
+  box-sizing: border-box;
+  background: rgba(10, 16, 32, .85);
+  border: 1px solid rgba(214, 164, 0, .45);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.buch-search-input::placeholder {
+  color: rgba(255,255,255,.35);
+}
+
+.buch-search-input:focus {
+  border-color: #d6a900;
+  box-shadow: 0 0 0 3px rgba(214, 164, 0, .22);
+}
+
+.buch-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,.10);
+  color: rgba(255,255,255,.80);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.buch-search-clear:hover {
+  background: rgba(255,255,255,.18);
+}
+
 @media (max-width: 1100px) {
-  /* Сводные карточки — в один столбец */
+  /* Сводные карточки — в 2 колонки */
   .buch-summary-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   /* Таблица скроллится горизонтально — строки сохраняют десктопный grid */
@@ -12854,10 +13235,9 @@ drop-shadow(0 0 10px rgba(255,213,74,0.45));
     gap: 8px !important;
   }
 
-  /* Сводная сетка на планшете: 3 → 1 колонка (уже есть правило на 1100px,
-     но на планшете 768px тоже нужно) */
+  /* Сводная сетка на планшете/телефоне: 4 → 2 колонки */
   .buch-summary-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, 1fr) !important;
     gap: 14px !important;
   }
 

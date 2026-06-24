@@ -6397,10 +6397,59 @@ async function openSelectedGroupList() {
     'Aktuelle Gruppe: ' + groupSelect.options[groupSelect.selectedIndex].textContent;
 }
 
+// ── Anwesenheit-Entwurf (attendanceDraft) ──────────────────────────────────
+//
+// Hält noch NICHT gespeicherte Checkbox-Änderungen pro Gruppe/Tag im
+// Speicher, getrennt von der eigentlichen Supabase-Persistenz (attendance-
+// Tabelle). Grund: loadStudentsListForAttendance() baut #studentsList bei
+// jedem Schüler-Hinzufügen/-Bearbeiten/-Refresh komplett neu aus der DB auf
+// (innerHTML = ...) — ohne diesen Entwurf gehen dabei alle bereits gesetzten,
+// aber noch nicht per "Anwesenheit speichern" persistierten Häkchen verloren.
+// Schlüssel: groupId → { [studentId]: true|false }. Wird NUR hier (Checkbox-
+// Rendering/Change-Listener) und in saveAttendance() (Löschen nach Erfolg)
+// berücksichtigt — keine andere Seite/Tabelle/Logik liest oder schreibt dies.
+const attendanceDraft = {};
+
+// Entwurf hat Vorrang vor dem gespeicherten DB-Stand: sobald der Trainer eine
+// Checkbox für diesen Schüler in dieser Gruppe angefasst hat, gilt dieser
+// (noch ungespeicherte) Zustand — unabhängig davon, was zuletzt in der
+// attendance-Tabelle stand. Ohne Eintrag im Entwurf zählt wie bisher nur der
+// heutige DB-Stand (todayAttendanceMap).
+function isAttendanceCheckedForStudent(groupId, student, todayAttendanceMap) {
+  const studentKey = String(getStudentId(student));
+  const draftForGroup = attendanceDraft[groupId];
+
+  if (draftForGroup && Object.prototype.hasOwnProperty.call(draftForGroup, studentKey)) {
+    return draftForGroup[studentKey] === true;
+  }
+
+  return (
+    todayAttendanceMap[String(student.id || '')] === 'JA' ||
+    todayAttendanceMap[String(student.student_id || '')] === 'JA'
+  );
+}
+
 async function loadStudentsListForAttendance(groupId) {
   const listBox = document.getElementById('studentsList');
 
   if (!listBox) return;
+
+  // Delegierter Change-Listener — wird nur EINMAL auf den (über alle Renders
+  // hinweg stabilen) Container gebunden, nicht pro Checkbox, da innerHTML
+  // bei jedem Render alle Checkboxen samt direkt angehängten Listenern
+  // wegwirft. Liest die Gruppe live aus #groupSelect statt aus einer
+  // geschlossenen groupId-Variable, damit ein späterer Gruppenwechsel keine
+  // veralteten Einträge in den falschen Draft-Eintrag schreibt.
+  if (!listBox.dataset.attendanceDraftBound) {
+    listBox.dataset.attendanceDraftBound = '1';
+    listBox.addEventListener('change', function (e) {
+      const cb = e.target.closest('.attendanceCheck');
+      if (!cb) return;
+      const activeGroupId = document.getElementById('groupSelect')?.value || groupId;
+      if (!attendanceDraft[activeGroupId]) attendanceDraft[activeGroupId] = {};
+      attendanceDraft[activeGroupId][String(cb.dataset.studentId)] = cb.checked;
+    });
+  }
 
   listBox.innerHTML = 'Schüler werden geladen...';
 
@@ -6573,8 +6622,7 @@ data-student-id="${getStudentId(student)}"
 data-vorname="${student.vorname || ''}"
 data-nachname="${student.nachname || ''}"
 ${
-todayAttendanceMap[String(student.id || '')] === 'JA' ||
-todayAttendanceMap[String(student.student_id || '')] === 'JA'
+isAttendanceCheckedForStudent(groupId, student, todayAttendanceMap)
 ? 'checked'
 : ''
 }
@@ -6761,6 +6809,12 @@ async function saveAttendance() {
 
   document.getElementById('trainerTodayAttendanceCount').textContent =
     Array.from(checks).filter(cb => cb.checked).length;
+
+  // Erfolgreich gespeichert — der ungespeicherte Entwurf für diese Gruppe ist
+  // jetzt identisch mit dem DB-Stand und kann verworfen werden (Vorgabe 5/6:
+  // NUR bei Erfolg löschen; jeder Fehlerfall oben hat bereits "return"
+  // ausgeführt, bevor dieser Punkt erreicht wird).
+  delete attendanceDraft[groupId];
 
   showCustomMessage('Anwesenheit gespeichert: ' + savedCount + ' Schüler.');
   await loadStudentsListForAttendance(groupId);

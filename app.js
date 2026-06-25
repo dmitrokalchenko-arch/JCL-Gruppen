@@ -7085,15 +7085,24 @@ async function archiveStudentConfirmed(id, student, archivGrund, archivKommentar
 
   closeArchivePanel(id);
 
-  // Beide möglichen Schülerlisten aktualisieren (Admin- und Trainer-View)
-  const adminContainer   = document.getElementById('adminStudentStatsResult');
-  const trainerContainer = document.getElementById('trainerStudentsList');
-
-  if (adminContainer) {
+  // Alle Listen aktualisieren, in denen dieser Schüler sichtbar gewesen sein
+  // könnte — dieselben 4 Container wie in removeStudentFromSport() oben,
+  // sonst bleibt der Schüler z.B. auf dem Anwesenheit- oder Gruppen-Screen
+  // des Trainers bis zum manuellen Reload sichtbar, obwohl er in Supabase
+  // bereits aktiv:'NEIN' ist.
+  if (document.getElementById('adminStudentStatsResult')) {
     await applyAdminStudentFilter();
     await loadAdminStudentCount();   // Gesamt-Schüler-Counter sofort aktualisieren
   }
-  if (trainerContainer) await applyTrainerFilters();
+  if (document.getElementById('trainerStudentsList'))     await applyTrainerFilters();
+  if (document.getElementById('groupStudentStatsResult')) await applyGroupFilter();
+
+  // Anwesenheit-Liste aktualisieren, falls sie gerade angezeigt wird
+  const attendanceList = document.getElementById('studentsList');
+  if (attendanceList) {
+    const groupId = document.getElementById('groupSelect')?.value || '';
+    if (groupId) await loadStudentsListForAttendance(groupId);
+  }
 
   showCustomMessage('Schüler wurde archiviert und deaktiviert.');
 }

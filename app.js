@@ -6943,38 +6943,22 @@ async function archiveStudent(id, contextSportId) {
   const remainingSports = [...new Set(groupsToKeep.map(g => groupSportMap[g]).filter(Boolean))];
   const hasOtherSports  = remainingSports.length > 0;
 
-  const sportName = (adminAvailableSports || []).find(s => String(s.sport_id) === String(contextSportId))?.name
-    || contextSportId;
+  // Trainer-Flow: Das Inline-Panel (Grund auswählen + Klick auf
+  // "Entfernen"/"Archivieren") IST bereits die eine Bestätigung. Früher kam
+  // hier zusätzlich noch das grüne "Wirklich löschen?"-Overlay
+  // (deleteConfirmOverlay) — das war eine zweite, überflüssige Bestätigung
+  // und sorgte dafür, dass beim Schließen des Overlays kurz die alte,
+  // unveränderte Tabelle sichtbar war, bevor (nach den Supabase-Calls) die
+  // Erfolgsmeldung kam. Jetzt: Panel schließen → direkt Supabase-Update →
+  // Liste(n) neu rendern → erst danach showCustomMessage (siehe
+  // removeStudentFromSport()/archiveStudentConfirmed() unten).
+  closeArchivePanel(id);
 
   if (hasOtherSports) {
-    // Partial removal — student stays active
-    document.getElementById('deleteConfirmText').innerHTML = `
-      <div style="text-align:left;line-height:1.7;">
-        <b>${student.nachname || ''} ${student.vorname || ''}</b><br><br>
-        Dieser Schüler wird nur aus <b>${escapeHtml(sportName)}</b> entfernt.<br>
-        Er bleibt im Verein aktiv, weil er noch in anderen Sportarten angemeldet ist.<br><br>
-        <b>Grund:</b> ${archivGrund}
-      </div>`;
-    document.getElementById('confirmDeleteBtn').onclick = async function () {
-      closeDeleteConfirm();
-      await removeStudentFromSport(id, groupsToKeep, student, archivGrund, archivKommentar);
-    };
+    await removeStudentFromSport(id, groupsToKeep, student, archivGrund, archivKommentar);
   } else {
-    // Last sport — full archive
-    document.getElementById('deleteConfirmText').innerHTML = `
-      <div style="text-align:left;line-height:1.7;">
-        <b>${student.nachname || ''} ${student.vorname || ''}</b><br><br>
-        Dieser Schüler hat keine weiteren aktiven Sportarten.<br>
-        Er wird aus dem Verein archiviert.<br><br>
-        <b>Grund:</b> ${archivGrund}
-      </div>`;
-    document.getElementById('confirmDeleteBtn').onclick = async function () {
-      closeDeleteConfirm();
-      await archiveStudentConfirmed(id, student, archivGrund, archivKommentar);
-    };
+    await archiveStudentConfirmed(id, student, archivGrund, archivKommentar);
   }
-
-  document.getElementById('deleteConfirmOverlay').classList.remove('hidden');
 }
 
 // Removes student from one sport only — keeps other-sport groups, student stays active.

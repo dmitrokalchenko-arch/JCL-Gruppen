@@ -2453,9 +2453,10 @@ async function renderStudentTableUniversal(students, options = {}) {
 
     const statusIcon = getStudentStatusIcon(student);
     const rowGenderClass = getGenderRowClass(student);
+    const rowLongAbsentClass = isLongAbsent(student) ? 'attendance-longabsent-row' : '';
 
     html += `
-      <tr class="${rowGenderClass}">
+      <tr class="${[rowGenderClass, rowLongAbsentClass].filter(Boolean).join(' ')}">
 
         ${showCheckbox ? `
           <td>
@@ -2469,7 +2470,11 @@ async function renderStudentTableUniversal(students, options = {}) {
         ` : ''}
 
         <td>${statusIcon} ${index + 1}</td>
-        <td>${student.nachname || ''}</td>
+        <td>${student.nachname || ''}${
+          isLongAbsent(student)
+            ? ` <span class="longabsent-badge" title="Seit mehr als ${LONG_ABSENCE_THRESHOLD_DAYS} Tagen nicht im Training">Über ${LONG_ABSENCE_THRESHOLD_DAYS} Tage abwesend</span>`
+            : ''
+        }</td>
         <td>${student.vorname || ''}</td>
         <td>${student.alter || '-'}</td>
         ${renderSportFieldCells(student)}
@@ -4927,6 +4932,18 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
     return Object.keys(unique).length;
   }
 
+  // Tage seit der letzten JA-Anwesenheit — rein aus students+attendance berechnet,
+  // keine eigene Persistenz. Verschwindet automatisch, sobald wieder eine
+  // Anwesenheit erfasst wird (siehe LONG_ABSENCE_THRESHOLD_DAYS).
+  function getDaysAbsent(student) {
+    const possibleIds = [
+      String(student.id || ''),
+      String(student.student_id || '')
+    ].filter(Boolean);
+
+    return getStudentLastAttendanceInfoFromRows(possibleIds, attendance).daysSince;
+  }
+
   function findStudentByCode(code) {
     return filteredStudents.find(s =>
       String(s.student_id || '') === String(code || '') ||
@@ -4952,7 +4969,8 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
   }
 
   // ── Status-Priorität für die Buchhaltung ──────────────────────────────────
-  // 1. FOERDERMITGLIED  2. INAKTIV/ARCHIV  3. Neue Schüler ohne Vertrag  4. Aktive Schüler mit Vertrag
+  // 1. FOERDERMITGLIED  2. INAKTIV/ARCHIV  3. Langzeitabwesend (>30 Tage)
+  // 4. Neue Schüler ohne Vertrag  5. Aktive Schüler mit Vertrag
   // Eine Person darf am Ende nur in genau einem Block erscheinen.
 
   const foerderRaw = dedupedAllStudents.filter(s =>
@@ -4980,12 +4998,31 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
 
   const inactiveKeys = new Set([...archivOpenKeys, ...inactiveStudentKeys]);
 
+  // Schüler/innen, die seit über LONG_ABSENCE_THRESHOLD_DAYS Tagen nicht mehr
+  // anwesend (JA) waren — unabhängig von Vertragsart/Probetraining (Punkt 5).
+  // Nur zur Anzeige/Prüfung, keine Statusänderung: kein aktiv='NEIN', kein
+  // Archiv-Eintrag. Verschwindet automatisch aus dieser Liste, sobald wieder
+  // eine Anwesenheit erfasst wird — daher auch keine Dubletten bei erneutem
+  // Öffnen der Gruppe (Punkt 7).
+  const longAbsentRaw = dedupedFilteredStudents.filter(s => {
+    const key = getBuchhaltungPersonKey(s);
+    if (foerderKeys.has(key) || inactiveKeys.has(key)) return false;
+    if (!buchhaltungIsAktiv(s)) return false;
+    if (!buchhaltungIsRelevant(s)) return false;
+    if (!buchhaltungIsTrainingRelevant(s)) return false;
+
+    const daysAbsent = getDaysAbsent(s);
+    return daysAbsent !== null && daysAbsent > LONG_ABSENCE_THRESHOLD_DAYS;
+  });
+  const longAbsentKeys = new Set(longAbsentRaw.map(getBuchhaltungPersonKey));
+
   const withoutContractRaw = dedupedFilteredStudents.filter(s =>
     buchhaltungIsAktiv(s) &&
     !buchhaltungIsVertragOk(s) &&
     buchhaltungIsRelevant(s) &&
     !foerderKeys.has(getBuchhaltungPersonKey(s)) &&
-    !inactiveKeys.has(getBuchhaltungPersonKey(s))
+    !inactiveKeys.has(getBuchhaltungPersonKey(s)) &&
+    !longAbsentKeys.has(getBuchhaltungPersonKey(s))
   );
   const withoutContractKeys = new Set(withoutContractRaw.map(getBuchhaltungPersonKey));
 
@@ -5000,7 +5037,7 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
   const withContractRaw = withContractCandidates.filter(s => {
     const key = getBuchhaltungPersonKey(s);
     const excluded =
-      foerderKeys.has(key) || inactiveKeys.has(key) || withoutContractKeys.has(key);
+      foerderKeys.has(key) || inactiveKeys.has(key) || withoutContractKeys.has(key) || longAbsentKeys.has(key);
 
     if (inactiveKeys.has(key)) {
       const conflictArchiv = dedupedArchivOpen.find(a => archivDedupeKey(a) === key);
@@ -5054,9 +5091,16 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
   const foerderView = buchhaltungSearchQuery
     ? foerderRaw.filter(s => buchhaltungMatchesSearch(s, buchhaltungSearchQuery))
     : foerderRaw;
+  const longAbsentView = buchhaltungSearchQuery
+    ? longAbsentRaw.filter(s => buchhaltungMatchesSearch(s, buchhaltungSearchQuery))
+    : longAbsentRaw;
 
   const withoutContract = withoutContractView.map(mapStudent);
   const withContract = withContractView.map(mapStudent);
+  const longAbsent = longAbsentView.map(s => ({
+    ...mapStudent(s),
+    daysAbsent: getDaysAbsent(s)
+  }));
 
   const foerdermitglieder = foerderView.map(s => ({
     id: s.id,
@@ -5101,7 +5145,7 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
     : archivedOpenAll;
 
   const buchhaltungTotalResultsCount =
-    withoutContract.length + withContract.length + foerdermitglieder.length + archivedOpen.length;
+    withoutContract.length + withContract.length + foerdermitglieder.length + archivedOpen.length + longAbsent.length;
 
   box.innerHTML = `
     <div class="buch-modern-page">
@@ -5178,6 +5222,15 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
           <div>
             <div>Fördermitglieder</div>
             <strong>${foerdermitglieder.length}</strong>
+          </div>
+        </div>
+
+        <div class="buch-summary-card orange ${buchhaltungActiveCategory === 'LONGABSENT' ? 'active-filter' : ''}"
+          onclick="setBuchhaltungCategoryFilter('LONGABSENT')">
+          <div class="buch-summary-icon">⏰</div>
+          <div>
+            <div>Langzeitabwesend (&gt;${LONG_ABSENCE_THRESHOLD_DAYS} Tage)</div>
+            <strong>${longAbsent.length}</strong>
           </div>
         </div>
       </div>
@@ -5265,6 +5318,19 @@ const dedupedAllStudents = dedupeBuchhaltungRows(students, 'Fördermitglieder', 
             ${
               (buchhaltungActiveCategory === 'ALL' || buchhaltungActiveCategory === 'FOERDER')
                 ? buildFoerdermitgliederSection(foerdermitglieder)
+                : ''
+            }
+
+            ${
+              (buchhaltungActiveCategory === 'ALL' || buchhaltungActiveCategory === 'LONGABSENT')
+                ? buildBuchhaltungSectionModern(
+                    'orange',
+                    '⏰',
+                    `Langzeitabwesend (>${LONG_ABSENCE_THRESHOLD_DAYS} Tage) – Kontakt & Vertragsstatus prüfen`,
+                    longAbsent,
+                    false,
+                    'longabsent'
+                  )
                 : ''
             }
           `
@@ -5355,9 +5421,11 @@ function buildBuchhaltungStudentRow(student, showDoneButton, actionType, number)
 
       <div>
         ${
-          showDoneButton
-            ? `<button class="buch-img-btn done" onclick="${doneAction}" title="Erledigt">✓</button>`
-            : ``
+          actionType === 'longabsent'
+            ? `<span class="longabsent-badge" title="Seit mehr als ${LONG_ABSENCE_THRESHOLD_DAYS} Tagen nicht im Training">${student.daysAbsent ?? '?'} Tage</span>`
+            : showDoneButton
+              ? `<button class="buch-img-btn done" onclick="${doneAction}" title="Erledigt">✓</button>`
+              : ``
         }
       </div>
 
@@ -6540,29 +6608,6 @@ return fullData || s;
 
 );
 
-const autoCloseErrors = [];
-
-for (const student of enrichedStudents) {
-  const result = await autoCloseOldProbetraining(student);
-
-  if(result.error){
-    console.warn('autoCloseOldProbetraining:', result.error);
-    autoCloseErrors.push(result.error);
-  }
-
-  if(result.ok){
-    student.aktiv = 'NEIN';
-  }
-}
-
-if (autoCloseErrors.length > 0) {
-  showCustomMessage(
-    'Einige Probetrainings konnten nicht automatisch archiviert werden. Bitte Admin prüfen.',
-    autoCloseErrors.join('\n'),
-    'warning'
-  );
-}
-
   // ── Sport-Kontext für Anwesenheit ──────────────────────────
   // currentGroupSportId is queried from DB above — do NOT derive from student data
   const groupCfg = getSportConfig(currentGroupSportId);
@@ -6597,8 +6642,8 @@ let html = `
 const statusIcon = getStudentStatusIcon(student);
 
 const rowClass =
-statusIcon === '⚠️'
-? 'attendance-warning-row'
+isLongAbsent(student)
+? 'attendance-longabsent-row'
 : '';
 
 const genderClass = getGenderRowClass(student);
@@ -6634,7 +6679,11 @@ isAttendanceCheckedForStudent(groupId, student, todayAttendanceMap)
 
 <td>${statusIcon} ${index+1}</td>
 
-<td>${student.nachname || ''}</td>
+<td>${student.nachname || ''}${
+  isLongAbsent(student)
+    ? ` <span class="longabsent-badge" title="Seit mehr als ${LONG_ABSENCE_THRESHOLD_DAYS} Tagen nicht im Training">Über ${LONG_ABSENCE_THRESHOLD_DAYS} Tage abwesend</span>`
+    : ''
+}</td>
 
 <td>${student.vorname || ''}</td>
 
@@ -7163,11 +7212,13 @@ student.buchhaltungRelevant ||
 'JA'
 ).toUpperCase();
 
-const daysSince = student.daysSinceLastAttendance;
+// Reale Trainingsanzahl — ausschließlich aus attendance (anwesenheit==='JA'),
+// via calculateStudentRatingFromRows in getStudentFullData berechnet und als
+// calculatedRating an das Objekt gehängt (in allen drei Ansichten verfügbar:
+// Gruppenliste, Trainerliste, Admin-Schülerliste — alle nutzen getStudentFullData).
 const trainings = Number(student.calculatedRating || 0);
 
-
-// договор OK — всегда зелёный
+// договор OK — всегда зелёный, количество тренировок здесь не относится к делу
 if(
 contract === 'OK' ||
 contract === 'JA' ||
@@ -7182,23 +7233,19 @@ if(relevant === 'NEIN'){
 return '⚪';
 }
 
+
+// договор не оформлен, но уже больше 3 реальных посещений — ученик тренируется
+// без договора, это должно быть видно независимо от probetraining_status
+if(trainings > 3){
+return '🔴';
+}
+
 if(probe === 'BEENDET'){
 return '⚪';
 }
 
 
-// предупреждение для обычных учеников
-if(
-daysSince !== null &&
-daysSince > 15 &&
-trainings > 3 &&
-contract === 'OFFEN'
-){
-return '⚠️';
-}
-
-
-// активный пробный период
+// активный пробный период, ещё в пределах 3 посещений
 if(probe === 'AKTIV'){
 return '🟡';
 }
@@ -7217,95 +7264,13 @@ return '🔴';
 
 }
 
-async function autoCloseOldProbetraining(student){
+// Einheitlicher Schwellenwert für lange Abwesenheit — unabhängig von
+// Vertragsart/Probetraining. Basis ist ausschließlich das letzte JA-Attendance-Datum.
+const LONG_ABSENCE_THRESHOLD_DAYS = 30;
 
-const contract = String(student.vertrag_status || '').toUpperCase();
-const probe = String(student.probetraining_status || '').toUpperCase();
-const daysSince = student.daysSinceLastAttendance;
-const trainings = Number(student.calculatedRating || 0);
-
-if(
-  probe === 'AKTIV' &&
-  contract === 'OFFEN' &&
-  trainings <= 3 &&
-  daysSince !== null &&
-  daysSince > 15
-){
-
-const today = todayBerlin();
-
-const archivGrund = 'Probetraining beendet';
-
-const kommentarText =
-  (student.kommentar || '') +
-  ' | Automatisch archiviert am ' + today +
-  ' | Grund: ' + archivGrund +
-  ' | Nach max. 3 Probetrainings länger als 15 Tage nicht erschienen.';
-
-const archivPayload = {
-  student_id: student.student_id || String(student.id || ''),
-  vorname: student.vorname || '',
-  nachname: student.nachname || '',
-  geburtsdatum: student.geburtsdatum || null,
-  alter: student.alter || null,
-  gruppe_id: student.gruppe_id || '',
-  trainer: student.trainer || '',
-  kyu_grad: student.kyu_grad || '',
-  guertelfarbe: student.guertelfarbe || '',
-  aktiv: 'NEIN',
-  telefon: student.telefon || '',
-  email: student.email || '',
-  kommentar: kommentarText,
-  austrittsdatum: today,
-  austrittsgrund: archivGrund,
-  buchhaltung_status: student.buchhaltung_status || '',
-  buchhaltung_informiert_am: student.buchhaltung_informiert_am || null,
-  vertragsende_bestaetigt_am: student.vertragsende_bestaetigt_am || null,
-  buchhaltung_geprueft_von: student.buchhaltung_geprueft_von || '',
-  probetraining_status: 'BEENDET',
-  probetraining_start: student.probetraining_start || null,
-  probetraining_ende: today,
-  buchhaltung_relevant: 'NEIN',
-  wiederkehrer: student.wiederkehrer || '',
-  aktuelles_gewicht: student.aktuelles_gewicht || null,
-  foto_url: student.foto_url || '',
-  archiv_datum: today,
-  archiv_grund: archivGrund,
-  buchhaltung_datum: student.buchhaltung_datum || null,
-  club_id: currentClub.club_id
-};
-
-const { error: archivError } = await db
-  .from('archiv')
-  .insert([archivPayload]);
-
-if(archivError){
-  console.error(archivError);
-  return { ok: false, error: 'Archiv-Fehler für ' + (student.nachname || '?') + ': ' + archivError.message };
-}
-
-const { error } = await db
-  .from('students')
-  .update({
-    aktiv:'NEIN',
-    buchhaltung_relevant:'NEIN',
-    probetraining_status:'BEENDET',
-    probetraining_ende: today,
-    kommentar: kommentarText
-  })
-  .eq('id', getStudentId(student));
-
-if(error){
-  console.error(error);
-  return { ok: false, error: 'Update-Fehler für ' + (student.nachname || '?') + ': ' + error.message };
-}
-
-return { ok: true };
-
-}
-
-return { ok: false };
-
+function isLongAbsent(student){
+  const daysSince = student.daysSinceLastAttendance;
+  return daysSince !== null && daysSince !== undefined && daysSince > LONG_ABSENCE_THRESHOLD_DAYS;
 }
 
 async function calculateStudentRating(studentId, externalPossibleIds) {

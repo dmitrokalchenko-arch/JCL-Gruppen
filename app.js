@@ -16228,3 +16228,354 @@ async function saveSAZahlung() {
   hideSAZahlungForm();
   await loadAndRenderSAZahlungen();
 }
+
+// =========================================================
+// SUPER ADMIN — FAMILIENZUGÄNGE
+// Read-only Schüler-Suche. Keine Schreibzugriffe, kein family_access,
+// keine RPCs — nur SELECT-Abfragen auf students/clubs/sports/groups.
+// =========================================================
+
+function saFamilienResetForm() {
+  ['saFamilienNachname', 'saFamilienVorname', 'saFamilienGeburtsdatum',
+   'saFamilienVerein', 'saFamilienSportart', 'saFamilienGruppe'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const statusEl = document.getElementById('saFamilienStatus');
+  if (statusEl) statusEl.value = '';
+
+  window._saFamilienSelectedStudentId = null;
+  window._saFamilienSuggestionsCache  = [];
+  closeSAFamilienSuggestions();
+
+  const tbody = document.getElementById('saFamilienResultsBody');
+  if (tbody) tbody.innerHTML = '<tr class="sa-family-empty-row"><td colspan="6">Keine Ergebnisse</td></tr>';
+}
+
+function showSAFamilienScreen() {
+  saFamilienResetForm();
+  document.getElementById('saFamilienScreen').classList.remove('hidden');
+}
+
+function hideSAFamilienScreen() {
+  showPromoTransition(() => {
+    document.getElementById('saFamilienScreen').classList.add('hidden');
+    closeSAFamilienSuggestions();
+  });
+}
+
+// ── Autocomplete: Nachname / Vorname ──────────────────────────────────────
+// Gemeinsame Implementierung für beide Felder, damit später weitere
+// SuperAdmin-Bereiche denselben Baustein wiederverwenden können.
+
+let _saFamilienDebounceTimer = null;
+window._saFamilienSelectedStudentId = null;
+window._saFamilienSuggestionsCache  = [];
+
+function saFamilienFieldIds(fieldType) {
+  return fieldType === 'nachname'
+    ? { input: 'saFamilienNachname', box: 'saFamilienNachnameSuggestions' }
+    : { input: 'saFamilienVorname',  box: 'saFamilienVornameSuggestions'  };
+}
+
+function scheduleSAFamilienAutocomplete(fieldType) {
+  // Jede manuelle Eingabe entwertet eine zuvor per Autocomplete getroffene Auswahl.
+  window._saFamilienSelectedStudentId = null;
+
+  const { input } = saFamilienFieldIds(fieldType);
+  const query = (document.getElementById(input)?.value || '').trim();
+
+  clearTimeout(_saFamilienDebounceTimer);
+
+  if (query.length < 2) {
+    closeSAFamilienSuggestions(fieldType);
+    return;
+  }
+
+  _saFamilienDebounceTimer = setTimeout(() => {
+    loadSAFamilienSuggestions(fieldType, query);
+  }, 300);
+}
+
+function saFamilienFieldKeydown(event) {
+  if (event.key === 'Escape') {
+    closeSAFamilienSuggestions();
+  } else if (event.key === 'Enter') {
+    closeSAFamilienSuggestions();
+    loadSAFamilienResults();
+  }
+}
+
+function closeSAFamilienSuggestions(fieldType) {
+  const ids = fieldType
+    ? [saFamilienFieldIds(fieldType).box]
+    : [saFamilienFieldIds('nachname').box, saFamilienFieldIds('vorname').box];
+
+  ids.forEach(id => {
+    const box = document.getElementById(id);
+    if (box) box.innerHTML = '';
+  });
+}
+
+async function loadSAFamilienSuggestions(fieldType, query) {
+  const primaryField = fieldType === 'nachname' ? 'nachname' : 'vorname';
+  const cols = 'id, vorname, nachname, geburtsdatum, club_id, sport_id, gruppe_id';
+
+  let { data, error } = await db
+    .from('students')
+    .select(cols)
+    .ilike(primaryField, `%${query}%`)
+    .order('nachname', { ascending: true })
+    .limit(10);
+
+  // Fallback: wenn im primären Feld nichts gefunden wurde, über beide Felder suchen.
+  if (!error && (!data || data.length === 0)) {
+    const fallback = await db
+      .from('students')
+      .select(cols)
+      .or(`nachname.ilike.%${query}%,vorname.ilike.%${query}%`)
+      .order('nachname', { ascending: true })
+      .limit(10);
+    data  = fallback.data;
+    error = fallback.error;
+  }
+
+  if (error) {
+    console.error('[SA Familien] Autocomplete-Fehler:', error);
+    closeSAFamilienSuggestions(fieldType);
+    return;
+  }
+
+  // Race-Guard: falls der Nutzer inzwischen weitergetippt hat, veraltete Antwort verwerfen.
+  const { input } = saFamilienFieldIds(fieldType);
+  const currentValue = (document.getElementById(input)?.value || '').trim();
+  if (currentValue !== query) return;
+
+  await renderSAFamilienSuggestions(fieldType, data || []);
+}
+
+async function renderSAFamilienSuggestions(fieldType, students) {
+  const { box: boxId } = saFamilienFieldIds(fieldType);
+  const box = document.getElementById(boxId);
+  if (!box) return;
+
+  if (!students.length) { box.innerHTML = ''; return; }
+
+  const clubIds = [...new Set(students.map(s => s.club_id).filter(Boolean))];
+  let clubMap = {};
+  if (clubIds.length) {
+    const { data: clubRows } = await db.from('clubs').select('club_id, club_name').in('club_id', clubIds);
+    clubMap = Object.fromEntries((clubRows || []).map(c => [c.club_id, c.club_name]));
+  }
+
+  window._saFamilienSuggestionsCache = students;
+
+  box.innerHTML = students.map((s, i) => {
+    const nameLine = escapeHtml(`${s.nachname || ''} ${s.vorname || ''}`.trim());
+
+    const metaParts = [];
+    if (s.geburtsdatum) metaParts.push(formatDateDE(s.geburtsdatum));
+    const clubName = clubMap[s.club_id];
+    if (clubName) metaParts.push(escapeHtml(clubName));
+    const metaLine = metaParts.join(' · ');
+
+    return `<div class="suggestion-item" onclick="selectSAFamilienSuggestion(${i})">
+      <div class="sa-family-suggestion-name">${nameLine}</div>
+      ${metaLine ? `<div class="sa-family-suggestion-meta">${metaLine}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function selectSAFamilienSuggestion(index) {
+  const student = window._saFamilienSuggestionsCache?.[index];
+  if (!student) return;
+
+  closeSAFamilienSuggestions();
+
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val != null ? val : '';
+  };
+
+  set('saFamilienNachname',     student.nachname);
+  set('saFamilienVorname',      student.vorname);
+  set('saFamilienGeburtsdatum', student.geburtsdatum);
+
+  window._saFamilienSelectedStudentId = student.id;
+
+  const [clubName, sportName, gruppenNamen] = await Promise.all([
+    saFamilienResolveClubName(student.club_id),
+    saFamilienResolveSportName(student.sport_id),
+    saFamilienResolveGruppenNamen(student.gruppe_id)
+  ]);
+
+  set('saFamilienVerein',   clubName);
+  set('saFamilienSportart', sportName);
+  set('saFamilienGruppe',   gruppenNamen);
+
+  await loadSAFamilienResults();
+}
+
+// Klick außerhalb eines Autocomplete-Felds schließt die Vorschläge.
+document.addEventListener('click', function (e) {
+  const wraps = document.querySelectorAll('.sa-family-autocomplete-wrap');
+  let inside = false;
+  wraps.forEach(w => { if (w.contains(e.target)) inside = true; });
+  if (!inside) closeSAFamilienSuggestions();
+});
+
+// ── Namensauflösung (Club / Sportart / Gruppen) für eine einzelne Auswahl ─
+// Kein N+1: wird nur je einmal pro Autocomplete-Auswahl aufgerufen, nicht pro Zeile.
+
+async function saFamilienResolveClubName(clubId) {
+  if (!clubId) return '';
+  const { data } = await db.from('clubs').select('club_name').eq('club_id', clubId).maybeSingle();
+  return data?.club_name || '';
+}
+
+async function saFamilienResolveSportName(sportId) {
+  if (!sportId) return '';
+  const { data } = await db.from('sports').select('name').eq('sport_id', sportId).maybeSingle();
+  return data?.name || '';
+}
+
+async function saFamilienResolveGruppenNamen(gruppeIdRaw) {
+  const ids = String(gruppeIdRaw || '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+  if (!ids.length) return '';
+
+  const { data } = await db.from('groups').select('gruppe_id, gruppenname').in('gruppe_id', ids);
+  return ids
+    .map(id => (data || []).find(g => g.gruppe_id === id)?.gruppenname || id)
+    .join(', ');
+}
+
+// ── Haupt-Suche ────────────────────────────────────────────────────────────
+
+function saFamilienSetStatusRow(text, isError) {
+  const tbody = document.getElementById('saFamilienResultsBody');
+  if (!tbody) return;
+  const cls = 'sa-family-empty-row' + (isError ? ' sa-family-error-row' : '');
+  tbody.innerHTML = `<tr class="${cls}"><td colspan="6">${escapeHtml(text)}</td></tr>`;
+}
+
+async function loadSAFamilienResults() {
+  const tbody = document.getElementById('saFamilienResultsBody');
+  if (!tbody) return;
+
+  saFamilienSetStatusRow('Suche läuft…', false);
+
+  try {
+    let studentsQuery = db
+      .from('students')
+      .select('id, vorname, nachname, geburtsdatum, club_id, sport_id, gruppe_id')
+      .limit(50);
+
+    if (window._saFamilienSelectedStudentId) {
+      // Konkreter Treffer aus dem Autocomplete hat Vorrang vor den Formularfeldern.
+      studentsQuery = studentsQuery.eq('id', window._saFamilienSelectedStudentId);
+    } else {
+      const nachname     = document.getElementById('saFamilienNachname').value.trim();
+      const vorname       = document.getElementById('saFamilienVorname').value.trim();
+      const geburtsdatum   = document.getElementById('saFamilienGeburtsdatum').value;
+      const verein         = document.getElementById('saFamilienVerein').value.trim();
+      const sportart       = document.getElementById('saFamilienSportart').value.trim();
+      const gruppe         = document.getElementById('saFamilienGruppe').value.trim();
+
+      if (nachname)     studentsQuery = studentsQuery.ilike('nachname', `%${nachname}%`);
+      if (vorname)      studentsQuery = studentsQuery.ilike('vorname', `%${vorname}%`);
+      if (geburtsdatum) studentsQuery = studentsQuery.eq('geburtsdatum', geburtsdatum);
+
+      if (verein) {
+        const { data: clubMatches } = await db
+          .from('clubs')
+          .select('club_id')
+          .or(`club_id.ilike.%${verein}%,club_name.ilike.%${verein}%`);
+        const clubIds = (clubMatches || []).map(c => c.club_id);
+        if (!clubIds.length) { saFamilienSetStatusRow('Keine Ergebnisse', false); return; }
+        studentsQuery = studentsQuery.in('club_id', clubIds);
+      }
+
+      if (sportart) {
+        const { data: sportMatches } = await db
+          .from('sports')
+          .select('sport_id')
+          .or(`sport_id.ilike.%${sportart}%,name.ilike.%${sportart}%`);
+        const sportIds = [...new Set((sportMatches || []).map(s => s.sport_id))];
+        if (!sportIds.length) { saFamilienSetStatusRow('Keine Ergebnisse', false); return; }
+        studentsQuery = studentsQuery.in('sport_id', sportIds);
+      }
+
+      if (gruppe) {
+        const { data: groupMatches } = await db
+          .from('groups')
+          .select('gruppe_id')
+          .or(`gruppe_id.ilike.%${gruppe}%,gruppenname.ilike.%${gruppe}%`);
+        const groupIds = [...new Set((groupMatches || []).map(g => g.gruppe_id))];
+        if (!groupIds.length) { saFamilienSetStatusRow('Keine Ergebnisse', false); return; }
+        // gruppe_id kann mehrere IDs (getrennt durch ; oder ,) enthalten — Substring-Suche pro Treffer-ID.
+        studentsQuery = studentsQuery.or(groupIds.map(id => `gruppe_id.ilike.%${id}%`).join(','));
+      }
+    }
+
+    const { data: results, error } = await studentsQuery.order('nachname', { ascending: true });
+
+    if (error) {
+      console.error('[SA Familien] Suchfehler:', error);
+      saFamilienSetStatusRow('Fehler beim Laden: ' + error.message, true);
+      return;
+    }
+
+    if (!results || !results.length) {
+      saFamilienSetStatusRow('Keine Ergebnisse', false);
+      return;
+    }
+
+    await renderSAFamilienResultsTable(results);
+
+  } catch (e) {
+    console.error('[SA Familien] Unerwarteter Fehler:', e);
+    saFamilienSetStatusRow('Fehler beim Laden: ' + (e?.message || String(e)), true);
+  }
+}
+
+// Ergebnis-Tabelle ohne N+1: je ein Batch-Request für Clubs/Sportarten/Gruppen,
+// unabhängig davon wie viele Schüler-Zeilen angezeigt werden.
+async function renderSAFamilienResultsTable(results) {
+  const tbody = document.getElementById('saFamilienResultsBody');
+  if (!tbody) return;
+
+  const clubIds  = [...new Set(results.map(r => r.club_id).filter(Boolean))];
+  const sportIds = [...new Set(results.map(r => r.sport_id).filter(Boolean))];
+  const groupIds = [...new Set(
+    results.flatMap(r => String(r.gruppe_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean))
+  )];
+
+  const [clubRows, sportRows, groupRows] = await Promise.all([
+    clubIds.length  ? db.from('clubs').select('club_id, club_name').in('club_id', clubIds)         : Promise.resolve({ data: [] }),
+    sportIds.length ? db.from('sports').select('sport_id, name').in('sport_id', sportIds)           : Promise.resolve({ data: [] }),
+    groupIds.length ? db.from('groups').select('gruppe_id, gruppenname').in('gruppe_id', groupIds)  : Promise.resolve({ data: [] }),
+  ]);
+
+  const clubMap  = Object.fromEntries((clubRows.data  || []).map(c => [c.club_id, c.club_name]));
+  const sportMap = Object.fromEntries((sportRows.data || []).map(s => [s.sport_id, s.name]));
+  const groupMap = Object.fromEntries((groupRows.data || []).map(g => [g.gruppe_id, g.gruppenname]));
+
+  tbody.innerHTML = results.map(r => {
+    const schueler = escapeHtml(`${r.nachname || ''} ${r.vorname || ''}`.trim());
+    const geb      = r.geburtsdatum ? formatDateDE(r.geburtsdatum) : '-';
+    const verein   = escapeHtml(clubMap[r.club_id]   || r.club_id  || '-');
+    const sport    = escapeHtml(sportMap[r.sport_id] || r.sport_id || '-');
+
+    const gIds   = String(r.gruppe_id || '').split(/[;,]/).map(x => x.trim()).filter(Boolean);
+    const gruppe = gIds.length ? escapeHtml(gIds.map(id => groupMap[id] || id).join(', ')) : '-';
+
+    return `<tr>
+      <td>${schueler}</td>
+      <td>${geb}</td>
+      <td>${verein}</td>
+      <td>${sport}</td>
+      <td>${gruppe}</td>
+      <td>Nicht eingerichtet</td>
+    </tr>`;
+  }).join('');
+}

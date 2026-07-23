@@ -2851,6 +2851,13 @@ Abbrechen
       <div class="sa-dash-soon">In Entwicklung</div>
     </button>
 
+    <button class="sa-dash-card sa-dash-active" onclick="navigateWithPromo(()=>showSAFamilienScreen())">
+      <div class="sa-dash-icon">👨‍👩‍👧‍👦</div>
+      <div class="sa-dash-title">Familienzugänge</div>
+      <div class="sa-dash-text">Familienzugänge suchen und verwalten</div>
+      <div class="sa-dash-soon">In Entwicklung</div>
+    </button>
+
     <button class="sa-dash-card sa-dash-disabled" disabled>
       <div class="sa-dash-icon">👥</div>
       <div class="sa-dash-title">Users / Rollen</div>
@@ -3675,6 +3682,117 @@ Abbrechen
   <div id="saClubsLoadingMsg" class="sa-clubs-loading">Clubs werden geladen…</div>
 
   <div id="saClubsList" class="sa-clubs-list"></div>
+
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — FAMILIENZUGÄNGE SCREEN
+========================================================= -->
+<div id="saFamilienScreen" class="sa-clubs-screen hidden">
+
+  <div class="sa-clubs-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSAFamilienScreen()">← Zurück</button>
+      <div>
+        <div class="sa-screen-badge">FAMILIEN</div>
+        <h2 class="sa-clubs-title">Familienzugänge</h2>
+        <div class="sa-screen-subtitle">Familienzugänge suchen und verwalten</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sa-form-wrapper">
+    <div class="sa-form-section">
+
+      <div class="sa-form-row">
+        <div class="sa-form-field sa-family-autocomplete-wrap">
+          <label class="sa-label">Nachname</label>
+          <input id="saFamilienNachname" class="sa-input" type="text" placeholder="Nachname"
+                 name="sa_familien_nachname_noautofill"
+                 autocomplete="sa-familien-nachname-noautofill"
+                 autocorrect="off" autocapitalize="none" spellcheck="false"
+                 oninput="scheduleSAFamilienAutocomplete('nachname')"
+                 onkeydown="saFamilienFieldKeydown(event)">
+          <div id="saFamilienNachnameSuggestions" class="suggestions-box"></div>
+        </div>
+        <div class="sa-form-field sa-family-autocomplete-wrap">
+          <label class="sa-label">Vorname</label>
+          <input id="saFamilienVorname" class="sa-input" type="text" placeholder="Vorname"
+                 name="sa_familien_vorname_noautofill"
+                 autocomplete="sa-familien-vorname-noautofill"
+                 autocorrect="off" autocapitalize="none" spellcheck="false"
+                 oninput="scheduleSAFamilienAutocomplete('vorname')"
+                 onkeydown="saFamilienFieldKeydown(event)">
+          <div id="saFamilienVornameSuggestions" class="suggestions-box"></div>
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Geburtsdatum</label>
+          <input id="saFamilienGeburtsdatum" class="sa-input" type="date"
+                 onkeydown="if(event.key==='Enter') loadSAFamilienResults()">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Verein</label>
+          <input id="saFamilienVerein" class="sa-input" type="text" placeholder="Verein" autocomplete="off"
+                 onkeydown="if(event.key==='Enter') loadSAFamilienResults()">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Sportart</label>
+          <input id="saFamilienSportart" class="sa-input" type="text" placeholder="Sportart" autocomplete="off"
+                 onkeydown="if(event.key==='Enter') loadSAFamilienResults()">
+        </div>
+        <div class="sa-form-field">
+          <label class="sa-label">Gruppe</label>
+          <input id="saFamilienGruppe" class="sa-input" type="text" placeholder="Gruppe" autocomplete="off"
+                 onkeydown="if(event.key==='Enter') loadSAFamilienResults()">
+        </div>
+      </div>
+
+      <div class="sa-form-row">
+        <div class="sa-form-field">
+          <label class="sa-label">Status Familienzugang</label>
+          <select id="saFamilienStatus" class="sa-input sa-select"
+                  onkeydown="if(event.key==='Enter') loadSAFamilienResults()">
+            <option value="">Alle</option>
+            <option value="aktiv">Aktiv</option>
+            <option value="eingeladen">Eingeladen</option>
+            <option value="nicht_eingeladen">Nicht eingeladen</option>
+            <option value="deaktiviert">Deaktiviert</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sa-family-search-actions">
+        <button type="button" id="saFamilienSearchBtn" class="sa-new-club-btn" onclick="loadSAFamilienResults()">Suchen</button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="sa-family-table-wrap">
+    <table class="sa-family-table">
+      <thead>
+        <tr>
+          <th>Schüler</th>
+          <th>Geburtsdatum</th>
+          <th>Verein</th>
+          <th>Sportart</th>
+          <th>Gruppe</th>
+          <th>Familienzugang</th>
+        </tr>
+      </thead>
+      <tbody id="saFamilienResultsBody">
+        <tr class="sa-family-empty-row">
+          <td colspan="6">Keine Ergebnisse</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
 </div>
 

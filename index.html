@@ -154,16 +154,15 @@
         spellcheck="false">
     </div>
 
-    <label class="st2-pin-label">PIN-Code eingeben (6-stellig)</label>
+    <label class="st2-pin-label">PIN-Code (6-stellig) oder Portal-Passwort eingeben</label>
 
     <div class="st2-pin-row">
       <input
         id="pinInput"
         class="st2-pin-input"
         type="password"
-        placeholder="PIN-Code"
-        maxlength="6"
-        inputmode="numeric">
+        placeholder="PIN-Code oder Passwort"
+        autocomplete="off">
 
       <button
         type="button"
@@ -573,6 +572,65 @@ Bearbeite Trainerdaten und Gruppenzuordnung.
     <button class="add-trainer-save" onclick="saveEditedTrainer()">✓ Änderungen speichern</button>
   </div>
 
+  <!-- Trainerportal-Zugang (единая авторизация тренеров, JWT-авторизация на сервере) -->
+  <div class="add-trainer-modern-card">
+
+    <div class="add-trainer-section-title">
+      <div class="add-trainer-section-icon">🔐</div>
+      <div>
+        <h3>Trainerportal-Zugang</h3>
+        <span class="small">
+          Login und Passwort für den Zugang zum Trainerportal (Family Portal).
+          Der Trainer kann das Passwort dort nicht selbst ändern — nur ein
+          Administrator kann es hier vergeben oder ändern.
+        </span>
+      </div>
+    </div>
+
+    <div id="editTrainerPortalMessage" class="trainer-edit-message hidden"></div>
+
+    <div class="add-trainer-form-grid">
+
+      <div class="add-trainer-field">
+        <label>Login für Trainerportal</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">👤</div>
+          <input id="editTrainerPortalLogin" placeholder="Login für Trainerportal" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Neues Passwort</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🔑</div>
+          <input id="editTrainerPortalPassword" placeholder="Leer lassen = nicht ändern" type="password" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Passwort wiederholen</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🔑</div>
+          <input id="editTrainerPortalPasswordRepeat" placeholder="Passwort wiederholen" type="password" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Portalzugang aktiv</label>
+        <div class="add-trainer-input-row">
+          <input id="editTrainerPortalActive" type="checkbox" checked style="width:auto;margin-right:8px;">
+          <span>Portalzugang aktiv</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="add-trainer-buttons">
+      <button class="add-trainer-save" onclick="submitTrainerPortalAccess({ isEdit: true })">🔐 Zugang aktualisieren</button>
+    </div>
+
+  </div>
+
 </div>
 
     <div id="addTrainerScreen" class="hidden">
@@ -710,6 +768,68 @@ Bearbeite Trainerdaten und Gruppenzuordnung.
   <div class="add-trainer-buttons">
     <button class="add-trainer-cancel" onclick="goBack()">✕ Abbrechen</button>
     <button class="add-trainer-save" onclick="saveNewTrainer()">✓ Trainer speichern</button>
+  </div>
+
+  <!-- Trainerportal-Zugang (единая авторизация тренеров, JWT-авторизация на сервере).
+       Требует, чтобы тренер уже был сохранён кнопкой "✓ Trainer speichern"
+       выше (Edge Function проверяет trainerId по уже существующей строке
+       trainers) — submitTrainerPortalAccess() сообщит об этом, если нет. -->
+  <div class="add-trainer-modern-card">
+
+    <div class="add-trainer-section-title">
+      <div class="add-trainer-section-icon">🔐</div>
+      <div>
+        <h3>Trainerportal-Zugang</h3>
+        <span class="small">
+          Login und Passwort für den Zugang zum Trainerportal (Family Portal).
+          Zuerst "✓ Trainer speichern" oben klicken, dann hier den
+          Portalzugang vergeben.
+        </span>
+      </div>
+    </div>
+
+    <div id="newTrainerPortalMessage" class="trainer-edit-message hidden"></div>
+
+    <div class="add-trainer-form-grid">
+
+      <div class="add-trainer-field">
+        <label>Login für Trainerportal</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">👤</div>
+          <input id="newTrainerPortalLogin" placeholder="Login für Trainerportal" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Neues Passwort</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🔑</div>
+          <input id="newTrainerPortalPassword" placeholder="Passwort" type="password" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Passwort wiederholen</label>
+        <div class="add-trainer-input-row">
+          <div class="add-trainer-field-icon">🔑</div>
+          <input id="newTrainerPortalPasswordRepeat" placeholder="Passwort wiederholen" type="password" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="add-trainer-field">
+        <label>Portalzugang aktiv</label>
+        <div class="add-trainer-input-row">
+          <input id="newTrainerPortalActive" type="checkbox" checked style="width:auto;margin-right:8px;">
+          <span>Portalzugang aktiv</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="add-trainer-buttons">
+      <button class="add-trainer-save" onclick="submitTrainerPortalAccess({ isEdit: false })">🔐 Passwort setzen</button>
+    </div>
+
   </div>
 
 </div>
@@ -3794,6 +3914,103 @@ Abbrechen
     </table>
   </div>
 
+</div>
+
+<!-- =========================================================
+   SUPER ADMIN — FAMILIENZUGANG DETAIL / VERWALTUNG MODAL
+========================================================= -->
+<div id="saFamilienDetailModal" class="sa-modal hidden">
+  <div class="sa-modal-overlay" onclick="closeSAFamilienDetailModal()"></div>
+  <div class="sa-modal-panel sa-family-detail-panel">
+    <div class="sa-modal-header">
+      <span class="sa-modal-icon">👨‍👩‍👧‍👦</span>
+      <span class="sa-modal-title" id="saFamilienDetailName">Familienzugang</span>
+    </div>
+    <div class="sa-modal-body">
+
+      <div id="saFamilienDetailBody"></div>
+      <div id="saFamilienActionsBar" class="sa-family-actions-bar"></div>
+      <div id="saFamilienDetailActionMessage" class="trainer-edit-message hidden"></div>
+
+      <!-- Familienzugang einrichten -->
+      <div id="saFamilienFormCreate" class="add-trainer-modern-card hidden">
+        <div class="add-trainer-section-title">
+          <div class="add-trainer-section-icon">👨‍👩‍👧</div>
+          <div><h3>Familienzugang einrichten</h3></div>
+        </div>
+        <div id="saFamilienCreateMessage" class="trainer-edit-message hidden"></div>
+        <div class="add-trainer-form-grid">
+          <div class="add-trainer-field">
+            <label>Login für Familienzugang</label>
+            <input id="saFamilienCreateNickname" placeholder="z.B. familie-mueller" autocomplete="off">
+          </div>
+          <div class="add-trainer-field">
+            <label>Passwort</label>
+            <input id="saFamilienCreatePassword" type="password" placeholder="Mindestens 8 Zeichen" autocomplete="new-password">
+          </div>
+          <div class="add-trainer-field">
+            <label>Passwort wiederholen</label>
+            <input id="saFamilienCreatePasswordRepeat" type="password" placeholder="Passwort wiederholen" autocomplete="new-password">
+          </div>
+          <div class="add-trainer-field">
+            <label>Kontakt-E-Mail (für Passwort-Wiederherstellung)</label>
+            <input id="saFamilienCreateContactEmail" type="email" placeholder="familie@example.com" autocomplete="off">
+          </div>
+        </div>
+        <div class="add-trainer-buttons">
+          <button class="add-trainer-save" onclick="saFamilienSubmitCreate()">✓ Familienzugang anlegen</button>
+        </div>
+      </div>
+
+      <!-- Login ändern -->
+      <div id="saFamilienFormLogin" class="add-trainer-modern-card hidden">
+        <div class="add-trainer-section-title">
+          <div class="add-trainer-section-icon">✏️</div>
+          <div><h3>Login ändern</h3></div>
+        </div>
+        <div id="saFamilienLoginMessage" class="trainer-edit-message hidden"></div>
+        <div class="add-trainer-form-grid">
+          <div class="add-trainer-field">
+            <label>Neuer Login</label>
+            <input id="saFamilienNewNickname" autocomplete="off">
+          </div>
+          <div class="add-trainer-field">
+            <label>Kontakt-E-Mail</label>
+            <input id="saFamilienLoginContactEmail" type="email" placeholder="familie@example.com" autocomplete="off">
+          </div>
+        </div>
+        <div class="add-trainer-buttons">
+          <button class="add-trainer-save" onclick="saFamilienSubmitLogin()">✓ Login aktualisieren</button>
+        </div>
+      </div>
+
+      <!-- Neues Passwort setzen -->
+      <div id="saFamilienFormPassword" class="add-trainer-modern-card hidden">
+        <div class="add-trainer-section-title">
+          <div class="add-trainer-section-icon">🔑</div>
+          <div><h3>Neues Passwort setzen</h3></div>
+        </div>
+        <div id="saFamilienPasswordMessage" class="trainer-edit-message hidden"></div>
+        <div class="add-trainer-form-grid">
+          <div class="add-trainer-field">
+            <label>Neues Passwort</label>
+            <input id="saFamilienNewPassword" type="password" placeholder="Mindestens 8 Zeichen" autocomplete="new-password">
+          </div>
+          <div class="add-trainer-field">
+            <label>Passwort wiederholen</label>
+            <input id="saFamilienNewPasswordRepeat" type="password" placeholder="Passwort wiederholen" autocomplete="new-password">
+          </div>
+        </div>
+        <div class="add-trainer-buttons">
+          <button class="add-trainer-save" onclick="saFamilienSubmitPassword()">✓ Passwort setzen</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="sa-modal-footer">
+      <button class="sa-btn-cancel" onclick="closeSAFamilienDetailModal()">Schließen</button>
+    </div>
+  </div>
 </div>
 
 <!-- =========================================================

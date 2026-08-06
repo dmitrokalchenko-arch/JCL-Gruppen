@@ -16629,6 +16629,97 @@ body.sa-standalone-mode #clubPaymentWarning {
   color: #e57373;
 }
 
+.sa-family-manage-btn {
+  background: rgba(212,175,55,0.14);
+  border: 1px solid rgba(212,175,55,0.4);
+  color: #d4af37;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sa-family-manage-btn:hover {
+  background: rgba(212,175,55,0.24);
+}
+
+.sa-family-detail-panel {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.sa-family-detail-loading,
+.sa-family-detail-error {
+  padding: 16px 0;
+  color: rgba(255,255,255,0.6);
+}
+
+.sa-family-detail-error {
+  color: #e57373;
+}
+
+.sa-family-status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-bottom: 14px;
+}
+
+.sa-family-status-none {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.6);
+}
+
+.sa-family-status-active {
+  background: rgba(76,175,80,0.18);
+  color: #66bb6a;
+}
+
+.sa-family-status-blocked {
+  background: rgba(229,115,115,0.18);
+  color: #e57373;
+}
+
+.sa-family-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  margin-bottom: 16px;
+}
+
+.sa-family-detail-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sa-family-detail-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.4);
+}
+
+.sa-family-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sa-family-actions-bar .add-trainer-save {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .sa-family-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .sa-family-autocomplete-wrap {
   position: relative;
 }

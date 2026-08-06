@@ -1,0 +1,13 @@
+# Lokale Backups und Zugangsdaten — niemals committen.
+supabase.js.PROD_BACKUP_DO_NOT_COMMIT
+.backup/
+*.bak*
+
+# Lokale Umgebungs-/Secret-Dateien.
+.env
+.env.*
+!.env.example
+
+# Editor-/OS-Artefakte.
+.DS_Store
+Thumbs.db

@@ -996,10 +996,15 @@ async function login() {
       status.textContent = 'Bitte PIN eingeben.';
       return;
     }
-    if (pinValue.length !== 6) {
-      status.textContent = 'PIN muss 6-stellig sein.';
-      return;
-    }
+    // Единая авторизация тренеров (ЛОКАЛЬНЫЙ прототип): раньше здесь была
+    // жёсткая проверка "ровно 6 цифр", которая отклоняла любой более
+    // длинный/буквенный ввод ДО того, как ниже вообще определяется, есть
+    // ли у тренера новый Auth-аккаунт (это выясняется только после
+    // matchTrainerByLogin, дальше по функции). Убрано намеренно: реальная
+    // проверка значения всё равно происходит позже — либо сравнением PIN-
+    // хеша (для немигрированных, длина должна быть 6, иначе хеш просто не
+    // совпадёт), либо signInWithPassword (для мигрированных). Ничего не
+    // ослабляет — просто не блокирует раньше времени.
   }
 
   if (!isSuperAdminAccess) {
@@ -1060,6 +1065,109 @@ async function login() {
       return;
     }
   }
+
+  // ============================================================
+  // ЕДИНАЯ АВТОРИЗАЦИЯ ТРЕНЕРОВ — ЛОКАЛЬНЫЙ ПРОТОТИП (см. manage-trainer-account
+  // Edge Function в JKL_STUDENT_PARENT_PORTAL). Если у найденного тренера
+  // есть активная строка trainer_accounts — ведём через новый Supabase Auth
+  // (resolve_trainer_login_email + signInWithPassword), используя ТО ЖЕ
+  // поле ввода (pinValue) как пароль вместо PIN. Если аккаунта нет —
+  // старый PIN-flow ниже остаётся ПОЛНОСТЬЮ БЕЗ ИЗМЕНЕНИЙ.
+  //
+  // ВАЖНО (известное ограничение прототипа): resolve_trainer_login_email
+  // строит email ИЗ ТОЙ ЖЕ СТРОКИ loginText, что ввёл пользователь — а
+  // matchTrainerByLogin выше допускает как полное имя, так и сокращение
+  // фамилии ("Thomas G" ИЛИ "Thomas Graziani"). Чтобы вход по новому Auth
+  // совпадал, login_name в trainer_accounts должен быть настроен АДМИНОМ
+  // ТОЧНО так, как мигрированный тренер реально набирает это поле —
+  // рекомендуется всегда использовать полное имя (совпадающее с trainers.name)
+  // как login_name. Иное сокращение при вводе не найдёт нужный email и
+  // безопасно провалится в "Login oder PIN falsch" (не в старый PIN-flow —
+  // если trainer_has_active_account вернула true, откат на PIN не
+  // происходит, чтобы не создавать двусмысленность, какой из двух паролей
+  // сейчас действителен).
+  if (!isSuperAdminAccess) {
+    let hasPortalAccount = false;
+    try {
+      const { data: hasAccountData, error: hasAccountError } = await db.rpc(
+        'trainer_has_active_account',
+        { p_trainer_id: trainer.trainer_id, p_club_id: currentClub.club_id }
+      );
+      if (!hasAccountError) hasPortalAccount = Boolean(hasAccountData);
+    } catch (e) {
+      hasPortalAccount = false; // любая ошибка RPC — безопасный fallback на старый PIN-flow
+    }
+
+    // Найдено ручным ревью и подтверждено живым тестом: trainer_has_active_account
+    // возвращает false и для "никогда не мигрирован", и для "мигрирован, но
+    // деактивирован администратором" — раньше оба случая одинаково откатывались
+    // на старый PIN-flow, из-за чего деактивация портального доступа НЕ
+    // блокировала вход, если у тренера остался рабочий pin_hash. Здесь явно
+    // различаем эти два случая: "аккаунт есть, но неактивен" блокируется
+    // целиком (не откатывается на PIN); "аккаунта никогда не было" — откат
+    // на PIN остаётся как раньше, без изменений.
+    if (!hasPortalAccount) {
+      let hasAnyPortalAccount = false;
+      try {
+        const { data: hasAnyData, error: hasAnyError } = await db.rpc(
+          'trainer_has_any_account',
+          { p_trainer_id: trainer.trainer_id, p_club_id: currentClub.club_id }
+        );
+        if (!hasAnyError) hasAnyPortalAccount = Boolean(hasAnyData);
+      } catch (e) {
+        hasAnyPortalAccount = false; // любая ошибка RPC — безопасный fallback на старый PIN-flow
+      }
+
+      if (hasAnyPortalAccount) {
+        _recordFailedLogin(attemptKey);
+        status.textContent = 'Zugang deaktiviert. Bitte wenden Sie sich an einen Administrator.';
+        return;
+      }
+    }
+
+    if (hasPortalAccount) {
+      const { data: technicalEmail, error: emailError } = await db.rpc(
+        'resolve_trainer_login_email',
+        { p_club_short_name: currentClub.club_short_name, p_login_name: loginText }
+      );
+
+      if (emailError || !technicalEmail) {
+        _recordFailedLogin(attemptKey);
+        status.textContent = 'Login oder PIN falsch.';
+        return;
+      }
+
+      const { data: signInData, error: signInError } = await db.auth.signInWithPassword({
+        email: technicalEmail,
+        password: pinValue
+      });
+
+      if (signInError || !signInData?.session) {
+        _recordFailedLogin(attemptKey);
+        status.textContent = 'Login oder PIN falsch.';
+        return;
+      }
+
+      _clearLoginAttempts(attemptKey);
+
+      currentTrainer = { ...trainer };
+      currentTrainer.role = trainer.rolle;
+      currentTrainer.trainerId = trainer.trainer_id;
+      currentTrainer._portalAuthSession = signInData.session;
+      if (isSport && groupId) currentTrainer._loginGroupId = groupId;
+
+      await loadCurrentPromoSettings();
+
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('mainScreen').classList.remove('hidden');
+      document.getElementById('topNavButtons').classList.remove('hidden');
+      document.getElementById('appBox')?.classList.remove('st2-login-mode');
+      return;
+    }
+  }
+  // ============================================================
+  // Конец ветвления. Ниже — существующий PIN-flow, НЕ изменён.
+  // ============================================================
 
   // PIN-Prüfung (SA überspringt)
   if (!isSuperAdminAccess) {
@@ -12971,11 +13079,149 @@ sectionText.textContent =
   }
 }
 
+// ============================================================
+// TRAINER PORTAL ACCESS — единая авторизация тренеров.
+//
+// Авторизация вызова Edge Function manage-trainer-account построена на
+// Supabase Auth JWT: сюда отправляется access_token ТЕКУЩЕГО вошедшего
+// администратора, а не общий секрет. Итоговое решение "разрешено/запрещено"
+// всегда принимается сервером (Edge Function проверяет токен, читает
+// trainer_accounts/trainers.rolle из БД) — currentTrainer.role === 'Admin'
+// здесь используется только чтобы показать/скрыть UI, это не более чем
+// клиентское удобство и НЕ является источником прав.
+const TRAINER_PORTAL_FUNCTION_URL = SUPABASE_URL + '/functions/v1/manage-trainer-account';
+
+async function submitTrainerPortalAccess({ isEdit }) {
+  const prefix = isEdit ? 'edit' : 'new';
+  const messageBox = document.getElementById(prefix + 'TrainerPortalMessage');
+
+  function showPortalMessage(text, isError) {
+    if (!messageBox) return;
+    messageBox.textContent = text;
+    messageBox.classList.remove('hidden');
+    messageBox.style.color = isError ? '#c0392b' : '#2e7d32';
+  }
+
+  // Verwaltung von Portalzugängen erfordert eine eigene Supabase-Auth-Sitzung
+  // des Admins. Ein Admin, der sich nur über den alten PIN-Weg angemeldet
+  // hat, besitzt keine solche Sitzung — der Aufruf würde am Server ohnehin
+  // mit 401 abgelehnt, daher hier ein klarer Hinweis statt eines Fehlversuchs.
+  const { data: sessionData } = await db.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) {
+    showPortalMessage(
+      'Verwaltung des Portalzugangs ist mit einer PIN-Anmeldung nicht möglich. Bitte melden Sie sich mit Ihrem eigenen Trainerportal-Zugang an, um andere Zugänge zu verwalten.',
+      true
+    );
+    return;
+  }
+
+  const loginName = document.getElementById(prefix + 'TrainerPortalLogin')?.value.trim() || '';
+  const password = document.getElementById(prefix + 'TrainerPortalPassword')?.value || '';
+  const passwordRepeat = document.getElementById(prefix + 'TrainerPortalPasswordRepeat')?.value || '';
+  const isActive = document.getElementById(prefix + 'TrainerPortalActive')?.checked ?? true;
+
+  if (!loginName) {
+    showPortalMessage('Bitte Login für Trainerportal eingeben.', true);
+    return;
+  }
+  // Пустой пароль при редактировании = "не менять" — допустимо только для
+  // isEdit; для нового тренера пароль обязателен (проверяется и на
+  // сервере, здесь — только для быстрой обратной связи в UI).
+  if (password || passwordRepeat) {
+    if (password !== passwordRepeat) {
+      showPortalMessage('Passwort und Wiederholung stimmen nicht überein.', true);
+      return;
+    }
+  }
+  if (!isEdit && !password) {
+    showPortalMessage('Bitte Passwort eingeben (Pflicht für neuen Trainer).', true);
+    return;
+  }
+
+  let trainerId;
+  let displayName;
+
+  if (isEdit) {
+    trainerId = document.getElementById('editTrainerIdHidden')?.value || '';
+    const nachname = document.getElementById('editTrainerNachnameNew')?.value.trim() || '';
+    const vorname = document.getElementById('editTrainerVornameNew')?.value.trim() || '';
+    displayName = (nachname + ' ' + vorname).trim();
+  } else {
+    // Новый тренер должен быть уже сохранён кнопкой "✓ Trainer speichern" —
+    // trainer_accounts.trainer_row_id физически требует существующую
+    // строку trainers (FK), подменить это здесь нечем.
+    trainerId = window._lastSavedNewTrainerId || '';
+    const nachname = document.getElementById('newTrainerNachname')?.value.trim() || '';
+    const vorname = document.getElementById('newTrainerVorname')?.value.trim() || '';
+    displayName = (nachname + ' ' + vorname).trim();
+  }
+
+  if (!trainerId) {
+    showPortalMessage('Bitte zuerst den Trainer oben speichern, dann Portalzugang vergeben.', true);
+    return;
+  }
+  if (!displayName) {
+    showPortalMessage('Bitte Nachname und Vorname eingeben.', true);
+    return;
+  }
+
+  showPortalMessage('Wird gespeichert…', false);
+
+  try {
+    const response = await fetch(TRAINER_PORTAL_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + accessToken
+      },
+      body: JSON.stringify({
+        trainerId,
+        loginName,
+        displayName,
+        password: password || undefined,
+        isActive: Boolean(isActive)
+      })
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      // Ошибки — без внутренних данных Supabase: только общий текст,
+      // result.details (может содержать сырые сообщения Postgres/GoTrue)
+      // никогда не показывается пользователю, только в консоль для отладки.
+      showPortalMessage('Fehler beim Speichern des Portalzugangs. Bitte erneut versuchen.', true);
+      console.error('[TrainerPortalAccess]', result.error, result.details);
+      return;
+    }
+
+    showPortalMessage(
+      'Portalzugang gespeichert (' + (result.operation === 'create' ? 'neu angelegt' : 'aktualisiert') + ').',
+      false
+    );
+
+    // Passwort nach dem Speichern nie wieder anzeigen.
+    const pwField = document.getElementById(prefix + 'TrainerPortalPassword');
+    const pwRepeatField = document.getElementById(prefix + 'TrainerPortalPasswordRepeat');
+    if (pwField) pwField.value = '';
+    if (pwRepeatField) pwRepeatField.value = '';
+  } catch (e) {
+    showPortalMessage('Fehler beim Speichern des Portalzugangs. Bitte erneut versuchen.', true);
+    console.error('[TrainerPortalAccess]', e);
+  }
+}
+
 async function showAddTrainer() {
   if (!currentTrainer || currentTrainer.role !== 'Admin') return;
 
   previousView = 'adminScreen';
   currentView = 'addTrainer';
+
+  // Единая авторизация тренеров (ЛОКАЛЬНЫЙ прототип) — сбрасываем состояние
+  // от предыдущего открытия этого экрана, чтобы кнопка "Passwort setzen" не
+  // случайно привязалась к уже другому, ранее созданному тренеру.
+  window._lastSavedNewTrainerId = null;
 
   hideAllWorkScreens();
 
@@ -13181,6 +13427,12 @@ async function saveNewTrainer() {
     showCustomMessage('Fehler beim Speichern des Trainers: ' + trainerError.message);
     return;
   }
+
+  // Единая авторизация тренеров (ЛОКАЛЬНЫЙ прототип) — сохраняем сгенерированный
+  // trainerId, чтобы кнопка "🔐 Passwort setzen" ниже на этом же экране могла
+  // привязать Trainerportal-Zugang к только что созданному тренеру
+  // (Edge Function требует уже существующую строку trainers).
+  window._lastSavedNewTrainerId = trainerId;
 
   const checkedGroups = Array.from(
     document.querySelectorAll('.newTrainerGroupCheckbox:checked')
@@ -14452,12 +14704,106 @@ function closeSuperAdminLogin() {
 }
 
 // Общий движок проверки SA-логина
+//
+// ЕДИНАЯ АВТОРИЗАЦИЯ SUPER ADMIN — ЛОКАЛЬНЫЙ ПРОТОТИП (тот же dual-path
+// паттерн, что уже есть у тренеров, см. login() выше и manage-trainer-account
+// Edge Function в JKL_STUDENT_PARENT_PORTAL): старый вход через прямое
+// сравнение super_admins.pin в браузере НЕ создаёт Supabase Auth-сессию —
+// без неё нельзя безопасно вызывать защищённые Edge Function (например
+// manage-family-account для Familienzugänge), которые проверяют вызывающего
+// через JWT (Authorization: Bearer <access_token>), а не через клиентское
+// состояние. Если у Super Admin есть активная строка super_admin_accounts
+// (заводится отдельным bootstrap-шагом, не этой функцией), вход идёт через
+// Supabase Auth (resolve_super_admin_login_email + signInWithPassword),
+// используя то же поле pin как пароль. Если аккаунта нет — старый PIN-путь
+// ниже остаётся ПОЛНОСТЬЮ БЕЗ ИЗМЕНЕНИЙ, и без него SuperAdmin Dashboard
+// продолжает работать как раньше (Familienzugänge-действия просто покажут
+// сообщение о необходимости входа через Auth, как и submitTrainerPortalAccess
+// для тренеров).
 async function _superAdminLoginCore(username, pin, statusEl) {
   if (!username || !pin) {
     statusEl.textContent = 'Bitte Benutzername und PIN eingeben.';
     return;
   }
   statusEl.textContent = 'Wird geprüft…';
+
+  let hasPortalAccount = false;
+  try {
+    const { data: hasAccountData, error: hasAccountError } = await db.rpc(
+      'super_admin_has_active_account',
+      { p_username: username }
+    );
+    if (!hasAccountError) hasPortalAccount = Boolean(hasAccountData);
+  } catch (e) {
+    hasPortalAccount = false; // любая ошибка RPC — безопасный fallback на старый PIN-flow
+  }
+
+  // Тот же принцип, что и у тренеров (trainer_has_any_account): различаем
+  // "аккаунта никогда не было" (безопасный откат на PIN) от "аккаунт есть,
+  // но деактивирован" (блокировать целиком, не откатываться на PIN).
+  if (!hasPortalAccount) {
+    let hasAnyPortalAccount = false;
+    try {
+      const { data: hasAnyData, error: hasAnyError } = await db.rpc(
+        'super_admin_has_any_account',
+        { p_username: username }
+      );
+      if (!hasAnyError) hasAnyPortalAccount = Boolean(hasAnyData);
+    } catch (e) {
+      hasAnyPortalAccount = false;
+    }
+
+    if (hasAnyPortalAccount) {
+      statusEl.textContent = 'Zugang deaktiviert. Bitte wenden Sie sich an einen anderen Administrator.';
+      return;
+    }
+  }
+
+  if (hasPortalAccount) {
+    const { data: technicalEmail, error: emailError } = await db.rpc(
+      'resolve_super_admin_login_email',
+      { p_username: username }
+    );
+
+    if (emailError || !technicalEmail) {
+      statusEl.textContent = 'Falscher Benutzername oder PIN.';
+      return;
+    }
+
+    const { data: signInData, error: signInError } = await db.auth.signInWithPassword({
+      email: technicalEmail,
+      password: pin
+    });
+
+    if (signInError || !signInData?.session) {
+      statusEl.textContent = 'Falscher Benutzername oder PIN.';
+      return;
+    }
+
+    // super_admins-Identität (id/username/name) weiterhin für Anzeige
+    // "Angemeldet als" und bestehende club-übergreifende Abfragen geladen —
+    // unverändert genutzt, nur die Anmeldung selbst läuft jetzt über Auth.
+    const { data: saRow } = await db
+      .from('super_admins')
+      .select('id, username, name')
+      .eq('username', username)
+      .maybeSingle();
+
+    superAdminSession = saRow
+      ? { id: saRow.id, username: saRow.username, name: saRow.name }
+      : { username };
+
+    statusEl.textContent = '';
+    if (isSAStandaloneMode) {
+      document.getElementById('saStandalonePage').classList.add('hidden');
+    } else {
+      closeSuperAdminLogin();
+    }
+    showSuperAdminDashboard();
+    return;
+  }
+
+  // ── Alter PIN-Pfad — UNVERÄNDERT ────────────────────────────────────
   const { data, error } = await db
     .from('super_admins')
     .select('id, username, name, pin')
@@ -14507,9 +14853,13 @@ async function saLoadDashboardBadges() {
   saUpdateZahlDashBadges(items);
 }
 
-function superAdminLogout() {
+async function superAdminLogout() {
   superAdminSession  = null;
   isSuperAdminAccess = false;
+  // Единая авторизация Super Admin (см. _superAdminLoginCore) — если вход
+  // шёл через Supabase Auth, закрываем и эту сессию тоже. Best-effort: если
+  // сессии не было (старый PIN-flow), signOut() безопасно ничего не делает.
+  try { await db.auth.signOut(); } catch (e) { /* ignore */ }
   document.getElementById('superAdminScreen').classList.add('hidden');
   document.getElementById('saImpersonationBadge')?.classList.add('hidden');
   document.body.classList.remove('sa-imp-active');
@@ -16530,6 +16880,7 @@ async function loadSAFamilienResults() {
       return;
     }
 
+    window._saFamilienLastResults = results;
     await renderSAFamilienResultsTable(results);
 
   } catch (e) {
@@ -16575,7 +16926,327 @@ async function renderSAFamilienResultsTable(results) {
       <td>${verein}</td>
       <td>${sport}</td>
       <td>${gruppe}</td>
-      <td>Nicht eingerichtet</td>
+      <td><button type="button" class="sa-family-manage-btn" onclick="openSAFamilienDetail(${Number(r.id)})">Verwalten →</button></td>
     </tr>`;
   }).join('');
+}
+
+// =========================================================
+// SUPER ADMIN — FAMILIENZUGANG DETAIL / VERWALTUNG
+//
+// Privilegierte Aktionen (einrichten/Login ändern/Passwort setzen/senden/
+// sperren/entsperren) laufen AUSSCHLIESSLICH über die Edge Function
+// manage-family-account (JWT-Modell, exakt wie TRAINER_PORTAL_FUNCTION_URL/
+// submitTrainerPortalAccess oben) — kein Schreibzugriff direkt auf
+// families/family_guardians/auth.users von hier aus. Das aktuelle Passwort
+// wird NIRGENDS gelesen oder angezeigt — nur gesetzt.
+// =========================================================
+
+const FAMILY_ACCOUNT_FUNCTION_URL = SUPABASE_URL + '/functions/v1/manage-family-account';
+
+window._saFamilienDetailStudent = null;
+window._saFamilienDetailStatus  = null;
+
+async function saFamilienCallManageAccount(payload) {
+  const { data: sessionData } = await db.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+
+  if (!accessToken) {
+    saFamilienDetailSetBody(
+      '<div class="sa-family-detail-error">Verwaltung von Familienzugängen ist mit einer PIN-Anmeldung nicht möglich. ' +
+      'Bitte melden Sie sich mit Ihrem Super-Admin-Portalzugang (Supabase Auth) an, um Familienzugänge zu verwalten.</div>'
+    );
+    document.getElementById('saFamilienActionsBar').innerHTML = '';
+    return { ok: false, needsAuth: true };
+  }
+
+  try {
+    const response = await fetch(FAMILY_ACCOUNT_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + accessToken
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error('[Familienzugang]', data?.error, data?.details);
+      return { ok: false, status: response.status, data };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    console.error('[Familienzugang]', e);
+    return { ok: false, error: e };
+  }
+}
+
+function saFamilienErrorMessage(result) {
+  const code = result?.data?.error;
+  const map = {
+    family_access_already_exists: 'Für diesen Schüler besteht bereits ein Familienzugang.',
+    family_access_not_set_up: 'Für diesen Schüler ist noch kein Familienzugang eingerichtet.',
+    password_too_short: 'Passwort muss mindestens 8 Zeichen haben.',
+    missing_nickname: 'Bitte Login eingeben.',
+    missing_new_nickname: 'Bitte neuen Login eingeben.',
+    nickname_too_long: 'Login ist zu lang.',
+    nickname_unchanged: 'Der neue Login entspricht dem aktuellen.',
+    invalid_contact_email: 'Ungültige E-Mail-Adresse.',
+    nickname_rename_failed: 'Dieser Login ist bereits vergeben.',
+    email_build_failed: 'Fehler beim Erstellen des technischen Zugangs.',
+    auth_user_create_failed: 'Fehler beim Anlegen des Zugangs (Login evtl. bereits vergeben).',
+    student_club_invalid: 'Der Verein dieses Schülers ist nicht aktiv.',
+    student_not_found: 'Schüler wurde nicht gefunden.',
+    forbidden: 'Keine Berechtigung für diese Aktion.'
+  };
+  return map[code] || 'Fehler beim Speichern. Bitte erneut versuchen.';
+}
+
+function saFamilienDetailSetBody(html) {
+  const el = document.getElementById('saFamilienDetailBody');
+  if (el) el.innerHTML = html;
+}
+
+function saFamilienHideAllDetailForms() {
+  ['saFamilienFormCreate', 'saFamilienFormLogin', 'saFamilienFormPassword'].forEach(id => {
+    document.getElementById(id)?.classList.add('hidden');
+  });
+  const actionMsg = document.getElementById('saFamilienDetailActionMessage');
+  if (actionMsg) actionMsg.classList.add('hidden');
+}
+
+function saFamilienShowFormMessage(el, text, isError) {
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  el.style.color = isError ? '#c0392b' : '#2e7d32';
+}
+
+function saFamilienShowActionMessage(text, isError) {
+  saFamilienShowFormMessage(document.getElementById('saFamilienDetailActionMessage'), text, isError);
+}
+
+function formatDateTimeDE(iso) {
+  if (!iso) return '-';
+  try {
+    return new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch (e) {
+    return iso;
+  }
+}
+
+async function openSAFamilienDetail(studentId) {
+  const student = (window._saFamilienLastResults || []).find(r => Number(r.id) === Number(studentId));
+  window._saFamilienDetailStudent = student || { id: studentId };
+  window._saFamilienDetailStatus  = null;
+
+  document.getElementById('saFamilienDetailName').textContent =
+    student ? `${student.nachname || ''} ${student.vorname || ''}`.trim() : ('Schüler #' + studentId);
+
+  document.getElementById('saFamilienActionsBar').innerHTML = '';
+  saFamilienHideAllDetailForms();
+  saFamilienDetailSetBody('<div class="sa-family-detail-loading">Wird geladen…</div>');
+  document.getElementById('saFamilienDetailModal').classList.remove('hidden');
+
+  const result = await saFamilienCallManageAccount({ action: 'get_status', studentId: Number(studentId) });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienDetailSetBody('<div class="sa-family-detail-error">Fehler beim Laden des Status.</div>');
+    return;
+  }
+
+  window._saFamilienDetailStatus = result.data;
+  renderSAFamilienDetailStatus(result.data);
+}
+
+function closeSAFamilienDetailModal() {
+  document.getElementById('saFamilienDetailModal').classList.add('hidden');
+  window._saFamilienDetailStudent = null;
+  window._saFamilienDetailStatus  = null;
+}
+
+function renderSAFamilienDetailStatus(data) {
+  if (data.status === 'not_set_up') {
+    saFamilienDetailSetBody(`
+      <div class="sa-family-status-badge sa-family-status-none">Nicht eingerichtet</div>
+      <p class="small">Für diesen Schüler existiert noch kein Familienzugang zum Family Portal.</p>
+    `);
+    document.getElementById('saFamilienActionsBar').innerHTML =
+      '<button class="add-trainer-save" onclick="saFamilienShowCreateForm()">👨‍👩‍👧 Familienzugang einrichten</button>';
+    return;
+  }
+
+  const isBlocked  = data.status === 'blocked';
+  const badgeClass = isBlocked ? 'sa-family-status-blocked' : 'sa-family-status-active';
+  const badgeText  = isBlocked ? 'Gesperrt' : 'Aktiv';
+
+  saFamilienDetailSetBody(`
+    <div class="sa-family-status-badge ${badgeClass}">${badgeText}</div>
+    <div class="sa-family-detail-grid">
+      <div><span class="sa-family-detail-label">Familienlogin</span><span>${escapeHtml(data.nickname || '-')}</span></div>
+      <div><span class="sa-family-detail-label">Kontakt-E-Mail</span><span>${escapeHtml(data.contactEmail || 'Nicht hinterlegt')}</span></div>
+      <div><span class="sa-family-detail-label">Letzter Login</span><span>${formatDateTimeDE(data.lastSignInAt)}</span></div>
+      <div><span class="sa-family-detail-label">Letzte Änderung Zugangsdaten</span><span>${formatDateTimeDE(data.credentialsUpdatedAt)}</span></div>
+    </div>
+  `);
+
+  document.getElementById('saFamilienActionsBar').innerHTML = `
+    <button class="add-trainer-save" onclick="saFamilienShowLoginForm()">✏️ Login ändern</button>
+    <button class="add-trainer-save" onclick="saFamilienShowPasswordForm()">🔑 Neues Passwort setzen</button>
+    <button class="add-trainer-save" onclick="saFamilienSendRecovery()">✉️ Passwort-Wiederherstellung senden</button>
+    ${isBlocked
+      ? '<button class="add-trainer-save" onclick="saFamilienToggleActive(true)">🔓 Zugang entsperren</button>'
+      : '<button class="add-trainer-save" onclick="saFamilienToggleActive(false)">🔒 Zugang sperren</button>'}
+    <button class="add-trainer-save" onclick="saFamilienPreview()">👁 Family-Seite ansehen</button>
+  `;
+}
+
+function saFamilienShowCreateForm() {
+  saFamilienHideAllDetailForms();
+  document.getElementById('saFamilienFormCreate').classList.remove('hidden');
+  document.getElementById('saFamilienCreateNickname').value = '';
+  document.getElementById('saFamilienCreatePassword').value = '';
+  document.getElementById('saFamilienCreatePasswordRepeat').value = '';
+  document.getElementById('saFamilienCreateContactEmail').value = '';
+}
+
+function saFamilienShowLoginForm() {
+  saFamilienHideAllDetailForms();
+  document.getElementById('saFamilienFormLogin').classList.remove('hidden');
+  document.getElementById('saFamilienNewNickname').value = window._saFamilienDetailStatus?.nickname || '';
+  document.getElementById('saFamilienLoginContactEmail').value = window._saFamilienDetailStatus?.contactEmail || '';
+}
+
+function saFamilienShowPasswordForm() {
+  saFamilienHideAllDetailForms();
+  document.getElementById('saFamilienFormPassword').classList.remove('hidden');
+  document.getElementById('saFamilienNewPassword').value = '';
+  document.getElementById('saFamilienNewPasswordRepeat').value = '';
+}
+
+async function saFamilienSubmitCreate() {
+  const nickname       = document.getElementById('saFamilienCreateNickname').value.trim();
+  const password       = document.getElementById('saFamilienCreatePassword').value;
+  const passwordRepeat = document.getElementById('saFamilienCreatePasswordRepeat').value;
+  const contactEmail   = document.getElementById('saFamilienCreateContactEmail').value.trim();
+  const msgEl = document.getElementById('saFamilienCreateMessage');
+
+  if (!nickname) { saFamilienShowFormMessage(msgEl, 'Bitte Login für Familienzugang eingeben.', true); return; }
+  if (password !== passwordRepeat) { saFamilienShowFormMessage(msgEl, 'Passwort und Wiederholung stimmen nicht überein.', true); return; }
+  if (!password || password.length < 8) { saFamilienShowFormMessage(msgEl, 'Passwort muss mindestens 8 Zeichen haben.', true); return; }
+
+  saFamilienShowFormMessage(msgEl, 'Wird gespeichert…', false);
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'create', studentId, nickname, password, contactEmail });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowFormMessage(msgEl, saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  saFamilienShowFormMessage(msgEl, 'Familienzugang wurde eingerichtet.', false);
+  await openSAFamilienDetail(studentId);
+  await loadSAFamilienResults();
+}
+
+async function saFamilienSubmitLogin() {
+  const newNickname  = document.getElementById('saFamilienNewNickname').value.trim();
+  const contactEmail = document.getElementById('saFamilienLoginContactEmail').value.trim();
+  const msgEl = document.getElementById('saFamilienLoginMessage');
+
+  if (!newNickname) { saFamilienShowFormMessage(msgEl, 'Bitte neuen Login eingeben.', true); return; }
+
+  saFamilienShowFormMessage(msgEl, 'Wird gespeichert…', false);
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_login', studentId, newNickname, contactEmail });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowFormMessage(msgEl, saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  saFamilienShowFormMessage(msgEl, 'Login wurde aktualisiert.', false);
+  await openSAFamilienDetail(studentId);
+}
+
+async function saFamilienSubmitPassword() {
+  const password       = document.getElementById('saFamilienNewPassword').value;
+  const passwordRepeat = document.getElementById('saFamilienNewPasswordRepeat').value;
+  const msgEl = document.getElementById('saFamilienPasswordMessage');
+
+  if (password !== passwordRepeat) { saFamilienShowFormMessage(msgEl, 'Passwort und Wiederholung stimmen nicht überein.', true); return; }
+  if (!password || password.length < 8) { saFamilienShowFormMessage(msgEl, 'Passwort muss mindestens 8 Zeichen haben.', true); return; }
+
+  saFamilienShowFormMessage(msgEl, 'Wird gespeichert…', false);
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_password', studentId, password });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowFormMessage(msgEl, saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  saFamilienShowFormMessage(msgEl, 'Passwort wurde gesetzt.', false);
+  document.getElementById('saFamilienNewPassword').value = '';
+  document.getElementById('saFamilienNewPasswordRepeat').value = '';
+}
+
+async function saFamilienSendRecovery() {
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'send_recovery', studentId });
+  if (result.needsAuth) return;
+
+  if (result.ok && result.data?.error === 'no_contact_email') {
+    saFamilienShowActionMessage(
+      'Keine Kontakt-E-Mail hinterlegt. Bitte zuerst unter „Login ändern" eine Kontakt-E-Mail hinzufügen.', true
+    );
+    return;
+  }
+  if (!result.ok) {
+    saFamilienShowActionMessage('Fehler beim Senden der Wiederherstellung. Bitte erneut versuchen.', true);
+    return;
+  }
+  saFamilienShowActionMessage(
+    'Wenn ein Zugang mit hinterlegter Kontakt-E-Mail besteht, wurde eine Wiederherstellungs-E-Mail angefordert.', false
+  );
+}
+
+async function saFamilienToggleActive(activate) {
+  const confirmMsg = activate
+    ? 'Zugang wirklich entsperren?'
+    : 'Zugang wirklich sperren? Die Familie kann sich danach nicht mehr im Family Portal anmelden.';
+  if (!confirm(confirmMsg)) return;
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: activate ? 'activate' : 'deactivate', studentId });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowActionMessage(saFamilienErrorMessage(result), true);
+    return;
+  }
+  await openSAFamilienDetail(studentId);
+}
+
+// Sicherer read-only Preview: siehe Abschlussbericht der Aufgabe
+// "Familienzugänge-Verwaltung" — vollwertiges Impersonation (Login als
+// Familie, ohne deren Passwort zu kennen) würde eine eigene, separat zu
+// entscheidende Architektur brauchen (z.B. kurzlebiger Support-Token +
+// eigene Preview-Route im Family Portal). Das gibt es heute nicht — hier
+// wird das bewusst NICHT vorgetäuscht, sondern offen benannt.
+function saFamilienPreview() {
+  const nickname = window._saFamilienDetailStatus?.nickname;
+  saFamilienShowActionMessage(
+    'Eine sichere Vorschau der Family-Seite ist noch nicht verfügbar — dafür wird eine eigene Read-only-Preview-Route ' +
+    'im Family Portal benötigt (siehe Abschlussbericht). Familienlogin zur Referenz: ' + (nickname || '-'),
+    false
+  );
 }

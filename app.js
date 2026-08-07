@@ -17009,7 +17009,10 @@ function saFamilienDetailSetBody(html) {
 }
 
 function saFamilienHideAllDetailForms() {
-  ['saFamilienFormCreate', 'saFamilienFormLogin', 'saFamilienFormPassword'].forEach(id => {
+  [
+    'saFamilienFormCreate', 'saFamilienCreateSuccess', 'saFamilienFormLogin',
+    'saFamilienFormContactEmail', 'saFamilienFormPassword'
+  ].forEach(id => {
     document.getElementById(id)?.classList.add('hidden');
   });
   const actionMsg = document.getElementById('saFamilienDetailActionMessage');
@@ -17049,6 +17052,27 @@ async function openSAFamilienDetail(studentId) {
   saFamilienDetailSetBody('<div class="sa-family-detail-loading">Wird geladen…</div>');
   document.getElementById('saFamilienDetailModal').classList.remove('hidden');
 
+  const infoEl = document.getElementById('saFamilienDetailStudentInfo');
+  if (infoEl) {
+    if (student) {
+      const [clubName, sportName, gruppenNamen] = await Promise.all([
+        saFamilienResolveClubName(student.club_id),
+        saFamilienResolveSportName(student.sport_id),
+        saFamilienResolveGruppenNamen(student.gruppe_id)
+      ]);
+      infoEl.innerHTML = `
+        <div><span class="sa-family-detail-label">Nachname</span><span>${escapeHtml(student.nachname || '-')}</span></div>
+        <div><span class="sa-family-detail-label">Vorname</span><span>${escapeHtml(student.vorname || '-')}</span></div>
+        <div><span class="sa-family-detail-label">Geburtsdatum</span><span>${student.geburtsdatum ? formatDateDE(student.geburtsdatum) : '-'}</span></div>
+        <div><span class="sa-family-detail-label">Verein</span><span>${escapeHtml(clubName || '-')}</span></div>
+        <div><span class="sa-family-detail-label">Sportart</span><span>${escapeHtml(sportName || '-')}</span></div>
+        <div><span class="sa-family-detail-label">Gruppe</span><span>${escapeHtml(gruppenNamen || '-')}</span></div>
+      `;
+    } else {
+      infoEl.innerHTML = '';
+    }
+  }
+
   const result = await saFamilienCallManageAccount({ action: 'get_status', studentId: Number(studentId) });
   if (result.needsAuth) return;
 
@@ -17080,7 +17104,7 @@ function renderSAFamilienDetailStatus(data) {
 
   const isBlocked  = data.status === 'blocked';
   const badgeClass = isBlocked ? 'sa-family-status-blocked' : 'sa-family-status-active';
-  const badgeText  = isBlocked ? 'Gesperrt' : 'Aktiv';
+  const badgeText  = isBlocked ? 'Inaktiv' : 'Aktiv';
 
   saFamilienDetailSetBody(`
     <div class="sa-family-status-badge ${badgeClass}">${badgeText}</div>
@@ -17094,11 +17118,12 @@ function renderSAFamilienDetailStatus(data) {
 
   document.getElementById('saFamilienActionsBar').innerHTML = `
     <button class="add-trainer-save" onclick="saFamilienShowLoginForm()">✏️ Login ändern</button>
+    <button class="add-trainer-save" onclick="saFamilienShowContactEmailForm()">📧 Kontakt-E-Mail ändern</button>
     <button class="add-trainer-save" onclick="saFamilienShowPasswordForm()">🔑 Neues Passwort setzen</button>
     <button class="add-trainer-save" onclick="saFamilienSendRecovery()">✉️ Passwort-Wiederherstellung senden</button>
     ${isBlocked
-      ? '<button class="add-trainer-save" onclick="saFamilienToggleActive(true)">🔓 Zugang entsperren</button>'
-      : '<button class="add-trainer-save" onclick="saFamilienToggleActive(false)">🔒 Zugang sperren</button>'}
+      ? '<button class="add-trainer-save" onclick="saFamilienToggleActive(true)">🔓 Zugang aktivieren</button>'
+      : '<button class="add-trainer-save" onclick="saFamilienToggleActive(false)">🔒 Zugang deaktivieren</button>'}
     <button class="add-trainer-save" onclick="saFamilienPreview()">👁 Family-Seite ansehen</button>
   `;
 }
@@ -17116,7 +17141,12 @@ function saFamilienShowLoginForm() {
   saFamilienHideAllDetailForms();
   document.getElementById('saFamilienFormLogin').classList.remove('hidden');
   document.getElementById('saFamilienNewNickname').value = window._saFamilienDetailStatus?.nickname || '';
-  document.getElementById('saFamilienLoginContactEmail').value = window._saFamilienDetailStatus?.contactEmail || '';
+}
+
+function saFamilienShowContactEmailForm() {
+  saFamilienHideAllDetailForms();
+  document.getElementById('saFamilienFormContactEmail').classList.remove('hidden');
+  document.getElementById('saFamilienContactEmailOnly').value = window._saFamilienDetailStatus?.contactEmail || '';
 }
 
 function saFamilienShowPasswordForm() {
@@ -17148,14 +17178,27 @@ async function saFamilienSubmitCreate() {
     return;
   }
 
-  saFamilienShowFormMessage(msgEl, 'Familienzugang wurde eingerichtet.', false);
-  await openSAFamilienDetail(studentId);
+  // Erfolgsanzeige: nickname/password kommen NUR aus dem lokalen Formular-
+  // Zustand (nie aus der Server-Antwort — die Edge Function gibt das
+  // Passwort ohnehin nie zurück). Sichtbar ausschließlich bis "Schließen"
+  // (saFamilienAcknowledgeCreateSuccess) — danach nicht mehr abrufbar.
+  saFamilienHideAllDetailForms();
+  document.getElementById('saFamilienCreateSuccessNickname').textContent = nickname;
+  document.getElementById('saFamilienCreateSuccessPassword').textContent =
+    result.data?.operation === 'link_existing' ? '(vorhandener Zugang wiederverwendet)' : password;
+  document.getElementById('saFamilienCreateSuccess').classList.remove('hidden');
+
   await loadSAFamilienResults();
+}
+
+async function saFamilienAcknowledgeCreateSuccess() {
+  document.getElementById('saFamilienCreateSuccessPassword').textContent = '';
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  await openSAFamilienDetail(studentId);
 }
 
 async function saFamilienSubmitLogin() {
   const newNickname  = document.getElementById('saFamilienNewNickname').value.trim();
-  const contactEmail = document.getElementById('saFamilienLoginContactEmail').value.trim();
   const msgEl = document.getElementById('saFamilienLoginMessage');
 
   if (!newNickname) { saFamilienShowFormMessage(msgEl, 'Bitte neuen Login eingeben.', true); return; }
@@ -17163,7 +17206,7 @@ async function saFamilienSubmitLogin() {
   saFamilienShowFormMessage(msgEl, 'Wird gespeichert…', false);
 
   const studentId = Number(window._saFamilienDetailStudent.id);
-  const result = await saFamilienCallManageAccount({ action: 'set_login', studentId, newNickname, contactEmail });
+  const result = await saFamilienCallManageAccount({ action: 'set_login', studentId, newNickname });
   if (result.needsAuth) return;
 
   if (!result.ok) {
@@ -17172,6 +17215,25 @@ async function saFamilienSubmitLogin() {
   }
 
   saFamilienShowFormMessage(msgEl, 'Login wurde aktualisiert.', false);
+  await openSAFamilienDetail(studentId);
+}
+
+async function saFamilienSubmitContactEmail() {
+  const contactEmail = document.getElementById('saFamilienContactEmailOnly').value.trim();
+  const msgEl = document.getElementById('saFamilienContactEmailMessage');
+
+  saFamilienShowFormMessage(msgEl, 'Wird gespeichert…', false);
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_contact_email', studentId, contactEmail });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowFormMessage(msgEl, saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  saFamilienShowFormMessage(msgEl, 'Kontakt-E-Mail wurde gespeichert.', false);
   await openSAFamilienDetail(studentId);
 }
 
@@ -17206,7 +17268,7 @@ async function saFamilienSendRecovery() {
 
   if (result.ok && result.data?.error === 'no_contact_email') {
     saFamilienShowActionMessage(
-      'Keine Kontakt-E-Mail hinterlegt. Bitte zuerst unter „Login ändern" eine Kontakt-E-Mail hinzufügen.', true
+      'Keine Kontakt-E-Mail hinterlegt. Bitte zuerst unter „Kontakt-E-Mail ändern" eine Kontakt-E-Mail hinzufügen.', true
     );
     return;
   }
@@ -17214,15 +17276,29 @@ async function saFamilienSendRecovery() {
     saFamilienShowActionMessage('Fehler beim Senden der Wiederherstellung. Bitte erneut versuchen.', true);
     return;
   }
+  // Ehrlich gegenüber dem Super Admin (nicht gegenüber der Familie —
+  // "recovery: requested" bleibt am Server neutral): wenn kein E-Mail-
+  // Provider konfiguriert ist, wurde die Wiederherstellungs-E-Mail NICHT
+  // tatsächlich verschickt, nur der Link serverseitig geloggt. Das hier
+  // klar zu sagen ist wichtiger als eine schön klingende, aber falsche
+  // Bestätigung.
+  if (result.data?.emailDispatched === false) {
+    saFamilienShowActionMessage(
+      'Wiederherstellungslink wurde generiert und die Anfrage protokolliert — der automatische E-Mail-Versand ist ' +
+      'auf diesem Server aber noch nicht konfiguriert (kein E-Mail-Provider hinterlegt). Es wurde KEINE E-Mail an die Familie gesendet.',
+      true
+    );
+    return;
+  }
   saFamilienShowActionMessage(
-    'Wenn ein Zugang mit hinterlegter Kontakt-E-Mail besteht, wurde eine Wiederherstellungs-E-Mail angefordert.', false
+    'Wenn ein Zugang mit hinterlegter Kontakt-E-Mail besteht, wurde eine Wiederherstellungs-E-Mail gesendet.', false
   );
 }
 
 async function saFamilienToggleActive(activate) {
   const confirmMsg = activate
-    ? 'Zugang wirklich entsperren?'
-    : 'Zugang wirklich sperren? Die Familie kann sich danach nicht mehr im Family Portal anmelden.';
+    ? 'Zugang wirklich aktivieren?'
+    : 'Zugang wirklich deaktivieren? Die Familie kann sich danach nicht mehr im Family Portal anmelden.';
   if (!confirm(confirmMsg)) return;
 
   const studentId = Number(window._saFamilienDetailStudent.id);

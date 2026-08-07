@@ -16696,6 +16696,20 @@ body.sa-standalone-mode #clubPaymentWarning {
   gap: 2px;
 }
 
+.sa-family-student-info {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sa-family-portal-link {
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
 .sa-family-detail-label {
   font-size: 11px;
   text-transform: uppercase;

@@ -3928,6 +3928,8 @@ Abbrechen
     </div>
     <div class="sa-modal-body">
 
+      <div id="saFamilienDetailStudentInfo" class="sa-family-detail-grid sa-family-student-info"></div>
+
       <div id="saFamilienDetailBody"></div>
       <div id="saFamilienActionsBar" class="sa-family-actions-bar"></div>
       <div id="saFamilienDetailActionMessage" class="trainer-edit-message hidden"></div>
@@ -3941,11 +3943,11 @@ Abbrechen
         <div id="saFamilienCreateMessage" class="trainer-edit-message hidden"></div>
         <div class="add-trainer-form-grid">
           <div class="add-trainer-field">
-            <label>Login für Familienzugang</label>
+            <label>Familien-Login</label>
             <input id="saFamilienCreateNickname" placeholder="z.B. familie-mueller" autocomplete="off">
           </div>
           <div class="add-trainer-field">
-            <label>Passwort</label>
+            <label>Temporäres Passwort</label>
             <input id="saFamilienCreatePassword" type="password" placeholder="Mindestens 8 Zeichen" autocomplete="new-password">
           </div>
           <div class="add-trainer-field">
@@ -3958,7 +3960,28 @@ Abbrechen
           </div>
         </div>
         <div class="add-trainer-buttons">
-          <button class="add-trainer-save" onclick="saFamilienSubmitCreate()">✓ Familienzugang anlegen</button>
+          <button class="add-trainer-save" onclick="saFamilienSubmitCreate()">✓ Familienzugang einrichten</button>
+        </div>
+      </div>
+
+      <!-- Erfolgsanzeige nach dem Einrichten: temporäres Passwort bleibt NUR
+           hier sichtbar (lokaler Formular-Zustand), solange dieses Panel
+           offen ist. Nach "Schließen" ist es nirgends mehr abrufbar. -->
+      <div id="saFamilienCreateSuccess" class="add-trainer-modern-card hidden">
+        <div class="add-trainer-section-title">
+          <div class="add-trainer-section-icon">✅</div>
+          <div><h3>Familienzugang eingerichtet</h3></div>
+        </div>
+        <p class="small">
+          Bitte Login und temporäres Passwort jetzt an die Familie weitergeben — nach dem Schließen
+          dieses Fensters kann das Passwort nicht mehr angezeigt werden (nur noch neu gesetzt werden).
+        </p>
+        <div class="sa-family-detail-grid">
+          <div><span class="sa-family-detail-label">Familien-Login</span><span id="saFamilienCreateSuccessNickname"></span></div>
+          <div><span class="sa-family-detail-label">Temporäres Passwort</span><span id="saFamilienCreateSuccessPassword"></span></div>
+        </div>
+        <div class="add-trainer-buttons">
+          <button class="add-trainer-save" onclick="saFamilienAcknowledgeCreateSuccess()">Verstanden, schließen</button>
         </div>
       </div>
 
@@ -3974,13 +3997,27 @@ Abbrechen
             <label>Neuer Login</label>
             <input id="saFamilienNewNickname" autocomplete="off">
           </div>
-          <div class="add-trainer-field">
-            <label>Kontakt-E-Mail</label>
-            <input id="saFamilienLoginContactEmail" type="email" placeholder="familie@example.com" autocomplete="off">
-          </div>
         </div>
         <div class="add-trainer-buttons">
           <button class="add-trainer-save" onclick="saFamilienSubmitLogin()">✓ Login aktualisieren</button>
+        </div>
+      </div>
+
+      <!-- Kontakt-E-Mail ändern -->
+      <div id="saFamilienFormContactEmail" class="add-trainer-modern-card hidden">
+        <div class="add-trainer-section-title">
+          <div class="add-trainer-section-icon">📧</div>
+          <div><h3>Kontakt-E-Mail ändern</h3></div>
+        </div>
+        <div id="saFamilienContactEmailMessage" class="trainer-edit-message hidden"></div>
+        <div class="add-trainer-form-grid">
+          <div class="add-trainer-field">
+            <label>Kontakt-E-Mail</label>
+            <input id="saFamilienContactEmailOnly" type="email" placeholder="familie@example.com" autocomplete="off">
+          </div>
+        </div>
+        <div class="add-trainer-buttons">
+          <button class="add-trainer-save" onclick="saFamilienSubmitContactEmail()">✓ E-Mail speichern</button>
         </div>
       </div>
 
@@ -4008,6 +4045,11 @@ Abbrechen
 
     </div>
     <div class="sa-modal-footer">
+      <a class="sa-btn-cancel sa-family-portal-link"
+         href="https://jkl-student-parent-portal.netlify.app" target="_blank" rel="noopener"
+         title="Öffnet die allgemeine Family-Portal-Startseite — KEINE personalisierte Vorschau dieser Familie.">
+        🔗 Family Portal öffnen
+      </a>
       <button class="sa-btn-cancel" onclick="closeSAFamilienDetailModal()">Schließen</button>
     </div>
   </div>

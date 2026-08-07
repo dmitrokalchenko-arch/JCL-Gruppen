@@ -13,12 +13,6 @@ const DEFAULT_CLUB_ID = 'jcl';
 
 let superAdminSession    = null;
 let isSuperAdminAccess   = false;
-// Super Admin PIN Session (server-seitig verifiziert, siehe
-// _superAdminLoginCore/super-admin-pin-login) — NUR das opake Token, NIE
-// der PIN selbst. sessionStorage (nicht localStorage): überlebt Reload,
-// wird vom Browser beim Schließen des Tabs automatisch entfernt.
-const SUPER_ADMIN_PIN_SESSION_STORAGE_KEY = 'jkl_superadmin_pin_session';
-let superAdminPinSessionToken = sessionStorage.getItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY) || null;
 let isSAStandaloneMode   = false;   // true когда открыт через ?superadmin=1
 let _saClubsCache        = [];   // { club, studentCount, adminTrainer, tarifRows } — заполняется при loadAndRenderSAClubs
 
@@ -14711,22 +14705,21 @@ function closeSuperAdminLogin() {
 
 // Общий движок проверки SA-логина
 //
-// ЕДИНАЯ АВТОРИЗАЦИЯ SUPER ADMIN (обновлено 2026-08-07, см.
-// docs/database/SUPER_ADMIN_PIN_SESSION.md в JKL_STUDENT_PARENT_PORTAL) —
-// бизнес-требование: обычный вход по username+PIN должен давать ПОЛНЫЙ
-// доступ к Familienzugänge-Verwaltung, отдельный Supabase Auth не обязателен.
-//
-// Если у Super Admin есть активная строка super_admin_accounts (заводится
-// отдельным bootstrap-шагом), вход идёт через Supabase Auth
-// (resolve_super_admin_login_email + signInWithPassword), используя то же
-// поле pin как пароль — без изменений.
-//
-// Если аккаунта нет — "старый PIN-путь" ниже теперь САМ проверяет PIN
-// СЕРВЕРНО через Edge Function super-admin-pin-login (service_role,
-// super_admins.pin читается только на сервере, никогда в браузер) и получает
-// короткоживущий (30 Minuten) opakes Session-Token — genau dieses Token wird
-// von saFamilienCallManageAccount für manage-family-account verwendet, keine
-// gesonderte Supabase-Auth-Sitzung mehr nötig.
+// ЕДИНАЯ АВТОРИЗАЦИЯ SUPER ADMIN — ЛОКАЛЬНЫЙ ПРОТОТИП (тот же dual-path
+// паттерн, что уже есть у тренеров, см. login() выше и manage-trainer-account
+// Edge Function в JKL_STUDENT_PARENT_PORTAL): старый вход через прямое
+// сравнение super_admins.pin в браузере НЕ создаёт Supabase Auth-сессию —
+// без неё нельзя безопасно вызывать защищённые Edge Function (например
+// manage-family-account для Familienzugänge), которые проверяют вызывающего
+// через JWT (Authorization: Bearer <access_token>), а не через клиентское
+// состояние. Если у Super Admin есть активная строка super_admin_accounts
+// (заводится отдельным bootstrap-шагом, не этой функцией), вход идёт через
+// Supabase Auth (resolve_super_admin_login_email + signInWithPassword),
+// используя то же поле pin как пароль. Если аккаунта нет — старый PIN-путь
+// ниже остаётся ПОЛНОСТЬЮ БЕЗ ИЗМЕНЕНИЙ, и без него SuperAdmin Dashboard
+// продолжает работать как раньше (Familienzugänge-действия просто покажут
+// сообщение о необходимости входа через Auth, как и submitTrainerPortalAccess
+// для тренеров).
 async function _superAdminLoginCore(username, pin, statusEl) {
   if (!username || !pin) {
     statusEl.textContent = 'Bitte Benutzername und PIN eingeben.';
@@ -14810,42 +14803,17 @@ async function _superAdminLoginCore(username, pin, statusEl) {
     return;
   }
 
-  // ── PIN-Pfad — server-seitige Verifizierung über super-admin-pin-login ──
-  // Ersetzt den früheren direkten Client-Vergleich (super_admins.pin wurde
-  // per anon-Key in den Browser geladen und dort verglichen — das PIN hat
-  // den Server nie mehr verlassen, seit dieser Änderung). Derselbe PIN aus
-  // dem Formular wird einmalig an die Edge Function geschickt; sie prüft ihn
-  // ausschließlich mit service_role und gibt ihn nie zurück.
-  let pinLoginResult;
-  try {
-    const response = await fetch(SUPABASE_URL + '/functions/v1/super-admin-pin-login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-      },
-      body: JSON.stringify({ username, pin })
-    });
-    pinLoginResult = await response.json().catch(() => ({}));
-    if (!response.ok || !pinLoginResult?.success) {
-      statusEl.textContent = 'Falscher Benutzername oder PIN.';
-      return;
-    }
-  } catch (e) {
-    console.error('[SuperAdmin PIN Login]', e);
-    statusEl.textContent = 'Verbindung fehlgeschlagen. Bitte erneut versuchen.';
+  // ── Alter PIN-Pfad — UNVERÄNDERT ────────────────────────────────────
+  const { data, error } = await db
+    .from('super_admins')
+    .select('id, username, name, pin')
+    .eq('username', username)
+    .maybeSingle();
+  if (error || !data || data.pin !== pin) {
+    statusEl.textContent = 'Falscher Benutzername oder PIN.';
     return;
   }
-
-  superAdminSession = {
-    id: pinLoginResult.superAdmin.id,
-    username: pinLoginResult.superAdmin.username,
-    name: pinLoginResult.superAdmin.name
-  };
-  superAdminPinSessionToken = pinLoginResult.token;
-  sessionStorage.setItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY, pinLoginResult.token);
-
+  superAdminSession = { id: data.id, username: data.username, name: data.name };
   statusEl.textContent = '';
   if (isSAStandaloneMode) {
     document.getElementById('saStandalonePage').classList.add('hidden');
@@ -14892,21 +14860,6 @@ async function superAdminLogout() {
   // шёл через Supabase Auth, закрываем и эту сессию тоже. Best-effort: если
   // сессии не было (старый PIN-flow), signOut() безопасно ничего не делает.
   try { await db.auth.signOut(); } catch (e) { /* ignore */ }
-  // PIN Session (super-admin-pin-login) — best-effort serverseitiger Widerruf,
-  // dann IMMER lokal aufräumen, unabhängig vom Ergebnis des Aufrufs.
-  if (superAdminPinSessionToken) {
-    try {
-      await fetch(SUPABASE_URL + '/functions/v1/super-admin-pin-logout', {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + superAdminPinSessionToken
-        }
-      });
-    } catch (e) { /* ignore — lokales Aufräumen unten läuft trotzdem */ }
-  }
-  superAdminPinSessionToken = null;
-  sessionStorage.removeItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY);
   document.getElementById('superAdminScreen').classList.add('hidden');
   document.getElementById('saImpersonationBadge')?.classList.add('hidden');
   document.body.classList.remove('sa-imp-active');
@@ -16995,18 +16948,13 @@ window._saFamilienDetailStudent = null;
 window._saFamilienDetailStatus  = null;
 
 async function saFamilienCallManageAccount(payload) {
-  // Zwei gleichwertige Auth-Wege für manage-family-account, siehe dortigen
-  // Kommentar am Dateianfang: Supabase-Auth-JWT (falls der Super Admin über
-  // super_admin_accounts angemeldet ist) ODER die PIN-Session aus
-  // _superAdminLoginCore (superAdminPinSessionToken). Beide werden als
-  // derselbe Authorization-Bearer-Header gesendet — die Edge Function
-  // erkennt selbst, um welchen Typ es sich handelt.
   const { data: sessionData } = await db.auth.getSession();
-  const accessToken = sessionData?.session?.access_token || superAdminPinSessionToken;
+  const accessToken = sessionData?.session?.access_token;
 
   if (!accessToken) {
     saFamilienDetailSetBody(
-      '<div class="sa-family-detail-error">Bitte melden Sie sich erneut als Super Admin an, um Familienzugänge zu verwalten.</div>'
+      '<div class="sa-family-detail-error">Verwaltung von Familienzugängen ist mit einer PIN-Anmeldung nicht möglich. ' +
+      'Bitte melden Sie sich mit Ihrem Super-Admin-Portalzugang (Supabase Auth) an, um Familienzugänge zu verwalten.</div>'
     );
     document.getElementById('saFamilienActionsBar').innerHTML = '';
     return { ok: false, needsAuth: true };

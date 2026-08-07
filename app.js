@@ -13,6 +13,12 @@ const DEFAULT_CLUB_ID = 'jcl';
 
 let superAdminSession    = null;
 let isSuperAdminAccess   = false;
+// Admin PIN Session (server-seitig verifiziert, siehe admin-pin-login) —
+// für gewöhnliche Club-Administratoren (trainers.rolle='Admin'). NUR das
+// opake Token, NIE der PIN selbst. sessionStorage (nicht localStorage):
+// überlebt Reload, wird vom Browser beim Schließen des Tabs entfernt.
+const ADMIN_PIN_SESSION_STORAGE_KEY = 'jkl_admin_pin_session';
+let adminPinSessionToken = sessionStorage.getItem(ADMIN_PIN_SESSION_STORAGE_KEY) || null;
 let isSAStandaloneMode   = false;   // true когда открыт через ?superadmin=1
 let _saClubsCache        = [];   // { club, studentCount, adminTrainer, tarifRows } — заполняется при loadAndRenderSAClubs
 
@@ -1126,9 +1132,15 @@ async function login() {
     }
 
     if (hasPortalAccount) {
+      // ЭТАП A: canonical email резолвится СЕРВЕРОМ из trainer_id+club_id
+      // уже найденного (matchTrainerByLogin) тренера — НЕ из сырого
+      // loginText. Закрывает архитектурный gap: допустимые сокращённые
+      // варианты ввода (напр. "dmytro k") теперь находят правильный email
+      // независимо от того, как именно был написан логин. login_name в
+      // trainer_accounts НЕ меняется этим вызовом.
       const { data: technicalEmail, error: emailError } = await db.rpc(
-        'resolve_trainer_login_email',
-        { p_club_short_name: currentClub.club_short_name, p_login_name: loginText }
+        'resolve_trainer_login_email_by_trainer',
+        { p_trainer_id: trainer.trainer_id, p_club_id: currentClub.club_id }
       );
 
       if (emailError || !technicalEmail) {
@@ -1200,6 +1212,33 @@ async function login() {
   currentTrainer.trainerId = data.trainer_id;
   if (isSport && groupId) currentTrainer._loginGroupId = groupId;
 
+  // ЭТАП A: Admin PIN Session — NUR wenn der Legacy-PIN-Pfad genutzt wurde
+  // (kein Auth-Branch, siehe oben — dort existiert bereits eine echte
+  // Supabase-Auth-Sitzung) UND die Rolle Admin ist (nur Admin darf
+  // Trainerportal-Zugang verwalten, manage-trainer-account prüft dasselbe
+  // serverseitig). Best effort — schlägt der Aufruf fehl, bleibt der
+  // reguläre Login trotzdem erfolgreich, nur ohne PIN-Session-Token.
+  if (!isSuperAdminAccess && currentTrainer.role === 'Admin') {
+    try {
+      const response = await fetch(SUPABASE_URL + '/functions/v1/admin-pin-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ loginText, pin: pinValue, clubId: currentClub.club_id })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result?.success && result.token) {
+        adminPinSessionToken = result.token;
+        sessionStorage.setItem(ADMIN_PIN_SESSION_STORAGE_KEY, result.token);
+      }
+    } catch (e) {
+      console.error('[AdminPinLogin]', e);
+    }
+  }
+
   await loadCurrentPromoSettings();
 
   document.getElementById('loginScreen').classList.add('hidden');
@@ -1251,10 +1290,27 @@ async function login() {
 // Выход возвращает на первую страницу выбора спорта
 // =========================================================
 
-function goHome() {
+async function goHome() {
 
 currentTrainer = null;
 selectedLoginContext = null;
+
+// ЭТАП A: Admin PIN Session — best-effort serverseitiger Widerruf, dann
+// IMMER lokal aufräumen, unabhängig vom Ergebnis des Aufrufs (gleiches
+// Muster wie superAdminLogout).
+if (adminPinSessionToken) {
+  try {
+    await fetch(SUPABASE_URL + '/functions/v1/admin-pin-logout', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + adminPinSessionToken
+      }
+    });
+  } catch (e) { /* ignore — lokales Aufräumen unten läuft trotzdem */ }
+}
+adminPinSessionToken = null;
+sessionStorage.removeItem(ADMIN_PIN_SESSION_STORAGE_KEY);
 
 hideAllWorkScreens();
 
@@ -13102,15 +13158,16 @@ async function submitTrainerPortalAccess({ isEdit }) {
     messageBox.style.color = isError ? '#c0392b' : '#2e7d32';
   }
 
-  // Verwaltung von Portalzugängen erfordert eine eigene Supabase-Auth-Sitzung
-  // des Admins. Ein Admin, der sich nur über den alten PIN-Weg angemeldet
-  // hat, besitzt keine solche Sitzung — der Aufruf würde am Server ohnehin
-  // mit 401 abgelehnt, daher hier ein klarer Hinweis statt eines Fehlversuchs.
+  // ЭТАП A: два равноправных способа авторизации manage-trainer-account —
+  // Supabase Auth JWT (если админ мигрирован на Auth) ИЛИ Admin PIN Session
+  // (adminPinSessionToken, выданная admin-pin-login при обычном PIN-входе).
+  // Оба отправляются тем же заголовком Authorization: Bearer — сервер сам
+  // определяет тип токена.
   const { data: sessionData } = await db.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
+  const accessToken = sessionData?.session?.access_token || adminPinSessionToken;
   if (!accessToken) {
     showPortalMessage(
-      'Verwaltung des Portalzugangs ist mit einer PIN-Anmeldung nicht möglich. Bitte melden Sie sich mit Ihrem eigenen Trainerportal-Zugang an, um andere Zugänge zu verwalten.',
+      'Bitte melden Sie sich erneut an, um Trainerportal-Zugänge zu verwalten.',
       true
     );
     return;

@@ -1162,18 +1162,11 @@ async function login() {
 
       _clearLoginAttempts(attemptKey);
 
-      currentTrainer = { ...trainer };
-      currentTrainer.role = trainer.rolle;
-      currentTrainer.trainerId = trainer.trainer_id;
-      currentTrainer._portalAuthSession = signInData.session;
-      if (isSport && groupId) currentTrainer._loginGroupId = groupId;
-
-      await loadCurrentPromoSettings();
-
-      document.getElementById('loginScreen').classList.add('hidden');
-      document.getElementById('mainScreen').classList.remove('hidden');
-      document.getElementById('topNavButtons').classList.remove('hidden');
-      document.getElementById('appBox')?.classList.remove('st2-login-mode');
+      await finalizeTrainerLogin(trainer, {
+        authSession: signInData.session,
+        loginGroupId: (isSport && groupId) ? groupId : null
+      });
+      status.textContent = '';
       return;
     }
   }
@@ -1206,19 +1199,15 @@ async function login() {
   // Erfolgreicher Login
   _clearLoginAttempts(attemptKey);
 
-  const data = trainer;
-  currentTrainer = { ...data };
-  currentTrainer.role = data.rolle;
-  currentTrainer.trainerId = data.trainer_id;
-  if (isSport && groupId) currentTrainer._loginGroupId = groupId;
-
   // ЭТАП A: Admin PIN Session — NUR wenn der Legacy-PIN-Pfad genutzt wurde
   // (kein Auth-Branch, siehe oben — dort existiert bereits eine echte
   // Supabase-Auth-Sitzung) UND die Rolle Admin ist (nur Admin darf
   // Trainerportal-Zugang verwalten, manage-trainer-account prüft dasselbe
   // serverseitig). Best effort — schlägt der Aufruf fehl, bleibt der
-  // reguläre Login trotzdem erfolgreich, nur ohne PIN-Session-Token.
-  if (!isSuperAdminAccess && currentTrainer.role === 'Admin') {
+  // reguläre Login trotzdem erfolgreich, nur ohne PIN-Session-Token. Prüft
+  // trainer.rolle (nicht currentTrainer.role) — currentTrainer wird erst in
+  // finalizeTrainerLogin() weiter unten gesetzt.
+  if (!isSuperAdminAccess && trainer.rolle === 'Admin') {
     try {
       const response = await fetch(SUPABASE_URL + '/functions/v1/admin-pin-login', {
         method: 'POST',
@@ -1239,6 +1228,31 @@ async function login() {
     }
   }
 
+  await finalizeTrainerLogin(trainer, {
+    loginGroupId: (isSport && groupId) ? groupId : null
+  });
+  status.textContent = '';
+}
+
+// =========================================================
+// FINALIZE LOGIN — единая точка установки identity/UI после
+// УСПЕШНОГО входа тренера/администратора, для ОБОИХ путей
+// (legacy PIN и Supabase Auth). Раньше эта логика была продублирована и
+// расходилась: Auth-ветка не сбрасывала предыдущее состояние экрана вообще
+// (residual-баг — см. диагностику инцидента "Willkommen, Fucks Andreas"
+// после входа "dmytro k"). hideAllWorkScreens() здесь обязателен и идёт
+// ПЕРВЫМ шагом — иначе экран, оставшийся от предыдущего пользователя (напр.
+// editTrainerScreen), остаётся видимым поверх/вместо нового currentTrainer.
+// =========================================================
+async function finalizeTrainerLogin(trainer, { authSession = null, loginGroupId = null } = {}) {
+  hideAllWorkScreens();
+
+  currentTrainer = { ...trainer };
+  currentTrainer.role = trainer.rolle;
+  currentTrainer.trainerId = trainer.trainer_id;
+  if (authSession) currentTrainer._portalAuthSession = authSession;
+  if (loginGroupId) currentTrainer._loginGroupId = loginGroupId;
+
   await loadCurrentPromoSettings();
 
   document.getElementById('loginScreen').classList.add('hidden');
@@ -1250,21 +1264,21 @@ async function login() {
   updateClubPaymentWarning();
 
   document.getElementById('welcome').textContent =
-    'Willkommen, ' + (data.name || '-') + ' (' + (data.rolle || '-') + ')';
+    'Willkommen, ' + (trainer.name || '-') + ' (' + (trainer.rolle || '-') + ')';
   document.getElementById('currentGroupInfo').textContent = 'Aktuelle Gruppe: -';
 
-  if (data.rolle === 'Admin') {
+  if (trainer.rolle === 'Admin') {
     document.getElementById('adminScreen').classList.remove('hidden');
   }
 
-  if (data.rolle === 'Buchhaltung') {
+  if (trainer.rolle === 'Buchhaltung') {
     currentView = 'buchhaltung';
     document.getElementById('buchhaltungScreen').classList.remove('hidden');
     document.getElementById('currentGroupInfo').textContent = 'Aktuelle Rolle: Buchhaltung';
     await loadBuchhaltungData();
   }
 
-  if (data.rolle === 'Trainer') {
+  if (trainer.rolle === 'Trainer') {
     document.getElementById('groupScreen').classList.remove('hidden');
     await loadGroups();
     // Beim Login gewählte Gruppe automatisch vorauswählen
@@ -1282,7 +1296,6 @@ async function login() {
   }
 
   await updateTopSponsorLogos();
-  status.textContent = '';
 }
 
 // =========================================================
@@ -11345,6 +11358,16 @@ if (
 }
 
 async function saveEditedTrainer() {
+  // Minimaler Client-Guard (KEINE vollwertige Security Boundary — siehe
+  // saveEditedTrainer()-Audit im Chat-Bericht: public.trainers erlaubt
+  // INSERT/UPDATE/DELETE nur der Rolle anon, nicht authenticated; für
+  // Legacy-PIN-Aufrufer, die alle als anon senden, ist dieser Client-Check
+  // die einzige Barriere, die es bisher hier nicht gab).
+  if (!currentTrainer || currentTrainer.role !== 'Admin') {
+    showCustomMessage('Keine Berechtigung zum Bearbeiten.');
+    return;
+  }
+
   const trainerId = document.getElementById('editTrainerIdHidden')?.value || '';
 
   const nachname = document.getElementById('editTrainerNachnameNew')?.value?.trim() || '';

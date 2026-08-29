@@ -13181,13 +13181,19 @@ async function submitTrainerPortalAccess({ isEdit }) {
     messageBox.style.color = isError ? '#c0392b' : '#2e7d32';
   }
 
-  // ЭТАП A: два равноправных способа авторизации manage-trainer-account —
-  // Supabase Auth JWT (если админ мигрирован на Auth) ИЛИ Admin PIN Session
-  // (adminPinSessionToken, выданная admin-pin-login при обычном PIN-входе).
-  // Оба отправляются тем же заголовком Authorization: Bearer — сервер сам
-  // определяет тип токена.
+  // ЭТАП B (bugfix): Admin PIN Session имеет ПРИОРИТЕТ над Supabase Auth JWT.
+  // Раньше был обратный порядок (Auth JWT || adminPinSessionToken) — если в
+  // той же вкладке оставалась старая/чужая Auth-сессия (напр. от более
+  // раннего теста Trainer-Auth-входа), она перехватывала авторизацию у
+  // валидной Admin PIN Session, сервер шёл по Path A с чужой identity и
+  // корректно отвечал 403 {"error":"forbidden"} — см. диагностику "Fehler
+  // beim Speichern des Portalzugangs". resolveAdminAuthToken() —
+  // trainer-portal-auth-token.js, покрыта тестами tests/trainerPortalAuthToken.test.js.
   const { data: sessionData } = await db.auth.getSession();
-  const accessToken = sessionData?.session?.access_token || adminPinSessionToken;
+  const { token: accessToken, source: tokenSource } = resolveAdminAuthToken({
+    adminPinToken: adminPinSessionToken,
+    authAccessToken: sessionData?.session?.access_token
+  });
   if (!accessToken) {
     showPortalMessage(
       'Bitte melden Sie sich erneut an, um Trainerportal-Zugänge zu verwalten.',
@@ -13268,9 +13274,23 @@ async function submitTrainerPortalAccess({ isEdit }) {
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      // Ошибки — без внутренних данных Supabase: только общий текст,
-      // result.details (может содержать сырые сообщения Postgres/GoTrue)
-      // никогда не показывается пользователю, только в консоль для отладки.
+      // Admin PIN Session lokal vorhanden, Server lehnt sie als abgelaufen/
+      // ungültig ab: lokal aufräumen und klar zur erneuten Anmeldung
+      // auffordern — KEIN automatischer Fallback auf einen evtl. noch
+      // vorhandenen (u. U. fremden) Auth-JWT im selben Request/Retry, das
+      // wäre genau der ursprüngliche Bug erneut.
+      if (isExpiredAdminPinSessionError({ tokenSource, httpStatus: response.status, errorCode: result.error })) {
+        adminPinSessionToken = null;
+        sessionStorage.removeItem(ADMIN_PIN_SESSION_STORAGE_KEY);
+        showPortalMessage(
+          'Ihre Administratorsitzung ist abgelaufen. Bitte melden Sie sich erneut als Administrator an.',
+          true
+        );
+        return;
+      }
+      // Übrige Fehler — ohne interne Supabase-Daten: nur allgemeiner Text,
+      // result.details (kann rohe Postgres/GoTrue-Meldungen enthalten)
+      // wird dem Nutzer nie angezeigt, nur in der Konsole zur Diagnose.
       showPortalMessage('Fehler beim Speichern des Portalzugangs. Bitte erneut versuchen.', true);
       console.error('[TrainerPortalAccess]', result.error, result.details);
       return;

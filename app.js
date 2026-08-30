@@ -14911,24 +14911,14 @@ async function _superAdminLoginCore(username, pin, statusEl) {
     return;
   }
 
-  // ── Alter PIN-Pfad — Vergleich bleibt PHASE 1 die Entscheidung ─────────
-  const { data, error } = await db
-    .from('super_admins')
-    .select('id, username, name, pin')
-    .eq('username', username)
-    .maybeSingle();
-  if (error || !data || data.pin !== pin) {
-    statusEl.textContent = 'Falscher Benutzername oder PIN.';
-    return;
-  }
-  superAdminSession = { id: data.id, username: data.username, name: data.name };
-
-  // PHASE 1 (Frontend-Integration Super Admin PIN-Session, 2026-08-30):
-  // best effort, analog admin-pin-login für Trainer — schlägt der Aufruf
-  // fehl, bleibt der reguläre Legacy-Login trotzdem erfolgreich, nur ohne
-  // PIN-Session-Token. PIN wird hier nirgends gespeichert, nur einmalig im
-  // Request-Body an die Edge Function gesendet (wie auch schon beim
-  // Legacy-Vergleich oben).
+  // ── Server-seitiger PIN-Pfad (PHASE 2, 2026-08-30) ──────────────────────
+  // Ersetzt den früheren client-seitigen Vergleich (super_admins.pin wurde
+  // hier gelesen und in JS verglichen) — super-admin-pin-login ist jetzt
+  // die EINZIGE Quelle für Erfolg/Fehlschlag dieses Logins. Kein Fallback
+  // auf einen client-seitigen Vergleich bei Netzwerk-/Serverfehlern, PIN
+  // wird hier nirgends gespeichert oder geloggt, nur einmalig im
+  // Request-Body gesendet.
+  let loginResult;
   try {
     const response = await fetch(SUPABASE_URL + '/functions/v1/super-admin-pin-login', {
       method: 'POST',
@@ -14939,14 +14929,43 @@ async function _superAdminLoginCore(username, pin, statusEl) {
       },
       body: JSON.stringify({ username, pin })
     });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok && result?.success && result.token) {
-      superAdminPinSessionToken = result.token;
-      sessionStorage.setItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY, result.token);
+    loginResult = await response.json().catch(() => ({}));
+    if (!response.ok || !loginResult?.success || !loginResult.token || !loginResult.superAdmin) {
+      statusEl.textContent = 'Falscher Benutzername oder PIN.';
+      return;
     }
   } catch (e) {
-    console.error('[SuperAdminPinLogin]', e);
+    statusEl.textContent = 'Falscher Benutzername oder PIN.';
+    return;
   }
+
+  // sessionStorage.setItem darf theoretisch werfen (voller/blockierter
+  // Storage) — ein "eingeloggt wirkender" Zustand ohne gespeicherten Token
+  // würde Folgeaufrufe (z. B. Familienzugänge) mit invalid_or_expired_token
+  // fehlschlagen lassen, ohne dass der Nutzer je einen Login-Fehler sieht.
+  // Deshalb: Login in diesem Fall NICHT als erfolgreich werten und die
+  // bereits server-seitig erzeugte Session best-effort wieder widerrufen,
+  // damit keine orphan PIN-Session zurückbleibt.
+  try {
+    sessionStorage.setItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY, loginResult.token);
+  } catch (storageError) {
+    superAdminPinSessionToken = null;
+    try {
+      await fetch(SUPABASE_URL + '/functions/v1/super-admin-pin-logout', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + loginResult.token }
+      });
+    } catch (e) { /* best effort */ }
+    statusEl.textContent = 'Falscher Benutzername oder PIN.';
+    return;
+  }
+
+  superAdminPinSessionToken = loginResult.token;
+  superAdminSession = {
+    id: loginResult.superAdmin.id,
+    username: loginResult.superAdmin.username,
+    name: loginResult.superAdmin.name
+  };
 
   statusEl.textContent = '';
   if (isSAStandaloneMode) {
@@ -15367,16 +15386,36 @@ async function saExecuteClubDelete() {
     return;
   }
 
-  // PIN gegen DB prüfen
+  // ── Server-seitiger Step-up (PHASE 2 / OPTION C, 2026-08-30) ────────────
+  // Ersetzt den früheren client-seitigen super_admins.pin-Vergleich durch
+  // eine echte erneute Server-Verifikation über verify-super-admin-pin.
+  // Bewusst NICHT super-admin-pin-login: dessen Erfolg mintet immer eine
+  // neue 30-Minuten-Session — für eine reine Re-Verifikation eines bereits
+  // eingeloggten Super Admins wäre das eine vermeidbare orphan-session-
+  // Fläche, falls ein nachgelagerter Revoke fehlschlägt (siehe PHASE-2-
+  // Audit). verify-super-admin-pin erzeugt strukturell nie eine Session —
+  // es gibt daher nichts, das orphan werden könnte.
   errEl.textContent = 'PIN wird geprüft…';
-  const { data: sa, error: saErr } = await db
-    .from('super_admins')
-    .select('pin')
-    .eq('username', superAdminSession.username)
-    .maybeSingle();
-
-  if (saErr || !sa || sa.pin !== pinVal) {
-    errEl.textContent = 'Falscher PIN. Löschung abgebrochen.';
+  let verifyResult;
+  try {
+    const verifyResponse = await fetch(SUPABASE_URL + '/functions/v1/verify-super-admin-pin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ username: superAdminSession.username, pin: pinVal })
+    });
+    verifyResult = await verifyResponse.json().catch(() => ({}));
+    if (verifyResponse.status === 401 || !verifyResponse.ok || !verifyResult?.success) {
+      errEl.textContent = verifyResponse.status === 401
+        ? 'Falscher PIN. Löschung abgebrochen.'
+        : 'Technischer Fehler. Löschung abgebrochen.';
+      return;
+    }
+  } catch (e) {
+    errEl.textContent = 'Technischer Fehler. Löschung abgebrochen.';
     return;
   }
 

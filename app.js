@@ -19,6 +19,14 @@ let isSuperAdminAccess   = false;
 // überlebt Reload, wird vom Browser beim Schließen des Tabs entfernt.
 const ADMIN_PIN_SESSION_STORAGE_KEY = 'jkl_admin_pin_session';
 let adminPinSessionToken = sessionStorage.getItem(ADMIN_PIN_SESSION_STORAGE_KEY) || null;
+// Super Admin PIN Session (server-seitig verifiziert, siehe
+// super-admin-pin-login) — analoges Muster zu adminPinSessionToken oben,
+// aber für super_admins (JKL_STUDENT_PARENT_PORTAL). NUR das opake Token,
+// NIE der PIN selbst. PHASE 1 (Frontend-Integration, 2026-08-30): best
+// effort neben dem bestehenden Legacy-PIN-Vergleich in
+// _superAdminLoginCore, ersetzt ihn noch nicht (PHASE 2, separat).
+const SUPER_ADMIN_PIN_SESSION_STORAGE_KEY = 'jkl_super_admin_pin_session';
+let superAdminPinSessionToken = sessionStorage.getItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY) || null;
 let isSAStandaloneMode   = false;   // true когда открыт через ?superadmin=1
 let _saClubsCache        = [];   // { club, studentCount, adminTrainer, tarifRows } — заполняется при loadAndRenderSAClubs
 
@@ -14903,7 +14911,7 @@ async function _superAdminLoginCore(username, pin, statusEl) {
     return;
   }
 
-  // ── Alter PIN-Pfad — UNVERÄNDERT ────────────────────────────────────
+  // ── Alter PIN-Pfad — Vergleich bleibt PHASE 1 die Entscheidung ─────────
   const { data, error } = await db
     .from('super_admins')
     .select('id, username, name, pin')
@@ -14914,6 +14922,32 @@ async function _superAdminLoginCore(username, pin, statusEl) {
     return;
   }
   superAdminSession = { id: data.id, username: data.username, name: data.name };
+
+  // PHASE 1 (Frontend-Integration Super Admin PIN-Session, 2026-08-30):
+  // best effort, analog admin-pin-login für Trainer — schlägt der Aufruf
+  // fehl, bleibt der reguläre Legacy-Login trotzdem erfolgreich, nur ohne
+  // PIN-Session-Token. PIN wird hier nirgends gespeichert, nur einmalig im
+  // Request-Body an die Edge Function gesendet (wie auch schon beim
+  // Legacy-Vergleich oben).
+  try {
+    const response = await fetch(SUPABASE_URL + '/functions/v1/super-admin-pin-login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ username, pin })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && result?.success && result.token) {
+      superAdminPinSessionToken = result.token;
+      sessionStorage.setItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY, result.token);
+    }
+  } catch (e) {
+    console.error('[SuperAdminPinLogin]', e);
+  }
+
   statusEl.textContent = '';
   if (isSAStandaloneMode) {
     document.getElementById('saStandalonePage').classList.add('hidden');
@@ -14956,6 +14990,25 @@ async function saLoadDashboardBadges() {
 async function superAdminLogout() {
   superAdminSession  = null;
   isSuperAdminAccess = false;
+
+  // PHASE 1 (Frontend-Integration Super Admin PIN-Session, 2026-08-30):
+  // best-effort serverseitiger Widerruf, dann IMMER lokal aufräumen,
+  // unabhängig vom Ergebnis des Aufrufs — gleiches Muster wie beim
+  // Trainer-Pendant (admin-pin-logout) oben in goHome().
+  if (superAdminPinSessionToken) {
+    try {
+      await fetch(SUPABASE_URL + '/functions/v1/super-admin-pin-logout', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + superAdminPinSessionToken
+        }
+      });
+    } catch (e) { /* ignore — lokales Aufräumen unten läuft trotzdem */ }
+  }
+  superAdminPinSessionToken = null;
+  sessionStorage.removeItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY);
+
   // Единая авторизация Super Admin (см. _superAdminLoginCore) — если вход
   // шёл через Supabase Auth, закрываем и эту сессию тоже. Best-effort: если
   // сессии не было (старый PIN-flow), signOut() безопасно ничего не делает.
@@ -17048,13 +17101,23 @@ window._saFamilienDetailStudent = null;
 window._saFamilienDetailStatus  = null;
 
 async function saFamilienCallManageAccount(payload) {
+  // PHASE 1 (Frontend-Integration Super Admin PIN-Session, 2026-08-30):
+  // Super Admin PIN-Session hat PRIORITÄT vor einer evtl. noch im selben Tab
+  // vorhandenen (u. U. fremden) Supabase-Auth-Sitzung — exakt dasselbe Muster
+  // und dieselbe Begründung wie resolveAdminAuthToken bereits für
+  // submitTrainerPortalAccess (Trainerportal-Zugang): ohne diese Priorität
+  // könnte eine fremde Auth-Sitzung (z. B. Trainer-Auth-Branch) die gültige
+  // PIN-Session verdecken und zu einem falschen 401/403 führen. Wiederverwendet
+  // die bereits generische Funktion aus trainer-portal-auth-token.js.
   const { data: sessionData } = await db.auth.getSession();
-  const accessToken = sessionData?.session?.access_token;
+  const { token: accessToken, source: tokenSource } = resolveAdminAuthToken({
+    adminPinToken: superAdminPinSessionToken,
+    authAccessToken: sessionData?.session?.access_token
+  });
 
   if (!accessToken) {
     saFamilienDetailSetBody(
-      '<div class="sa-family-detail-error">Verwaltung von Familienzugängen ist mit einer PIN-Anmeldung nicht möglich. ' +
-      'Bitte melden Sie sich mit Ihrem Super-Admin-Portalzugang (Supabase Auth) an, um Familienzugänge zu verwalten.</div>'
+      '<div class="sa-family-detail-error">Bitte melden Sie sich erneut als Super Admin an, um Familienzugänge zu verwalten.</div>'
     );
     document.getElementById('saFamilienActionsBar').innerHTML = '';
     return { ok: false, needsAuth: true };
@@ -17072,6 +17135,15 @@ async function saFamilienCallManageAccount(payload) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      // Admin PIN Session lokal vorhanden, Server lehnt sie als abgelaufen/
+      // ungültig ab: lokal aufräumen, damit der nächste Versuch nicht
+      // erneut denselben toten Token sendet. Supabase Auth-Sitzung (Weg A)
+      // wird hier NICHT angetastet — dieselbe Trennung wie bei
+      // submitTrainerPortalAccess.
+      if (isExpiredAdminPinSessionError({ tokenSource, httpStatus: response.status, errorCode: data?.error })) {
+        superAdminPinSessionToken = null;
+        sessionStorage.removeItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY);
+      }
       console.error('[Familienzugang]', data?.error, data?.details);
       return { ok: false, status: response.status, data };
     }

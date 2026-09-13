@@ -17136,6 +17136,17 @@ async function renderSAFamilienResultsTable(results) {
 
 const FAMILY_ACCOUNT_FUNCTION_URL = SUPABASE_URL + '/functions/v1/manage-family-account';
 
+// Super Admin Preview (JKL_STUDENT_PARENT_PORTAL, Block 3) — KEIN Login als
+// Familie, KEIN Familienpasswort, KEINE Abhängigkeit von
+// family_students.status/families.status: die Preview-Berechtigung kommt
+// ausschließlich aus der eigenen Super-Admin-Identität (dieselbe duale
+// Prüfung wie manage-family-account — JWT oder PIN-Session), siehe
+// create-student-preview-token/get-student-preview (JKL_STUDENT_PARENT_PORTAL,
+// supabase/functions/). Funktioniert deshalb auch für NOT_SET_UP-Schüler
+// (siehe renderSAFamilienDetailStatus unten).
+const STUDENT_PREVIEW_TOKEN_FUNCTION_URL = SUPABASE_URL + '/functions/v1/create-student-preview-token';
+const STUDENT_PREVIEW_BASE_URL = 'https://jkl-student-parent-portal.netlify.app/admin-preview/';
+
 window._saFamilienDetailStudent = null;
 window._saFamilienDetailStatus  = null;
 
@@ -17309,7 +17320,8 @@ function renderSAFamilienDetailStatus(data) {
       <p class="small">Für diesen Schüler existiert noch kein Familienzugang zum Family Portal.</p>
     `);
     document.getElementById('saFamilienActionsBar').innerHTML =
-      '<button class="add-trainer-save" onclick="saFamilienShowCreateForm()">👨‍👩‍👧 Familienzugang einrichten</button>';
+      '<button class="add-trainer-save" onclick="saFamilienShowCreateForm()">👨‍👩‍👧 Familienzugang einrichten</button>' +
+      '<button class="add-trainer-save" onclick="saFamilienPreview()">👁 Student-Seite ansehen (Vorschau)</button>';
     return;
   }
 
@@ -17523,17 +17535,59 @@ async function saFamilienToggleActive(activate) {
   await openSAFamilienDetail(studentId);
 }
 
-// Sicherer read-only Preview: siehe Abschlussbericht der Aufgabe
-// "Familienzugänge-Verwaltung" — vollwertiges Impersonation (Login als
-// Familie, ohne deren Passwort zu kennen) würde eine eigene, separat zu
-// entscheidende Architektur brauchen (z.B. kurzlebiger Support-Token +
-// eigene Preview-Route im Family Portal). Das gibt es heute nicht — hier
-// wird das bewusst NICHT vorgetäuscht, sondern offen benannt.
-function saFamilienPreview() {
-  const nickname = window._saFamilienDetailStatus?.nickname;
-  saFamilienShowActionMessage(
-    'Eine sichere Vorschau der Family-Seite ist noch nicht verfügbar — dafür wird eine eigene Read-only-Preview-Route ' +
-    'im Family Portal benötigt (siehe Abschlussbericht). Familienlogin zur Referenz: ' + (nickname || '-'),
-    false
-  );
+// Sicherer read-only Preview — umgesetzt: kurzlebiger (5 Minuten),
+// einmaliger Support-Token (create-student-preview-token, geprüft über
+// dieselbe duale Super-Admin-Auth wie manage-family-account) + eigene
+// Preview-Route im Family Portal (Block 3, /admin-preview/:token,
+// get-student-preview). KEIN Login als Familie, KEIN Familienpasswort,
+// KEINE Abhängigkeit von family_students.status/families.status — der
+// Token verrät nichts über den Familienzugang, nur den Preview-Zugriff auf
+// GENAU diesen einen studentId. Funktioniert für NOT_SET_UP genauso wie für
+// aktive/gesperrte Zugänge.
+async function saFamilienPreview() {
+  const student = window._saFamilienDetailStudent;
+  if (!student || student.id == null) return;
+
+  const { data: sessionData } = await db.auth.getSession();
+  const { token: accessToken, source: tokenSource } = resolveAdminAuthToken({
+    adminPinToken: superAdminPinSessionToken,
+    authAccessToken: sessionData?.session?.access_token
+  });
+
+  if (!accessToken) {
+    saFamilienShowActionMessage('Bitte melden Sie sich erneut als Super Admin an, um die Vorschau zu öffnen.', true);
+    return;
+  }
+
+  saFamilienShowActionMessage('Vorschau wird vorbereitet…', false);
+
+  try {
+    const response = await fetch(STUDENT_PREVIEW_TOKEN_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + accessToken
+      },
+      body: JSON.stringify({ studentId: Number(student.id) })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      if (isExpiredAdminPinSessionError({ tokenSource, httpStatus: response.status, errorCode: data?.error })) {
+        superAdminPinSessionToken = null;
+        sessionStorage.removeItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY);
+      }
+      console.error('[Familienzugang][Preview]', data?.error, data?.details);
+      saFamilienShowActionMessage('Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.', true);
+      return;
+    }
+
+    const previewUrl = STUDENT_PREVIEW_BASE_URL + encodeURIComponent(data.token);
+    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    saFamilienShowActionMessage('Vorschau in neuem Tab geöffnet (5 Minuten gültig, einmalig nutzbar).', false);
+  } catch (e) {
+    console.error('[Familienzugang][Preview]', e);
+    saFamilienShowActionMessage('Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.', true);
+  }
 }

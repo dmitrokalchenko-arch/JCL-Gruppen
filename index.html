@@ -4057,6 +4057,33 @@ Abbrechen
 </div>
 
 <!-- =========================================================
+   SUPER ADMIN — STUDENT PREVIEW MODAL (iframe, accessMode="superadmin")
+   Zeigt die BESTEHENDE Block-3-Student-Page (StudentPreviewPage,
+   /admin-preview/:token) inline in Block 1 — KEIN Duplikat der React-Seite,
+   KEIN Family-Login, KEIN Impersonation. Jedes Öffnen (Modal ODER "In neuem
+   Tab öffnen") fordert einen EIGENEN, frischen Ein-mal-Token an
+   (create-student-preview-token) — derselbe Token wird nie zweimal
+   verwendet (siehe saStudentPreviewRequestToken/saFamilienPreview/
+   saStudentPreviewOpenNewTab in app.js).
+========================================================= -->
+<div id="saStudentPreviewModal" class="sa-modal hidden">
+  <div class="sa-modal-overlay" onclick="closeSAStudentPreviewModal()"></div>
+  <div class="sa-modal-panel sa-student-preview-panel">
+    <div class="sa-modal-header sa-student-preview-header">
+      <span class="sa-modal-icon">🎓</span>
+      <span class="sa-modal-title">Student Page — Super Admin</span>
+      <div class="sa-student-preview-header-actions">
+        <button type="button" class="sa-student-preview-newtab-btn" onclick="saStudentPreviewOpenNewTab()">In neuem Tab öffnen</button>
+        <button type="button" class="sa-student-preview-close" onclick="closeSAStudentPreviewModal()" aria-label="Schließen">✕</button>
+      </div>
+    </div>
+    <div class="sa-student-preview-body">
+      <iframe id="saStudentPreviewIframe" title="Student Page Preview (Super Admin)"></iframe>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
    SUPER ADMIN — STANDALONE LOGIN PAGE (?superadmin=1)
 ========================================================= -->
 <div id="saStandalonePage" class="sa-standalone-page hidden">

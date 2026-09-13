@@ -16730,6 +16730,88 @@ body.sa-standalone-mode #clubPaymentWarning {
   color: #e8e8e8;
 }
 
+/* Super Admin Student Preview — großes Modal mit Block-3-Preview per
+   iframe (accessMode="superadmin"). Nur dieses eine Panel wird vergrößert,
+   .sa-modal-panel selbst (Standardgröße 320px, für alle anderen Super
+   Admin-Modals) bleibt unverändert. */
+.sa-student-preview-panel {
+  width: 94vw;
+  height: 92vh;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px 16px;
+}
+
+.sa-student-preview-header {
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.sa-student-preview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.sa-student-preview-newtab-btn {
+  padding: 7px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 7px;
+  color: rgba(255,255,255,0.75);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
+.sa-student-preview-newtab-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.sa-student-preview-close {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 7px;
+  color: #e8e8e8;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sa-student-preview-close:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+.sa-student-preview-body {
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(212,175,55,0.25);
+}
+
+#saStudentPreviewIframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #0f1923;
+}
+
+@media (max-width: 640px) {
+  .sa-student-preview-panel {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+}
+
 .sa-family-actions-bar {
   display: flex;
   flex-wrap: wrap;

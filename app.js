@@ -17544,10 +17544,19 @@ async function saFamilienToggleActive(activate) {
 // Token verrät nichts über den Familienzugang, nur den Preview-Zugriff auf
 // GENAU diesen einen studentId. Funktioniert für NOT_SET_UP genauso wie für
 // aktive/gesperrte Zugänge.
-async function saFamilienPreview() {
-  const student = window._saFamilienDetailStudent;
-  if (!student || student.id == null) return;
+// Merkt sich NUR die studentId für "In neuem Tab öffnen" (damit dieser
+// Button ohne erneutes Öffnen des Detail-Panels einen neuen Token für
+// denselben Schüler anfordern kann) — NIE ein Token selbst, siehe unten.
+window._saStudentPreviewCurrentStudentId = null;
 
+// Eine einzige Stelle, die einen frischen Ein-mal-Preview-Token anfordert
+// (create-student-preview-token) — von saFamilienPreview() (Modal öffnen)
+// UND saStudentPreviewOpenNewTab() UNABHÄNGIG aufgerufen, damit niemals
+// derselbe Token zweimal verwendet wird (iframe und neuer Tab bekommen
+// IMMER je ihren eigenen Token). Gibt { ok:true, token } oder
+// { ok:false, error } zurück — wirft nie, damit beide Aufrufer denselben
+// einfachen Fehlerpfad benutzen können.
+async function saStudentPreviewRequestToken(studentId) {
   const { data: sessionData } = await db.auth.getSession();
   const { token: accessToken, source: tokenSource } = resolveAdminAuthToken({
     adminPinToken: superAdminPinSessionToken,
@@ -17555,11 +17564,8 @@ async function saFamilienPreview() {
   });
 
   if (!accessToken) {
-    saFamilienShowActionMessage('Bitte melden Sie sich erneut als Super Admin an, um die Vorschau zu öffnen.', true);
-    return;
+    return { ok: false, error: 'no_admin_session' };
   }
-
-  saFamilienShowActionMessage('Vorschau wird vorbereitet…', false);
 
   try {
     const response = await fetch(STUDENT_PREVIEW_TOKEN_FUNCTION_URL, {
@@ -17569,7 +17575,7 @@ async function saFamilienPreview() {
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': 'Bearer ' + accessToken
       },
-      body: JSON.stringify({ studentId: Number(student.id) })
+      body: JSON.stringify({ studentId: Number(studentId) })
     });
     const data = await response.json().catch(() => ({}));
 
@@ -17579,15 +17585,70 @@ async function saFamilienPreview() {
         sessionStorage.removeItem(SUPER_ADMIN_PIN_SESSION_STORAGE_KEY);
       }
       console.error('[Familienzugang][Preview]', data?.error, data?.details);
-      saFamilienShowActionMessage('Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.', true);
-      return;
+      return { ok: false, error: data?.error || 'token_create_failed' };
     }
 
-    const previewUrl = STUDENT_PREVIEW_BASE_URL + encodeURIComponent(data.token);
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
-    saFamilienShowActionMessage('Vorschau in neuem Tab geöffnet (5 Minuten gültig, einmalig nutzbar).', false);
+    return { ok: true, token: data.token };
   } catch (e) {
     console.error('[Familienzugang][Preview]', e);
-    saFamilienShowActionMessage('Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.', true);
+    return { ok: false, error: 'network_error' };
   }
+}
+
+function saStudentPreviewErrorMessage(errorCode) {
+  if (errorCode === 'no_admin_session') {
+    return 'Bitte melden Sie sich erneut als Super Admin an, um die Vorschau zu öffnen.';
+  }
+  return 'Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.';
+}
+
+// Öffnet die BESTEHENDE Block-3-Student-Page (StudentPreviewPage,
+// /admin-preview/:token) inline in einem großen Modal (iframe) statt in
+// einem neuen Tab — KEIN Duplikat der React-Seite in Block 1, KEIN
+// Family-Login/Impersonation. Fordert bei JEDEM Öffnen einen FRISCHEN
+// Ein-mal-Token an (nie einen bereits verwendeten Token wiederverwenden).
+async function saFamilienPreview() {
+  const student = window._saFamilienDetailStudent;
+  if (!student || student.id == null) return;
+
+  window._saStudentPreviewCurrentStudentId = student.id;
+
+  saFamilienShowActionMessage('Vorschau wird vorbereitet…', false);
+
+  const result = await saStudentPreviewRequestToken(student.id);
+  if (!result.ok) {
+    saFamilienShowActionMessage(saStudentPreviewErrorMessage(result.error), true);
+    return;
+  }
+
+  const iframe = document.getElementById('saStudentPreviewIframe');
+  iframe.src = STUDENT_PREVIEW_BASE_URL + encodeURIComponent(result.token);
+  document.getElementById('saStudentPreviewModal').classList.remove('hidden');
+}
+
+// Schließen entfernt den iframe-Inhalt sofort (src = about:blank) — die
+// Preview-Session hängt nicht weiter im Hintergrund, und ein erneutes
+// Öffnen (saFamilienPreview) fordert ohnehin immer einen neuen Token an,
+// selbst wenn der alte Token technisch noch gültig gewesen wäre.
+function closeSAStudentPreviewModal() {
+  document.getElementById('saStudentPreviewModal').classList.add('hidden');
+  document.getElementById('saStudentPreviewIframe').src = 'about:blank';
+}
+
+// "In neuem Tab öffnen" — fordert einen EIGENEN neuen Token an (NICHT den
+// bereits vom iframe konsumierten), damit der bereits einmalig genutzte
+// iframe-Token nicht ein zweites Mal gebraucht wird (get-student-preview
+// würde das ohnehin mit invalid_or_expired_token ablehnen).
+async function saStudentPreviewOpenNewTab() {
+  const studentId = window._saStudentPreviewCurrentStudentId;
+  if (studentId == null) return;
+
+  const result = await saStudentPreviewRequestToken(studentId);
+  if (!result.ok) {
+    saFamilienShowActionMessage(saStudentPreviewErrorMessage(result.error), true);
+    return;
+  }
+
+  const previewUrl = STUDENT_PREVIEW_BASE_URL + encodeURIComponent(result.token);
+  window.open(previewUrl, '_blank', 'noopener,noreferrer');
 }

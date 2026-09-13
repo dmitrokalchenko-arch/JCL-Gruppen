@@ -16717,6 +16717,19 @@ body.sa-standalone-mode #clubPaymentWarning {
   color: rgba(255,255,255,0.4);
 }
 
+/* Значения полей (Nachname/Vorname/Geburtsdatum/Verein/Sportart/Gruppe в
+   #saFamilienDetailStudentInfo, Familienlogin/Kontakt-E-Mail/Letzter Login/
+   Letzte Änderung Zugangsdaten в renderSAFamilienDetailStatus) — второй
+   <span> в каждой паре label+value внутри .sa-family-detail-grid не имел
+   собственного color вовсе и наследовал тёмный цвет текста страницы поверх
+   тёмного фона .sa-modal-panel (#0f1923), из-за чего был почти нечитаем.
+   Тот же светлый цвет, что уже используют .sa-modal-title/.sa-family-table
+   td. Только эта сетка (.sa-family-detail-grid) — другие Super Admin экраны
+   этот класс не используют (проверено). */
+.sa-family-detail-grid > div span:last-child {
+  color: #e8e8e8;
+}
+
 .sa-family-actions-bar {
   display: flex;
   flex-wrap: wrap;

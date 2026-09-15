@@ -16710,24 +16710,43 @@ body.sa-standalone-mode #clubPaymentWarning {
   box-sizing: border-box;
 }
 
-.sa-family-detail-label {
+/* .sa-family-detail-grid используется в ДВУХ разных по фону контейнерах:
+   1) внутри тёмной .sa-modal-panel (#saFamilienDetailStudentInfo/
+      #saFamilienDetailBody, renderSAFamilienDetailStatus) — нужен светлый
+      текст (правила ниже, scoped к .sa-modal-panel).
+   2) внутри БЕЛОЙ #saFamilienCreateSuccess (.add-trainer-modern-card,
+      background: #ffffff) — карточка "Familienzugang eingerichtet" с
+      Familien-Login/Temporäres Passwort. ПРОИЗВОДСТВЕННЫЙ БАГ (найден
+      2026-09-15): раньше правила ниже не были scoped ни к чему и
+      применялись ГЛОБАЛЬНО — тот же светлый цвет, рассчитанный на тёмный
+      фон, "протекал" в белую карточку и делал login/password практически
+      невидимыми (светлый текст на белом фоне). Теперь — два явных набора
+      правил, по одному на каждый фон, вместо одного глобального. */
+.sa-modal-panel .sa-family-detail-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: rgba(255,255,255,0.4);
 }
 
-/* Значения полей (Nachname/Vorname/Geburtsdatum/Verein/Sportart/Gruppe в
-   #saFamilienDetailStudentInfo, Familienlogin/Kontakt-E-Mail/Letzter Login/
-   Letzte Änderung Zugangsdaten в renderSAFamilienDetailStatus) — второй
-   <span> в каждой паре label+value внутри .sa-family-detail-grid не имел
-   собственного color вовсе и наследовал тёмный цвет текста страницы поверх
-   тёмного фона .sa-modal-panel (#0f1923), из-за чего был почти нечитаем.
-   Тот же светлый цвет, что уже используют .sa-modal-title/.sa-family-table
-   td. Только эта сетка (.sa-family-detail-grid) — другие Super Admin экраны
-   этот класс не используют (проверено). */
-.sa-family-detail-grid > div span:last-child {
+.sa-modal-panel .sa-family-detail-grid > div span:last-child {
   color: #e8e8e8;
+}
+
+/* Белая карточка (.add-trainer-modern-card, включая
+   #saFamilienCreateSuccess) — тёмный текст, тот же #111827, что уже
+   используют другие элементы этой "modern card" системы на белом фоне
+   (.add-trainer-cancel, .attendance-filter-grid label и т.д.). */
+.add-trainer-modern-card .sa-family-detail-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.add-trainer-modern-card .sa-family-detail-grid > div span:last-child {
+  color: #111827;
+  font-weight: 700;
 }
 
 /* Super Admin Student Preview — großes Modal mit Block-3-Preview per

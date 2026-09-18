@@ -17397,7 +17397,8 @@ function saStudentPageShowMessage(text, isError) {
 }
 
 async function loadStudentPageAccessSection(studentId) {
-  document.getElementById('saStudentPageAccessActionsBar').innerHTML = '';
+  document.getElementById('saStudentPageDangerZone').innerHTML = '';
+  document.getElementById('saStudentPageStatusBadge').textContent = '…';
   saStudentPageHideAccessUntilForm();
   saStudentPageSetBody('Wird geladen…');
 
@@ -17418,15 +17419,26 @@ async function loadStudentPageAccessSection(studentId) {
 // Badge-Text ab — berechnet KEINE eigene Zugriffs-Regel und rechnet NICHT
 // mit Datumswerten. familySubscriptionAllowsAccess/trainerSubscriptionAllowsAccess
 // werden unten 1:1 aus der Server-Antwort übernommen, nie neu hergeleitet.
+//
+// UI-REFINEMENT (nach erster visueller Prüfung des temporären Prod-Deploys):
+// kompakte Settings-Zeilen statt mehrerer gleich großer grüner Vollbreite-
+// Buttons — Badge wandert in die Titelzeile (#saStudentPageStatusBadge,
+// siehe index.html), die frühere lange Erklär-Paragraph wird durch kurze
+// Hinweistexte direkt bei der jeweiligen Einstellung ersetzt, und "Student
+// Page manuell (de)aktivieren" bekommt eine eigene, visuell abgesetzte
+// Danger Zone (#saStudentPageDangerZone) statt eines weiteren gleich
+// aussehenden grünen Buttons. Kein Feld/keine Aktion wurde entfernt, nur
+// neu angeordnet — dieselben 3 Backend-Actions (set_access_until/
+// set_manual_disabled/set_trainer_exception), derselbe Re-read-Fluss.
 function renderStudentPageAccessSection(data) {
   let badgeClass = 'sa-family-status-active';
   let badgeText  = 'Aktiv';
   if (data.manualDisabled) {
     badgeClass = 'sa-family-status-blocked';
-    badgeText  = 'Manuell deaktiviert';
+    badgeText  = 'Manuell gesperrt';
   } else if (!data.subscriptionManaged) {
     badgeClass = 'sa-family-status-none';
-    badgeText  = 'Unbegrenzt (nicht verwaltet)';
+    badgeText  = 'Unbegrenzt';
   } else if (data.isExpired) {
     badgeClass = 'sa-family-status-blocked';
     badgeText  = 'Abgelaufen';
@@ -17434,9 +17446,13 @@ function renderStudentPageAccessSection(data) {
     badgeClass = 'sa-family-status-warning';
     badgeText  = 'Läuft bald ab';
   }
+  const badgeEl = document.getElementById('saStudentPageStatusBadge');
+  badgeEl.className = `sa-family-status-badge ${badgeClass}`;
+  badgeEl.textContent = badgeText;
 
-  let remainingText = '';
+  let remainingRow = '';
   if (data.subscriptionManaged) {
+    let remainingText;
     if (data.isExpired) {
       remainingText = `Abgelaufen vor ${Math.abs(data.daysRemaining)} Tagen`;
     } else if (data.daysRemaining === 0) {
@@ -17444,48 +17460,67 @@ function renderStudentPageAccessSection(data) {
     } else {
       remainingText = `Noch ${data.daysRemaining} Tage gültig`;
     }
+    remainingRow = `
+      <div class="sa-settings-row">
+        <div class="sa-settings-row-main">
+          <span class="sa-settings-row-label">Verbleibende Zeit</span>
+          <span class="sa-settings-row-value">${escapeHtml(remainingText)}</span>
+        </div>
+      </div>
+    `;
   }
 
   const familyBadge = data.familySubscriptionAllowsAccess
-    ? '<span class="sa-family-status-badge sa-family-status-active">Zugang erlaubt</span>'
-    : '<span class="sa-family-status-badge sa-family-status-blocked">Zugang gesperrt</span>';
+    ? '<span class="sa-family-status-badge sa-family-status-active">✓ Zugang erlaubt</span>'
+    : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Zugang gesperrt</span>';
   const trainerBadge = data.trainerSubscriptionAllowsAccess
-    ? '<span class="sa-family-status-badge sa-family-status-active">Zugang erlaubt</span>'
-    : '<span class="sa-family-status-badge sa-family-status-blocked">Zugang gesperrt</span>';
+    ? '<span class="sa-family-status-badge sa-family-status-active">✓ Zugang erlaubt</span>'
+    : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Zugang gesperrt</span>';
 
   saStudentPageSetBody(`
-    <div class="sa-family-status-badge ${badgeClass}">${badgeText}</div>
-    <div class="sa-family-detail-grid">
-      <div><span class="sa-family-detail-label">Ablaufdatum</span><span>${data.accessUntil ? formatDateDE(data.accessUntil) : 'Unbegrenzt'}</span></div>
-      <div><span class="sa-family-detail-label">Verbleibende Zeit</span><span>${remainingText ? escapeHtml(remainingText) : '-'}</span></div>
-      <div><span class="sa-family-detail-label">Familie / Schüler</span>${familyBadge}</div>
-      <div><span class="sa-family-detail-label">Trainer</span>${trainerBadge}</div>
+    <div class="sa-settings-row">
+      <div class="sa-settings-row-main">
+        <span class="sa-settings-row-label">Ablaufdatum</span>
+        <span class="sa-settings-row-value">
+          ${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}
+          <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm()">Ändern</button>
+        </span>
+      </div>
     </div>
-    <p class="small">
-      „Student Page manuell deaktivieren" sperrt die Student-Seite dieses Schülers sofort für Familie/Schüler UND
-      Trainer — unabhängig vom Ablaufdatum. „Trainer-Zugriff nach Ablauf erlauben" wirkt nur NACH Ablauf des
-      Zugangszeitraums und hat NIE Vorrang vor einer manuellen Deaktivierung.
-    </p>
+    ${remainingRow}
+    <div class="sa-settings-subheading">Effektiver Zugriff</div>
+    <div class="sa-settings-row">
+      <div class="sa-settings-row-main">
+        <span class="sa-settings-row-label">Familie / Schüler</span>
+        <span class="sa-settings-row-value">${familyBadge}</span>
+      </div>
+    </div>
+    <div class="sa-settings-row">
+      <div class="sa-settings-row-main">
+        <span class="sa-settings-row-label">Trainer</span>
+        <span class="sa-settings-row-value">${trainerBadge}</span>
+      </div>
+    </div>
+    <div class="sa-settings-row">
+      <div class="sa-settings-row-main">
+        <span class="sa-settings-row-label">Trainer-Zugriff nach Ablauf</span>
+        <span class="sa-settings-row-value">
+          <label class="sa-settings-toggle">
+            <input type="checkbox" ${data.trainerAccessAfterExpiry ? 'checked' : ''}
+              onchange="saStudentPageToggleTrainerException(this.checked)">
+          </label>
+        </span>
+      </div>
+      <div class="sa-settings-hint">Trainer behält nach Ablauf Zugriff. Eine manuelle Sperre hat immer Vorrang.</div>
+    </div>
   `);
 
-  const disableBtn = data.manualDisabled
-    ? '<button class="add-trainer-save" onclick="saStudentPageToggleManualDisabled(false)">🔓 Student Page wieder aktivieren</button>'
-    : '<button class="add-trainer-save" onclick="saStudentPageToggleManualDisabled(true)">🔒 Student Page manuell deaktivieren</button>';
-
-  const trainerExceptionBtn = data.trainerAccessAfterExpiry
-    ? '<button class="add-trainer-save" onclick="saStudentPageToggleTrainerException(false)">👨‍🏫 Trainer-Ausnahme entfernen</button>'
-    : '<button class="add-trainer-save" onclick="saStudentPageToggleTrainerException(true)">👨‍🏫 Trainer-Zugriff nach Ablauf erlauben</button>';
-
-  const removeDateBtn = data.accessUntil
-    ? '<button class="add-trainer-save" onclick="saStudentPageRemoveAccessUntil()">♾️ Unbegrenzten Zugang wiederherstellen</button>'
-    : '';
-
-  document.getElementById('saStudentPageAccessActionsBar').innerHTML = `
-    <button class="add-trainer-save" onclick="saStudentPageShowAccessUntilForm()">📅 Ablaufdatum ändern</button>
-    ${removeDateBtn}
-    ${disableBtn}
-    ${trainerExceptionBtn}
-  `;
+  const dangerZone = document.getElementById('saStudentPageDangerZone');
+  dangerZone.innerHTML = data.manualDisabled
+    ? `<button class="sa-btn-restore" onclick="saStudentPageToggleManualDisabled(false)">🔓 Manuelle Sperre aufheben</button>
+       <p class="sa-settings-hint">Betrifft ausschließlich die Student-Page dieses Schülers.</p>`
+    : `<button class="sa-btn-danger" onclick="saStudentPageToggleManualDisabled(true)">🔒 Student Page manuell sperren</button>
+       <p class="sa-settings-hint">Sperrt Familie/Schüler UND Trainer für die Student-Page dieses Schülers — betrifft NICHT das Familienkonto (siehe unten).</p>`;
 }
 
 function saStudentPageShowAccessUntilForm() {
@@ -17540,8 +17575,9 @@ async function saStudentPageRemoveAccessUntil() {
 
 async function saStudentPageToggleManualDisabled(disable) {
   if (disable) {
-    const confirmMsg = 'Student Page für diesen Schüler wirklich manuell deaktivieren? Familie/Schüler UND Trainer ' +
-      'verlieren dadurch sofort den Zugriff auf die Student-Seite dieses Schülers — unabhängig vom Ablaufdatum.';
+    const confirmMsg = 'Student Page für diesen Schüler wirklich manuell sperren? Familie/Schüler UND Trainer ' +
+      'verlieren dadurch sofort den Zugriff auf die Student-Seite dieses Schülers — unabhängig vom Ablaufdatum. ' +
+      'Das Familienkonto selbst ist davon nicht betroffen.';
     if (!confirm(confirmMsg)) return;
   }
 
@@ -17555,7 +17591,7 @@ async function saStudentPageToggleManualDisabled(disable) {
   }
 
   await loadStudentPageAccessSection(studentId);
-  saStudentPageShowMessage(disable ? 'Student Page wurde manuell deaktiviert.' : 'Student Page wurde wieder aktiviert.', false);
+  saStudentPageShowMessage(disable ? 'Student Page wurde manuell gesperrt.' : 'Manuelle Sperre wurde aufgehoben.', false);
 }
 
 async function saStudentPageToggleTrainerException(enable) {

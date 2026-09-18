@@ -16701,10 +16701,152 @@ body.sa-standalone-mode #clubPaymentWarning {
   border-left: 3px solid #d6a900;
 }
 
+/* UI-REFINEMENT — Titelzeile bekommt zusätzlich den Status-Badge rechts
+   (#saStudentPageStatusBadge). .add-trainer-section-title ist eine global
+   geteilte Klasse (Login/Kontakt-E-Mail/Passwort-Formulare etc.) mit fixem
+   2-Spalten-Grid — hier NICHT global verändert, sondern nur innerhalb
+   dieser einen Karte um eine dritte Spalte erweitert (Descendant-Selektor,
+   kein Risiko für die anderen Verwendungen). */
+.sa-student-page-card .add-trainer-section-title {
+  grid-template-columns: 72px 1fr auto;
+}
+
+/* Kompakte Settings-Zeilen (ersetzen die früheren, gleich großen grünen
+   Vollbreite-Buttons) — eine Zeile pro Einstellung, Label links, Wert/
+   Steuerelement rechts, optionaler kurzer Hinweistext darunter statt eines
+   langen Erklär-Absatzes. */
+.sa-settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(15,23,42,0.08);
+}
+.sa-settings-row:last-child { border-bottom: none; }
+
+.sa-settings-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sa-settings-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.sa-settings-row-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.sa-settings-hint {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.sa-settings-subheading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+  margin: 14px 0 2px;
+}
+
+.sa-settings-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #b8941e;
+}
+
 .sa-student-page-subform {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+/* Danger Zone — "Student Page manuell sperren" muss sich klar von den
+   normalen grünen Aktions-Buttons (.add-trainer-save) unterscheiden und
+   visuell abgesetzt sein (Issue 4/7). "Aufheben" (Wiederherstellen) ist
+   ungefährlich -> goldener Outline-Stil statt Rot. */
+.sa-student-page-danger-zone {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.sa-btn-danger,
+.sa-btn-restore {
+  width: 100%;
+  padding: 11px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.sa-btn-danger {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  border: 1px solid #991b1b;
+  color: #ffffff;
+}
+.sa-btn-danger:hover { filter: brightness(1.08); }
+
+.sa-btn-restore {
+  background: rgba(212,175,55,0.12);
+  border: 1px solid rgba(212,175,55,0.5);
+  color: #b8941e;
+}
+.sa-btn-restore:hover { background: rgba(212,175,55,0.2); }
+
+/* Issue 7 — Eyebrow-Überschrift über dem bestehenden Familienkonto-Block
+   (#saFamilienDetailBody/#saFamilienActionsBar), damit sofort erkennbar
+   ist, dass das eine ANDERE Domäne als "Student-Page-Zugang" oben ist.
+   Rein visuell — rührt renderSAFamilienDetailStatus()/saFamilienToggleActive
+   nicht an. */
+.sa-family-account-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.45);
+  margin: 4px 0 10px;
+}
+
+/* Issue 1 — Modal war höher als der Viewport, untere Bedienelemente
+   (Schließen/Family Portal öffnen) waren abgeschnitten. Nur DIESES eine
+   Modal-Panel bekommt eine Höhenbegrenzung + internes Scrollen — die
+   Basisklassen .sa-modal-panel/.sa-modal-body werden NICHT global
+   verändert (sie werden auch vom kleinen 320px-Standard-Modal genutzt,
+   siehe index.html ~Zeile 2913). box-sizing:border-box stellt sicher, dass
+   Padding/Border in die 90vh-Grenze eingerechnet werden, nicht zusätzlich
+   dazu addiert werden. */
+.sa-family-detail-panel {
+  max-height: 90vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.sa-family-detail-panel .sa-modal-header,
+.sa-family-detail-panel .sa-modal-footer {
+  flex-shrink: 0;
+}
+
+.sa-family-detail-panel .sa-modal-body {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .sa-family-detail-grid {

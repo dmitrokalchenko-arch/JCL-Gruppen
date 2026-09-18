@@ -3941,13 +3941,15 @@ Abbrechen
         <div class="add-trainer-section-title">
           <div class="add-trainer-section-icon">🎓</div>
           <div><h3>Student-Page-Zugang</h3></div>
+          <span id="saStudentPageStatusBadge" class="sa-family-status-badge sa-family-status-none">…</span>
         </div>
         <div id="saStudentPageAccessBody">Wird geladen…</div>
-        <div id="saStudentPageAccessActionsBar" class="sa-family-actions-bar"></div>
-        <div id="saStudentPageAccessMessage" class="trainer-edit-message hidden"></div>
 
         <!-- Ablaufdatum ändern — eigene Inline-Form, unabhängig von
-             saFamilienHideAllDetailForms() (gehört nicht zum Familienzugang). -->
+             saFamilienHideAllDetailForms() (gehört nicht zum Familienzugang).
+             Enthält jetzt auch "Unbegrenzt setzen" (ersetzt den früheren
+             eigenen Vollbreite-Button — dieselbe set_access_until(null)-Aktion,
+             nur kompakter erreichbar). -->
         <div id="saStudentPageFormAccessUntil" class="sa-student-page-subform hidden">
           <div class="add-trainer-form-grid">
             <div class="add-trainer-field">
@@ -3956,12 +3958,22 @@ Abbrechen
             </div>
           </div>
           <div class="add-trainer-buttons">
-            <button class="add-trainer-save" onclick="saStudentPageSubmitAccessUntil()">✓ Ablaufdatum speichern</button>
+            <button class="add-trainer-save" onclick="saStudentPageSubmitAccessUntil()">✓ Speichern</button>
             <button class="sa-btn-cancel" onclick="saStudentPageHideAccessUntilForm()">Abbrechen</button>
+            <button class="sa-family-manage-btn" onclick="saStudentPageRemoveAccessUntil()">♾️ Unbegrenzt setzen</button>
           </div>
         </div>
+
+        <div id="saStudentPageAccessMessage" class="trainer-edit-message hidden"></div>
+
+        <!-- Danger Zone — bewusst visuell UND strukturell getrennt von den
+             Settings-Zeilen oben (Issue 4/7): "Student Page manuell sperren"
+             ist eine andere Operation als das Familienkonto-"Zugang
+             deaktivieren" weiter unten, siehe #saFamilienDetailBody. -->
+        <div id="saStudentPageDangerZone" class="sa-student-page-danger-zone"></div>
       </div>
 
+      <div class="sa-family-account-heading">👪 Familienkonto</div>
       <div id="saFamilienDetailBody"></div>
       <div id="saFamilienActionsBar" class="sa-family-actions-bar"></div>
       <div id="saFamilienDetailActionMessage" class="trainer-edit-message hidden"></div>

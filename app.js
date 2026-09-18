@@ -17149,6 +17149,12 @@ const STUDENT_PREVIEW_BASE_URL = 'https://jkl-student-parent-portal.netlify.app/
 
 window._saFamilienDetailStudent = null;
 window._saFamilienDetailStatus  = null;
+// STUDENT PAGE SUBSCRIPTION (Phase 4) — eigener, vom Familienzugang-Status
+// UNABHÄNGIGER Zustand (siehe Kommentar bei #saStudentPageAccessSection in
+// index.html). Muss in closeSAFamilienDetailModal() zurückgesetzt werden,
+// sonst könnten beim nächsten geöffneten Schüler kurzzeitig veraltete Werte
+// des vorherigen Schülers sichtbar sein.
+window._saStudentPageAccessStatus = null;
 
 async function saFamilienCallManageAccount(payload) {
   // PHASE 1 (Frontend-Integration Super Admin PIN-Session, 2026-08-30):
@@ -17220,7 +17226,15 @@ function saFamilienErrorMessage(result) {
     auth_user_create_failed: 'Fehler beim Anlegen des Zugangs (Login evtl. bereits vergeben).',
     student_club_invalid: 'Der Verein dieses Schülers ist nicht aktiv.',
     student_not_found: 'Schüler wurde nicht gefunden.',
-    forbidden: 'Keine Berechtigung für diese Aktion.'
+    forbidden: 'Keine Berechtigung für diese Aktion.',
+    // STUDENT PAGE SUBSCRIPTION (Phase 4) — dieselbe Map, keine zweite.
+    invalid_access_until: 'Ungültiges Ablaufdatum.',
+    access_until_update_failed: 'Fehler beim Speichern des Ablaufdatums.',
+    invalid_manual_disabled: 'Ungültiger Wert für die manuelle Deaktivierung.',
+    manual_disabled_update_failed: 'Fehler beim Ändern der manuellen Deaktivierung.',
+    invalid_trainer_exception: 'Ungültiger Wert für die Trainer-Ausnahme.',
+    trainer_exception_update_failed: 'Fehler beim Ändern der Trainer-Ausnahme.',
+    student_page_access_lookup_failed: 'Fehler beim Laden des Student-Page-Zugangs.'
   };
   return map[code] || 'Fehler beim Speichern. Bitte erneut versuchen.';
 }
@@ -17265,6 +17279,7 @@ async function openSAFamilienDetail(studentId) {
   const student = (window._saFamilienLastResults || []).find(r => Number(r.id) === Number(studentId));
   window._saFamilienDetailStudent = student || { id: studentId };
   window._saFamilienDetailStatus  = null;
+  window._saStudentPageAccessStatus = null;
 
   document.getElementById('saFamilienDetailName').textContent =
     student ? `${student.nachname || ''} ${student.vorname || ''}`.trim() : ('Schüler #' + studentId);
@@ -17295,6 +17310,13 @@ async function openSAFamilienDetail(studentId) {
     }
   }
 
+  // STUDENT PAGE SUBSCRIPTION (Phase 4) — bewusst NICHT awaited hier: eigener,
+  // vom Familienzugang-Status komplett unabhängiger Request/Container (siehe
+  // Kommentar bei #saStudentPageAccessSection) — läuft parallel zum
+  // get_status-Aufruf unten, verwaltet sein eigenes DOM selbst und blockiert
+  // den Familienzugang-Teil nicht (und umgekehrt).
+  loadStudentPageAccessSection(Number(studentId));
+
   const result = await saFamilienCallManageAccount({ action: 'get_status', studentId: Number(studentId) });
   if (result.needsAuth) return;
 
@@ -17311,6 +17333,8 @@ function closeSAFamilienDetailModal() {
   document.getElementById('saFamilienDetailModal').classList.add('hidden');
   window._saFamilienDetailStudent = null;
   window._saFamilienDetailStatus  = null;
+  window._saStudentPageAccessStatus = null;
+  saStudentPageHideAccessUntilForm();
 }
 
 function renderSAFamilienDetailStatus(data) {
@@ -17349,6 +17373,203 @@ function renderSAFamilienDetailStatus(data) {
       : '<button class="add-trainer-save" onclick="saFamilienToggleActive(false)">🔒 Zugang deaktivieren</button>'}
     <button class="add-trainer-save" onclick="saFamilienPreview()">👁 Family-Seite ansehen</button>
   `;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// STUDENT PAGE SUBSCRIPTION (Phase 4) — UI für die bereits produktive
+// Phase-3-Backend-Aktionen (manage-family-account: get_student_page_access/
+// set_access_until/set_manual_disabled/set_trainer_exception). BEWUSST
+// GETRENNT vom Familienzugang-Block oben (renderSAFamilienDetailStatus/
+// saFamilienToggleActive) — "Student Page manuell deaktivieren" ist NICHT
+// dasselbe wie "Zugang deaktivieren" (Familienlogin sperren): Letzteres
+// bannt den Auth-User der Familie und setzt families.status='suspended',
+// wirkt NIE auf student_page_access. Erstautorisiert ausschließlich über
+// saFamilienCallManageAccount() (keine eigene Auth-Logik).
+// ══════════════════════════════════════════════════════════════════════
+
+function saStudentPageSetBody(html) {
+  const el = document.getElementById('saStudentPageAccessBody');
+  if (el) el.innerHTML = html;
+}
+
+function saStudentPageShowMessage(text, isError) {
+  saFamilienShowFormMessage(document.getElementById('saStudentPageAccessMessage'), text, isError);
+}
+
+async function loadStudentPageAccessSection(studentId) {
+  document.getElementById('saStudentPageAccessActionsBar').innerHTML = '';
+  saStudentPageHideAccessUntilForm();
+  saStudentPageSetBody('Wird geladen…');
+
+  const result = await saFamilienCallManageAccount({ action: 'get_student_page_access', studentId });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saStudentPageSetBody('<div class="sa-family-detail-error">Fehler beim Laden des Student-Page-Zugangs.</div>');
+    return;
+  }
+
+  window._saStudentPageAccessStatus = result.data;
+  renderStudentPageAccessSection(result.data);
+}
+
+// Reine Darstellungs-Logik: bildet NUR bereits vom Resolver berechnete Felder
+// (manualDisabled/subscriptionManaged/isExpired/warningActive) auf einen
+// Badge-Text ab — berechnet KEINE eigene Zugriffs-Regel und rechnet NICHT
+// mit Datumswerten. familySubscriptionAllowsAccess/trainerSubscriptionAllowsAccess
+// werden unten 1:1 aus der Server-Antwort übernommen, nie neu hergeleitet.
+function renderStudentPageAccessSection(data) {
+  let badgeClass = 'sa-family-status-active';
+  let badgeText  = 'Aktiv';
+  if (data.manualDisabled) {
+    badgeClass = 'sa-family-status-blocked';
+    badgeText  = 'Manuell deaktiviert';
+  } else if (!data.subscriptionManaged) {
+    badgeClass = 'sa-family-status-none';
+    badgeText  = 'Unbegrenzt (nicht verwaltet)';
+  } else if (data.isExpired) {
+    badgeClass = 'sa-family-status-blocked';
+    badgeText  = 'Abgelaufen';
+  } else if (data.warningActive) {
+    badgeClass = 'sa-family-status-warning';
+    badgeText  = 'Läuft bald ab';
+  }
+
+  let remainingText = '';
+  if (data.subscriptionManaged) {
+    if (data.isExpired) {
+      remainingText = `Abgelaufen vor ${Math.abs(data.daysRemaining)} Tagen`;
+    } else if (data.daysRemaining === 0) {
+      remainingText = 'Läuft heute ab';
+    } else {
+      remainingText = `Noch ${data.daysRemaining} Tage gültig`;
+    }
+  }
+
+  const familyBadge = data.familySubscriptionAllowsAccess
+    ? '<span class="sa-family-status-badge sa-family-status-active">Zugang erlaubt</span>'
+    : '<span class="sa-family-status-badge sa-family-status-blocked">Zugang gesperrt</span>';
+  const trainerBadge = data.trainerSubscriptionAllowsAccess
+    ? '<span class="sa-family-status-badge sa-family-status-active">Zugang erlaubt</span>'
+    : '<span class="sa-family-status-badge sa-family-status-blocked">Zugang gesperrt</span>';
+
+  saStudentPageSetBody(`
+    <div class="sa-family-status-badge ${badgeClass}">${badgeText}</div>
+    <div class="sa-family-detail-grid">
+      <div><span class="sa-family-detail-label">Ablaufdatum</span><span>${data.accessUntil ? formatDateDE(data.accessUntil) : 'Unbegrenzt'}</span></div>
+      <div><span class="sa-family-detail-label">Verbleibende Zeit</span><span>${remainingText ? escapeHtml(remainingText) : '-'}</span></div>
+      <div><span class="sa-family-detail-label">Familie / Schüler</span>${familyBadge}</div>
+      <div><span class="sa-family-detail-label">Trainer</span>${trainerBadge}</div>
+    </div>
+    <p class="small">
+      „Student Page manuell deaktivieren" sperrt die Student-Seite dieses Schülers sofort für Familie/Schüler UND
+      Trainer — unabhängig vom Ablaufdatum. „Trainer-Zugriff nach Ablauf erlauben" wirkt nur NACH Ablauf des
+      Zugangszeitraums und hat NIE Vorrang vor einer manuellen Deaktivierung.
+    </p>
+  `);
+
+  const disableBtn = data.manualDisabled
+    ? '<button class="add-trainer-save" onclick="saStudentPageToggleManualDisabled(false)">🔓 Student Page wieder aktivieren</button>'
+    : '<button class="add-trainer-save" onclick="saStudentPageToggleManualDisabled(true)">🔒 Student Page manuell deaktivieren</button>';
+
+  const trainerExceptionBtn = data.trainerAccessAfterExpiry
+    ? '<button class="add-trainer-save" onclick="saStudentPageToggleTrainerException(false)">👨‍🏫 Trainer-Ausnahme entfernen</button>'
+    : '<button class="add-trainer-save" onclick="saStudentPageToggleTrainerException(true)">👨‍🏫 Trainer-Zugriff nach Ablauf erlauben</button>';
+
+  const removeDateBtn = data.accessUntil
+    ? '<button class="add-trainer-save" onclick="saStudentPageRemoveAccessUntil()">♾️ Unbegrenzten Zugang wiederherstellen</button>'
+    : '';
+
+  document.getElementById('saStudentPageAccessActionsBar').innerHTML = `
+    <button class="add-trainer-save" onclick="saStudentPageShowAccessUntilForm()">📅 Ablaufdatum ändern</button>
+    ${removeDateBtn}
+    ${disableBtn}
+    ${trainerExceptionBtn}
+  `;
+}
+
+function saStudentPageShowAccessUntilForm() {
+  const formEl = document.getElementById('saStudentPageFormAccessUntil');
+  if (!formEl) return;
+  formEl.classList.remove('hidden');
+  const input = document.getElementById('saStudentPageAccessUntilInput');
+  if (input) input.value = window._saStudentPageAccessStatus?.accessUntil || '';
+}
+
+function saStudentPageHideAccessUntilForm() {
+  document.getElementById('saStudentPageFormAccessUntil')?.classList.add('hidden');
+}
+
+async function saStudentPageSubmitAccessUntil() {
+  const input = document.getElementById('saStudentPageAccessUntilInput');
+  const value = input ? input.value : '';
+  if (!value) {
+    saStudentPageShowMessage('Bitte ein Ablaufdatum wählen.', true);
+    return;
+  }
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_access_until', studentId, accessUntil: value });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  saStudentPageHideAccessUntilForm();
+  await loadStudentPageAccessSection(studentId);
+  saStudentPageShowMessage('Ablaufdatum gespeichert.', false);
+}
+
+async function saStudentPageRemoveAccessUntil() {
+  if (!confirm('Ablaufdatum wirklich entfernen? Der Zugang wird dadurch unbegrenzt (nicht verwaltet).')) return;
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_access_until', studentId, accessUntil: null });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  await loadStudentPageAccessSection(studentId);
+  saStudentPageShowMessage('Zugang ist jetzt unbegrenzt.', false);
+}
+
+async function saStudentPageToggleManualDisabled(disable) {
+  if (disable) {
+    const confirmMsg = 'Student Page für diesen Schüler wirklich manuell deaktivieren? Familie/Schüler UND Trainer ' +
+      'verlieren dadurch sofort den Zugriff auf die Student-Seite dieses Schülers — unabhängig vom Ablaufdatum.';
+    if (!confirm(confirmMsg)) return;
+  }
+
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_manual_disabled', studentId, manualDisabled: disable });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  await loadStudentPageAccessSection(studentId);
+  saStudentPageShowMessage(disable ? 'Student Page wurde manuell deaktiviert.' : 'Student Page wurde wieder aktiviert.', false);
+}
+
+async function saStudentPageToggleTrainerException(enable) {
+  const studentId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'set_trainer_exception', studentId, trainerAccessAfterExpiry: enable });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  await loadStudentPageAccessSection(studentId);
+  saStudentPageShowMessage(enable ? 'Trainer-Ausnahme aktiviert.' : 'Trainer-Ausnahme entfernt.', false);
 }
 
 function saFamilienShowCreateForm() {

@@ -3931,6 +3931,37 @@ Abbrechen
 
       <div id="saFamilienDetailStudentInfo" class="sa-family-detail-grid sa-family-student-info"></div>
 
+      <!-- STUDENT PAGE SUBSCRIPTION (Phase 4) — bewusst EIGENSTÄNDIG, unabhängig
+           vom Familienzugang-Block darunter (#saFamilienDetailBody/
+           #saFamilienActionsBar): Student Page Zugang existiert unabhängig davon,
+           ob ein Familienzugang eingerichtet ist (siehe manage-family-account,
+           Phase 3). Wird von loadStudentPageAccessSection() befüllt, unabhängig
+           vom get_status-Ergebnis. -->
+      <div id="saStudentPageAccessSection" class="add-trainer-modern-card sa-student-page-card">
+        <div class="add-trainer-section-title">
+          <div class="add-trainer-section-icon">🎓</div>
+          <div><h3>Student-Page-Zugang</h3></div>
+        </div>
+        <div id="saStudentPageAccessBody">Wird geladen…</div>
+        <div id="saStudentPageAccessActionsBar" class="sa-family-actions-bar"></div>
+        <div id="saStudentPageAccessMessage" class="trainer-edit-message hidden"></div>
+
+        <!-- Ablaufdatum ändern — eigene Inline-Form, unabhängig von
+             saFamilienHideAllDetailForms() (gehört nicht zum Familienzugang). -->
+        <div id="saStudentPageFormAccessUntil" class="sa-student-page-subform hidden">
+          <div class="add-trainer-form-grid">
+            <div class="add-trainer-field">
+              <label>Neues Ablaufdatum</label>
+              <input id="saStudentPageAccessUntilInput" type="date">
+            </div>
+          </div>
+          <div class="add-trainer-buttons">
+            <button class="add-trainer-save" onclick="saStudentPageSubmitAccessUntil()">✓ Ablaufdatum speichern</button>
+            <button class="sa-btn-cancel" onclick="saStudentPageHideAccessUntilForm()">Abbrechen</button>
+          </div>
+        </div>
+      </div>
+
       <div id="saFamilienDetailBody"></div>
       <div id="saFamilienActionsBar" class="sa-family-actions-bar"></div>
       <div id="saFamilienDetailActionMessage" class="trainer-edit-message hidden"></div>

@@ -16683,6 +16683,30 @@ body.sa-standalone-mode #clubPaymentWarning {
   color: #e57373;
 }
 
+/* STUDENT PAGE SUBSCRIPTION (Phase 4) — "Läuft bald ab", vierte Badge-Variante
+   neben den drei bestehenden (-none/-active/-blocked) oben. */
+.sa-family-status-warning {
+  background: rgba(255,193,7,0.18);
+  color: #ffca28;
+}
+
+/* Eigenständige Karte "Student-Page-Zugang" — nutzt bewusst dieselbe
+   .add-trainer-modern-card-Optik wie die anderen Formulare in dieser Modal
+   (Login/Kontakt-E-Mail/Passwort) statt eines neuen Designs: der weiße Karten-
+   Look hebt sich klar vom dunklen Familienzugang-Block darüber/darunter ab —
+   genau die geforderte visuelle Trennung, ohne ein zweites Designsystem. Der
+   goldene Akzentrand ist derselbe Farbton wie die übrigen Admin-Akzente
+   (siehe #addTrainerScreen .add-trainer-modern-card, #d6a900). */
+.sa-student-page-card {
+  border-left: 3px solid #d6a900;
+}
+
+.sa-student-page-subform {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
 .sa-family-detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

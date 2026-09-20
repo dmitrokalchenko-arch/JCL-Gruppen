@@ -18235,6 +18235,42 @@ async function saFamilienRemoveChild(removeStudentId) {
     return;
   }
 
+  // HOTFIX (Anchor-Child-Bug) — wenn genau das gerade entfernte Kind der
+  // Anchor-studentId war, hat DESSEN family_students-Verknüpfung jetzt
+  // status='suspended'. Ein anschließender refreshFamilyState() würde mit
+  // diesem protokten Anchor erneut get_family_students aufrufen — das
+  // Backend kann family_id dann NICHT mehr auflösen (Auflösung verlangt
+  // eine ACTIVE Verknüpfung genau dieses studentId, siehe manage-family-
+  // account/index.ts), antwortet mit family_access_not_set_up (404), und
+  // die UI zeigt fälschlich "keine Kinder" an, obwohl die übrigen Kinder in
+  // der Datenbank weiterhin aktiv sind. Die Response von remove_family_student
+  // enthält bereits die aktuelle, POST-Removal aktive Kinderliste
+  // (result.data.students) — genau daraus wird hier der neue Anchor gewählt,
+  // NIEMALS aus einer vom Client mitgeschickten family_id.
+  const removedId = Number(removeStudentId);
+  if (removedId === anchorId) {
+    const survivors = (result.data && Array.isArray(result.data.students)) ? result.data.students : [];
+    const survivor = survivors.find(c => Number(c.student_id) !== removedId) || survivors[0];
+    if (!survivor || survivor.student_id == null) {
+      // Sollte bei erfolgreichem Remove nie eintreten (Invariante B/
+      // cannot_remove_last_student hätte den Request sonst schon
+      // abgelehnt) — trotzdem defensiv: KEIN Refresh über den jetzt
+      // ungültigen Anchor, KEIN neuer Backend-Contract, KEINE family_id
+      // vom Client. Nur eine ehrliche Fehlermeldung statt einer
+      // irreführenden "keine Kinder"-Anzeige.
+      saFamilienShowActionMessage(
+        'Kind wurde entfernt, aber der Familienkonto-Status konnte nicht aktualisiert werden. Bitte Familienkonto erneut öffnen.',
+        true
+      );
+      return;
+    }
+    // Nur die id wird umgeschaltet — club_id/vorname/nachname etc. bleiben
+    // unverändert (nicht benötigt: alle Kinder eines Familienkontos teilen
+    // denselben club_id, siehe trg_family_students_club_match; der Name
+    // wird im Header ohnehin nicht mehr angezeigt, siehe renderSAFamilienDetailStatus).
+    window._saFamilienDetailStudent.id = Number(survivor.student_id);
+  }
+
   await refreshFamilyState();
   saFamilienShowActionMessage('Kind wurde aus dem Familienkonto entfernt.', false);
 }

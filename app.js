@@ -17544,16 +17544,17 @@ function renderStudentPageCardsRow() {
         </div>
         <div id="saStudentPageAccessBody-${sid}">Wird geladen…</div>
         <div id="saStudentPageFormAccessUntil-${sid}" class="sa-student-page-subform hidden">
+          <div class="sa-settings-subheading sa-subscription-heading">Enddatum der Student-Page</div>
           <div class="add-trainer-form-grid">
             <div class="add-trainer-field">
-              <label>Neues Ablaufdatum</label>
+              <label>Enddatum</label>
               <input id="saStudentPageAccessUntilInput-${sid}" type="date">
             </div>
           </div>
           <div class="add-trainer-buttons">
             <button class="add-trainer-save" onclick="saStudentPageSubmitAccessUntil(${sid})">✓ Speichern</button>
+            <button class="sa-family-manage-btn" onclick="saStudentPageRemoveAccessUntil(${sid})">♾️ Unbegrenzt</button>
             <button class="sa-btn-cancel" onclick="saStudentPageHideAccessUntilForm(${sid})">Abbrechen</button>
-            <button class="sa-family-manage-btn" onclick="saStudentPageRemoveAccessUntil(${sid})">♾️ Unbegrenzt setzen</button>
           </div>
         </div>
         <div id="saStudentPageAccessMessage-${sid}" class="trainer-edit-message hidden"></div>
@@ -17620,6 +17621,107 @@ async function loadStudentPageAccessSection(studentId) {
 // aussehenden grünen Buttons. Kein Feld/keine Aktion wurde entfernt, nur
 // neu angeordnet — dieselben 3 Backend-Actions (set_access_until/
 // set_manual_disabled/set_trainer_exception), derselbe Re-read-Fluss.
+
+// ══════════════════════════════════════════════════════════════════════
+// ABONNEMENT — kalendergenaue Restlaufzeit (Phase 4e). NUR für die Anzeige
+// im ABONNEMENT-Block verwendet, ändert NICHTS an den vom Server bereits
+// gelieferten Feldern (accessUntil/isExpired/daysRemaining/warningActive
+// bleiben unverändert die Quelle für Badge/Verzweigung, siehe
+// renderStudentPageAccessSection). Absichtlich NICHT wie das bestehende
+// getTrainingDurationText() weiter oben in dieser Datei implementiert:
+// jene Funktion baut new Date(dateValue) aus einem reinen 'YYYY-MM-DD'-
+// String (wird von JS als UTC-Mitternacht geparst) und liest dann
+// .getFullYear()/.getMonth()/.getDate() — also LOKALE Komponenten — davon
+// zurück. Je nach Browser-Zeitzone des Super Admin kann das den Tag um
+// eins verschieben (genau der Off-by-one-Fehler, den diese Aufgabe explizit
+// vermeiden soll). Die Funktionen hier arbeiten stattdessen ausschließlich
+// mit reinen {y,m,d}-Komponenten — nie mit einem Date-Objekt, das für
+// einen Vergleich/eine Differenz interpretiert wird.
+// ══════════════════════════════════════════════════════════════════════
+
+// Heutiges Kalenderdatum in Europe/Berlin als 'YYYY-MM-DD' — dieselbe
+// Zeitzone, die get_student_page_access serverseitig für
+// daysRemaining/isExpired verwendet (v_today := (now() at time zone
+// 'Europe/Berlin')::date, siehe dortige SQL-Funktion). Intl.DateTimeFormat
+// ist Browser-Standard, kein neues Package. Die 'en-CA'-Locale liefert
+// zuverlässig ISO-Reihenfolge (YYYY-MM-DD).
+function saGetTodayBerlinDateString() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date());
+}
+
+// Parst 'YYYY-MM-DD' in reine Ganzzahl-Komponenten {y, m, d} (m: 1-12) —
+// kein Date-Objekt, keine Zeitzone im Spiel.
+function saParseDateOnly(str) {
+  const [y, m, d] = str.split('-').map(Number);
+  return { y, m, d };
+}
+
+// Anzahl Tage im Kalendermonat (y, m) — m: 1-12. new Date(y, m, 0) ist reine
+// Kalender-Rollover-Arithmetik (Tag 0 eines Monats = letzter Tag des
+// Vormonats, Standard-JS-Verhalten), niemals ein Zeitpunkt/eine Zeitzone.
+function saDaysInMonth(y, m) {
+  return new Date(y, m, 0).getDate();
+}
+
+// "Epochentag" einer {y,m,d}-Kalenderdatumsangabe — Date.UTC dient hier
+// ausschließlich als neutrale Rechenmaschine für Kalenderarithmetik (immer
+// UTC für BEIDE verglichenen Daten, daher kürzt sich jede Zeitzone heraus),
+// NICHT als Aussage über eine echte Uhrzeit/einen Zeitpunkt.
+function saEpochDay(ymd) {
+  return Date.UTC(ymd.y, ymd.m - 1, ymd.d) / 86400000;
+}
+
+// {y,m,d} + n Kalendermonate, mit Tages-Clamping auf das Monatsende, falls
+// der Zielmonat kürzer ist (z.B. 31. Januar + 1 Monat -> 28./29. Februar,
+// nicht "3. März"). Reine {y,m,d}-Arithmetik.
+function saAddMonthsClamped(ymd, n) {
+  const totalM = (ymd.m - 1) + n;
+  const y = ymd.y + Math.floor(totalM / 12);
+  const m = ((totalM % 12) + 12) % 12 + 1;
+  const d = Math.min(ymd.d, saDaysInMonth(y, m));
+  return { y, m, d };
+}
+
+// Kalendergenaue Differenz von "from" bis "to" (from <= to als Kalenderdatum
+// vorausgesetzt) in vollen Jahren/Monaten/Tagen. Sucht die größte Anzahl
+// Kalendermonate n, die man "from" hinzufügen kann (mit Monatsende-Clamping,
+// siehe saAddMonthsClamped), ohne "to" zu überschreiten — der Rest bis "to"
+// wird als reine Tagesanzahl über Epochentage ausgedrückt (saEpochDay),
+// niemals über eine feste Monats-/Jahreslänge (kein days/30, kein
+// days/365). Die Schleife (statt eines einzelnen "if") ist nötig, weil ein
+// einzelner Monats-Übertrag bei einem Start am 31. eines Monats in einen
+// kürzeren Zielmonat (z.B. 31. Januar -> 1. März) NICHT ausreicht, um
+// wieder auf ein gültiges "vor oder gleich to"-Datum zu kommen — mit einer
+// Schleife funktioniert das für jede Monats-/Jahreslänge, jeden Schaltjahr-
+// Fall (Februar) und jeden Jahreswechsel korrekt.
+function saCalendarDiffYMD(from, to) {
+  const toEpoch = saEpochDay(to);
+  let totalMonths = (to.y - from.y) * 12 + (to.m - from.m);
+  let anchor = saAddMonthsClamped(from, totalMonths);
+  while (saEpochDay(anchor) > toEpoch) {
+    totalMonths -= 1;
+    anchor = saAddMonthsClamped(from, totalMonths);
+  }
+  const days = toEpoch - saEpochDay(anchor);
+  const years = Math.floor(totalMonths / 12);
+  const months = totalMonths - years * 12;
+  return { years, months, days };
+}
+
+// Formatiert {years, months, days} zu deutschem Text mit korrektem
+// Singular/Plural ("1 Jahr" / "2 Jahre", "1 Monat" / "2 Monate", "1 Tag" /
+// "2 Tage") und lässt Null-Komponenten weg ("5 Monate 10 Tage" statt
+// "0 Jahre 5 Monate 10 Tage"). Liegt die Restdauer unter einem vollen
+// Monat, sind years/months automatisch 0 — dann bleibt nur "N Tage" übrig,
+// ganz ohne Sonderfall-Code.
+function saFormatCalendarDuration({ years, months, days }) {
+  const parts = [];
+  if (years > 0) parts.push(years === 1 ? '1 Jahr' : `${years} Jahre`);
+  if (months > 0) parts.push(months === 1 ? '1 Monat' : `${months} Monate`);
+  if (days > 0 || parts.length === 0) parts.push(days === 1 ? '1 Tag' : `${days} Tage`);
+  return parts.join(' ');
+}
+
 function renderStudentPageAccessSection(studentId, data) {
   let badgeClass = 'sa-family-status-active';
   let badgeText  = 'Aktiv';
@@ -17640,35 +17742,43 @@ function renderStudentPageAccessSection(studentId, data) {
   badgeEl.className = `sa-family-status-badge ${badgeClass}`;
   badgeEl.textContent = '● ' + badgeText;
 
-  // ABONNEMENT-Block (Punkt 1-8 der Aufgabe) — reine Darstellung, KEINE neue
-  // Berechnung: daysRemaining/isExpired/warningActive kommen bereits
-  // fertig berechnet vom Server (get_student_page_access, siehe
-  // JKL_STUDENT_PARENT_PORTAL/supabase/migrations/...create_student_page_
-  // access_foundation.sql) — dort läuft die Datums-Arithmetik bereits
-  // date-only in Europe/Berlin (v_today := (now() at time zone
-  // 'Europe/Berlin')::date; v_days_remaining := v_access_until - v_today),
-  // exakt die geforderte timezone-sichere Berechnung. Hier wird NICHTS neu
-  // aus einem Date-Objekt berechnet — nur data.daysRemaining/isExpired
-  // ausgelesen und in Text übersetzt (inkl. korrekter Singular/Plural-Form).
-  let indicatorText;
-  let indicatorTone;
-  let subscriptionHint = '';
+  // ABONNEMENT-Block (Phase 4e) — reine Darstellung. accessUntil/isExpired/
+  // daysRemaining/warningActive kommen unverändert vom Server (siehe
+  // Kommentar am Dateianfang dieses Blocks weiter oben); die einzige NEUE
+  // Berechnung ist die kalendergenaue Jahre/Monate/Tage-Zerlegung
+  // (saCalendarDiffYMD/saFormatCalendarDuration oben), rein auf Basis von
+  // data.accessUntil (Datum) und dem heutigen Kalendertag in Europe/Berlin
+  // — niemals days/30 oder days/365.
+  let periodLabel;
+  let periodValueHtml;
+  let extraStatusRowHtml = '';
+  const todayStr = saGetTodayBerlinDateString();
+
   if (!data.subscriptionManaged) {
-    indicatorText = 'Keine zeitliche Begrenzung';
-    indicatorTone = 'neutral';
+    periodLabel = 'Restlaufzeit';
+    periodValueHtml = 'Keine zeitliche Begrenzung';
   } else if (data.isExpired) {
-    indicatorText = 'Abgelaufen';
-    indicatorTone = 'danger';
-    const daysAgo = Math.abs(data.daysRemaining);
-    const hintText = daysAgo === 1 ? 'Seit 1 Tag abgelaufen' : `Seit ${daysAgo} Tagen abgelaufen`;
-    subscriptionHint = `<div class="sa-subscription-hint">${escapeHtml(hintText)}</div>`;
+    const elapsed = saCalendarDiffYMD(saParseDateOnly(data.accessUntil), saParseDateOnly(todayStr));
+    extraStatusRowHtml = `
+      <div class="sa-settings-row">
+        <div class="sa-settings-row-main">
+          <span class="sa-settings-row-label">Status</span>
+          <span class="sa-settings-row-value sa-subscription-value--danger">Abgelaufen</span>
+        </div>
+      </div>
+    `;
+    periodLabel = 'Abgelaufen seit';
+    periodValueHtml = escapeHtml(saFormatCalendarDuration(elapsed));
   } else if (data.daysRemaining === 0) {
-    indicatorText = 'Läuft heute ab';
-    indicatorTone = 'warning';
+    periodLabel = 'Restlaufzeit';
+    periodValueHtml = 'Läuft heute ab';
   } else {
-    indicatorText = data.daysRemaining === 1 ? 'Noch 1 Tag' : `Noch ${data.daysRemaining} Tage`;
-    indicatorTone = data.warningActive ? 'warning' : 'positive';
+    const remaining = saCalendarDiffYMD(saParseDateOnly(todayStr), saParseDateOnly(data.accessUntil));
+    periodLabel = 'Restlaufzeit';
+    periodValueHtml = escapeHtml(saFormatCalendarDuration(remaining));
   }
+
+  const endDateBtnLabel = data.accessUntil ? 'Enddatum ändern' : 'Enddatum festlegen';
 
   const subscriptionBlock = `
     <div class="sa-subscription-block">
@@ -17676,16 +17786,18 @@ function renderStudentPageAccessSection(studentId, data) {
       <div class="sa-settings-row">
         <div class="sa-settings-row-main">
           <span class="sa-settings-row-label">Gültig bis</span>
-          <span class="sa-settings-row-value">
-            ${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}
-            <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm(${studentId})">Ändern</button>
-          </span>
+          <span class="sa-settings-row-value">${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}</span>
         </div>
       </div>
-      <div class="sa-subscription-indicator sa-subscription-indicator--${indicatorTone}">
-        <span class="sa-subscription-dot"></span>${escapeHtml(indicatorText)}
+      ${extraStatusRowHtml}
+      <div class="sa-settings-row">
+        <div class="sa-settings-row-main">
+          <span class="sa-settings-row-label">${escapeHtml(periodLabel)}</span>
+          <span class="sa-settings-row-value">${periodValueHtml}</span>
+        </div>
       </div>
-      ${subscriptionHint}
+      <button class="sa-family-manage-btn sa-family-manage-btn--block sa-subscription-end-date-btn"
+        onclick="saStudentPageShowAccessUntilForm(${studentId})">${escapeHtml(endDateBtnLabel)}</button>
     </div>
   `;
 

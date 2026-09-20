@@ -16777,57 +16777,33 @@ body.sa-standalone-mode #clubPaymentWarning {
   margin: 14px 0 2px;
 }
 
-/* ABONNEMENT-Block (oberster Bereich jeder Student-Page-Karte, ersetzt die
-   frühere unauffällige "Ablauf"-Zeile) — organischer Teil der bestehenden
-   dunklen Karte, kein eigenes Card-in-Card: gleiche .sa-settings-row/
-   .sa-settings-subheading-Bausteine wie der Rest der Karte, nur ein
-   dezenter Trennstrich unten grenzt ihn vom ZUGRIFF-Bereich darunter ab.
-   .sa-subscription-heading ist "Abonnement" als erstes Element der Karte —
-   der obere margin von .sa-settings-subheading (14px) bleibt bewusst
-   erhalten (Abstand zum Karten-Padding), keine gesonderte Regel nötig. */
+/* ABONNEMENT-Block (oberster Bereich jeder Student-Page-Karte, Phase 4e) —
+   organischer Teil der bestehenden dunklen Karte, kein eigenes Card-in-
+   Card: dieselben .sa-settings-row/.sa-settings-subheading-Bausteine wie
+   der Rest der Karte, nur ein dezenter Trennstrich unten grenzt ihn vom
+   ZUGRIFF-Bereich darunter ab. .sa-subscription-heading ist "Abonnement"
+   als erstes Element der Karte — der obere margin von
+   .sa-settings-subheading (14px) bleibt bewusst erhalten (Abstand zum
+   Karten-Padding), keine gesonderte Regel nötig. */
 .sa-subscription-block {
   padding-bottom: 12px;
   margin-bottom: 12px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
-/* Kompakter Indikator (Punkt Farbe + Text) unter der "Gültig bis"-Zeile —
-   Farbtöne sind exakt dieselben, die die Karte bereits für den Status-
-   Badge verwendet (sa-family-status-active/-warning/-blocked), keine neuen
-   Farben eingeführt. */
-.sa-subscription-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  margin-top: 8px;
+/* "Abgelaufen"-Statuswert — derselbe Rotton wie der bestehende Status-Badge
+   (sa-family-status-blocked), keine neue Farbe eingeführt. */
+.sa-subscription-value--danger {
+  color: #e57373;
+  font-weight: 700;
 }
 
-.sa-subscription-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.sa-subscription-indicator--neutral { color: rgba(255,255,255,0.5); }
-.sa-subscription-indicator--neutral .sa-subscription-dot { background: rgba(255,255,255,0.4); }
-
-.sa-subscription-indicator--positive { color: #66bb6a; }
-.sa-subscription-indicator--positive .sa-subscription-dot { background: #66bb6a; }
-
-.sa-subscription-indicator--warning { color: #ffca28; }
-.sa-subscription-indicator--warning .sa-subscription-dot { background: #ffca28; }
-
-.sa-subscription-indicator--danger { color: #e57373; }
-.sa-subscription-indicator--danger .sa-subscription-dot { background: #e57373; }
-
-.sa-subscription-hint {
-  font-size: 11px;
-  color: rgba(255,255,255,0.4);
-  margin-top: 3px;
-  margin-left: 12px;
+/* "Enddatum festlegen/ändern" — deutlich sichtbarer Button statt des
+   früheren kleinen "Ändern"-Links, aber dieselbe bestehende
+   .sa-family-manage-btn--block-Optik wie "Vorschau" weiter unten in der
+   Karte (kein neuer Button-Stil). */
+.sa-subscription-end-date-btn {
+  margin-top: 10px;
 }
 
 .sa-settings-toggle input[type="checkbox"] {

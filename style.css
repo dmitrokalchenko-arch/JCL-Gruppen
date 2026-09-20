@@ -16644,14 +16644,18 @@ body.sa-standalone-mode #clubPaymentWarning {
   background: rgba(212,175,55,0.24);
 }
 
-/* MULTI-CHILD FAMILIENKONTO UI (Phase 4) — von 640px auf 1040px verbreitert,
-   damit links das Familienkonto (fixe 300px-Spalte) UND rechts mehrere
-   Student-Page-Karten nebeneinander Platz haben, bevor die Kartenreihe
-   selbst horizontal zu scrollen beginnt (siehe .sa-student-page-cards-row
-   weiter unten). Unter 768px wieder auf volle verfügbare Breite reduziert
-   (siehe Media Query weiter unten in dieser Datei). */
+/* VISUAL REDESIGN (Phase 4b) — Panel schmiegt sich jetzt an seinen Inhalt
+   an (fit-content) statt immer fix 1040px breit zu sein: bei 1 Kind bleibt
+   dadurch KEIN riesiger leerer dunkler Bereich rechts mehr übrig, bei vielen
+   Kindern deckelt max-width weiterhin und die Kartenreihe scrollt selbst
+   horizontal (siehe .sa-student-page-cards-row weiter unten). min-width
+   verhindert ein zu schmales Panel, solange noch keine Karten gerendert
+   sind (Ladezustand). Unter 768px wieder auf volle verfügbare Breite
+   reduziert (siehe Media Query weiter unten in dieser Datei). */
 .sa-family-detail-panel {
-  width: min(1040px, calc(100vw - 32px));
+  width: fit-content;
+  max-width: min(1200px, calc(100vw - 32px));
+  min-width: min(700px, calc(100vw - 32px));
 }
 
 .sa-family-detail-loading,
@@ -16696,37 +16700,34 @@ body.sa-standalone-mode #clubPaymentWarning {
   color: #ffca28;
 }
 
-/* Eigenständige Karte "Student-Page-Zugang" — nutzt bewusst dieselbe
-   .add-trainer-modern-card-Optik wie die anderen Formulare in dieser Modal
-   (Login/Kontakt-E-Mail/Passwort) statt eines neuen Designs: der weiße Karten-
-   Look hebt sich klar vom dunklen Familienzugang-Block darüber/darunter ab —
-   genau die geforderte visuelle Trennung, ohne ein zweites Designsystem. Der
-   goldene Akzentrand ist derselbe Farbton wie die übrigen Admin-Akzente
-   (siehe #addTrainerScreen .add-trainer-modern-card, #d6a900). */
+/* VISUAL REDESIGN (Phase 4b) — die Karte gehört jetzt sichtbar zum selben
+   dunklen Super-Admin-Interface wie die Familienkonto-Spalte (vorher: weiße
+   .add-trainer-modern-card, wirkte wie eine zweite, fremde App). Heller
+   Kartenhintergrund als dunklerer Ton relativ zum Modal-Panel (#0f1923),
+   dünner goldener Akzentrand rundum statt nur links. box-sizing:border-box
+   ist Pflicht (siehe .sa-student-page-cards-row .sa-student-page-card
+   weiter unten, das die feste Breite setzt) — sonst würde Padding die
+   Breite zusätzlich aufblähen (genau der Mobile-Overflow-Bug aus Phase 4a). */
 .sa-student-page-card {
-  border-left: 3px solid #d6a900;
-}
-
-/* UI-REFINEMENT — Titelzeile bekommt zusätzlich den Status-Badge rechts
-   (#saStudentPageStatusBadge). .add-trainer-section-title ist eine global
-   geteilte Klasse (Login/Kontakt-E-Mail/Passwort-Formulare etc.) mit fixem
-   2-Spalten-Grid — hier NICHT global verändert, sondern nur innerhalb
-   dieser einen Karte um eine dritte Spalte erweitert (Descendant-Selektor,
-   kein Risiko für die anderen Verwendungen). */
-.sa-student-page-card .add-trainer-section-title {
-  grid-template-columns: 72px 1fr auto;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(212,175,55,0.28);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-sizing: border-box;
 }
 
 /* Kompakte Settings-Zeilen (ersetzen die früheren, gleich großen grünen
    Vollbreite-Buttons) — eine Zeile pro Einstellung, Label links, Wert/
    Steuerelement rechts, optionaler kurzer Hinweistext darunter statt eines
-   langen Erklär-Absatzes. */
+   langen Erklär-Absatzes. Farben hier (und in den Regeln darunter) sind auf
+   den dunklen Kartenhintergrund oben abgestimmt (VISUAL REDESIGN Phase 4b —
+   vorher dunkler Text für eine weiße Karte). */
 .sa-settings-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(15,23,42,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .sa-settings-row:last-child { border-bottom: none; }
 
@@ -16740,7 +16741,7 @@ body.sa-standalone-mode #clubPaymentWarning {
 .sa-settings-row-label {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: rgba(255,255,255,0.6);
 }
 
 .sa-settings-row-value {
@@ -16748,13 +16749,13 @@ body.sa-standalone-mode #clubPaymentWarning {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #111827;
+  color: #f0f0f0;
   white-space: nowrap;
 }
 
 .sa-settings-hint {
   font-size: 11px;
-  color: #6b7280;
+  color: rgba(255,255,255,0.4);
   line-height: 1.4;
 }
 
@@ -16763,7 +16764,7 @@ body.sa-standalone-mode #clubPaymentWarning {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #9ca3af;
+  color: rgba(255,255,255,0.4);
   margin: 14px 0 2px;
 }
 
@@ -16777,7 +16778,25 @@ body.sa-standalone-mode #clubPaymentWarning {
 .sa-student-page-subform {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Sekundäre Karten-Aktion (Vorschau) — eigene Zone ZWISCHEN den Settings-
+   Zeilen und der Danger Zone, damit "Vorschau" (harmlos, gold) nicht mit
+   "Student Page manuell sperren"/"Kind entfernen" (beide Danger) optisch
+   verschmilzt. */
+.sa-student-page-secondary-actions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.sa-family-manage-btn--block {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 8px 12px;
 }
 
 /* Danger Zone — "Student Page manuell sperren" muss sich klar von den
@@ -16787,7 +16806,35 @@ body.sa-standalone-mode #clubPaymentWarning {
 .sa-student-page-danger-zone {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+/* "Kind aus Familienkonto entfernen" — VISUAL REDESIGN (Phase 4b, Punkt 12):
+   bewusst NICHT derselbe solide rote Block-Stil wie "Student Page manuell
+   sperren" (.sa-btn-danger) — beide Aktionen sollen sich nicht wie dieselbe
+   anfühlen. Eigene, abgesetzte Zone ganz unten in der Karte, dezenter
+   Outline-Stil statt voller roter Fläche. */
+.sa-student-page-remove-zone {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.sa-btn-danger-outline {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(229,115,115,0.45);
+  color: #e57373;
+  transition: background 0.2s;
+}
+.sa-btn-danger-outline:hover {
+  background: rgba(229,115,115,0.12);
 }
 
 .sa-btn-danger,
@@ -16829,6 +16876,148 @@ body.sa-standalone-mode #clubPaymentWarning {
   margin: 4px 0 10px;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   VISUAL REDESIGN (Phase 4b) — Workspace-Header (ersetzt den früheren
+   Einzelschüler-Titel). Zeigt "Familienkonto" + darunter den Familienlogin
+   (von renderSAFamilienDetailStatus per #saFamilienDetailName befüllt).
+   ══════════════════════════════════════════════════════════════════════ */
+.sa-family-workspace-header {
+  align-items: center;
+}
+
+.sa-family-workspace-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sa-family-workspace-header .sa-modal-title {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 16px;
+}
+
+.sa-family-workspace-subtitle {
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Kompakte Info-Zeilen für die Familienkonto-Spalte (ersetzt die frühere
+   2-Spalten-.sa-family-detail-grid nur HIER — .sa-family-detail-grid selbst
+   bleibt unverändert, wird noch an anderer Stelle im selben Modal genutzt,
+   siehe #saFamilienCreateSuccess). Label über Wert, eine Zeile pro Feld —
+   deutlich weniger vertikaler Platzverbrauch als die vorherige Grid-Optik. */
+.sa-family-info-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.sa-family-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.sa-family-info-row:last-child { border-bottom: none; }
+
+.sa-family-info-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.4);
+}
+
+.sa-family-info-value {
+  font-size: 13px;
+  color: #e8e8e8;
+}
+
+/* Kompakte, neutrale Account-Actions (ersetzt die früheren großen, alle
+   gleich grünen .add-trainer-save-Buttons — VISUAL REDESIGN Phase 4b, Punkt
+   6/12: grün ist ab jetzt reserviert für positive Status/primäre positive
+   Aktion, rot für Danger, gold für den JCL-Akzent/Preview. Normale Account-
+   Aktionen (Login/E-Mail/Passwort/Recovery/Preview) sind neutral/dunkel. */
+/* width:100% ist hier notwendig: #saFamilienActionsBar (.sa-family-actions-bar)
+   ist selbst ein flex-wrap-Container (bereits bestehende, globale Klasse),
+   in dem .sa-account-actions/.sa-account-actions-divider als eigene Flex-
+   Items landen — ohne width:100% würde ein .sa-account-actions-Block mit
+   nur EINEM Button (z.B. die Danger-Zone) sich nur auf dessen Content-Breite
+   schrumpfen, statt die volle Spaltenbreite zu nutzen (beim Browser-Test auf
+   375px gefunden). */
+.sa-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.sa-account-action-btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  text-align: left;
+}
+.sa-account-action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.24);
+}
+
+.sa-account-action-btn--positive {
+  background: rgba(76,175,80,0.14);
+  border-color: rgba(76,175,80,0.4);
+  color: #81c784;
+}
+.sa-account-action-btn--positive:hover {
+  background: rgba(76,175,80,0.22);
+}
+
+.sa-account-action-btn--danger {
+  background: rgba(229,115,115,0.1);
+  border-color: rgba(229,115,115,0.35);
+  color: #e57373;
+}
+.sa-account-action-btn--danger:hover {
+  background: rgba(229,115,115,0.18);
+}
+
+.sa-account-actions-divider {
+  width: 100%;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin: 10px 0;
+}
+
+/* "+ Kind hinzufügen" — bleibt primary/accent (positive Hauptaktion dieser
+   Spalte), aber kompakt statt der vollen .add-trainer-save-Höhe. */
+.sa-btn-add-child {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(76,175,80,0.18);
+  border: 1px solid rgba(76,175,80,0.5);
+  color: #81c784;
+  transition: background 0.2s;
+}
+.sa-btn-add-child:hover {
+  background: rgba(76,175,80,0.28);
+}
+
 /* Issue 1 — Modal war höher als der Viewport, untere Bedienelemente
    (Schließen/Family Portal öffnen) waren abgeschnitten. Nur DIESES eine
    Modal-Panel bekommt eine Höhenbegrenzung + internes Scrollen — die
@@ -16847,6 +17036,21 @@ body.sa-standalone-mode #clubPaymentWarning {
 .sa-family-detail-panel .sa-modal-header,
 .sa-family-detail-panel .sa-modal-footer {
   flex-shrink: 0;
+}
+
+/* VISUAL REDESIGN (Phase 4b) — Footer wirkte durch zwei auf volle Breite
+   gestreckte .sa-btn-cancel-Buttons (flex:1, globale Basisregel) vom
+   restlichen Workspace abgetrennt. Scoped Override NUR für dieses Modal:
+   beide Buttons kompakt, "Schließen" rechts als klarer sekundärer Abschluss,
+   "Family Portal öffnen" links als kompakte Account-Level-Aktion. Die
+   globale .sa-btn-cancel-Regel (von anderen, kleineren Super-Admin-Modals
+   genutzt) bleibt unverändert. */
+.sa-family-workspace-footer {
+  justify-content: space-between;
+}
+.sa-family-workspace-footer .sa-btn-cancel {
+  flex: 0 0 auto;
+  padding: 8px 16px;
 }
 
 .sa-family-detail-panel .sa-modal-body {
@@ -16903,8 +17107,8 @@ body.sa-standalone-mode #clubPaymentWarning {
 }
 
 .sa-family-left-col {
-  flex: 0 0 300px;
-  width: 300px;
+  flex: 0 0 330px;
+  width: 330px;
   min-width: 0;
 }
 
@@ -16941,11 +17145,21 @@ body.sa-standalone-mode #clubPaymentWarning {
 }
 
 .sa-family-children-list li {
-  padding: 6px 0;
+  padding: 6px 0 6px 14px;
+  position: relative;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   font-size: 13px;
   color: #e8e8e8;
 }
+
+.sa-family-children-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: rgba(212,175,55,0.7);
+}
+
+.sa-family-children-empty::before { content: none; }
 
 .sa-family-children-list li:last-child { border-bottom: none; }
 
@@ -16964,8 +17178,8 @@ body.sa-standalone-mode #clubPaymentWarning {
    hinaus schieben (echter horizontaler Overflow, beim Browser-Test
    gefunden). */
 .sa-student-page-cards-row .sa-student-page-card {
-  flex: 0 0 280px;
-  width: 280px;
+  flex: 0 0 380px;
+  width: 380px;
   margin-top: 0;
   box-sizing: border-box;
 }
@@ -16983,23 +17197,14 @@ body.sa-standalone-mode #clubPaymentWarning {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #9ca3af;
+  color: rgba(255,255,255,0.4);
 }
 
 .sa-student-page-card-name {
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: #f5f5f5;
   line-height: 1.25;
-}
-
-.sa-student-page-card-footer {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.1);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .sa-add-child-results {

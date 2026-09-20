@@ -3923,13 +3923,30 @@ Abbrechen
 <div id="saFamilienDetailModal" class="sa-modal hidden">
   <div class="sa-modal-overlay" onclick="closeSAFamilienDetailModal()"></div>
   <div class="sa-modal-panel sa-family-detail-panel">
-    <div class="sa-modal-header">
+    <div class="sa-modal-header sa-family-workspace-header">
       <span class="sa-modal-icon">👨‍👩‍👧‍👦</span>
-      <span class="sa-modal-title" id="saFamilienDetailName">Familienzugang</span>
+      <div class="sa-family-workspace-heading">
+        <span class="sa-modal-title">Familienkonto</span>
+        <!-- VISUAL REDESIGN (Phase 4b) — zeigt jetzt den Familienlogin/-status
+             statt des früher hier stehenden Schülernamens (siehe
+             renderSAFamilienDetailStatus): dieses Modal ist ein
+             Familienkonto-Workspace, kein Einzelschüler-Profil, auch der
+             Header soll das nicht mehr suggerieren. Wird von
+             openSAFamilienDetail() mit einem Platzhalter befüllt und nach
+             get_status aktualisiert. -->
+        <span class="sa-family-workspace-subtitle" id="saFamilienDetailName">Wird geladen…</span>
+      </div>
     </div>
     <div class="sa-modal-body">
 
-      <div id="saFamilienDetailStudentInfo" class="sa-family-detail-grid sa-family-student-info"></div>
+      <!-- VISUAL REDESIGN (Phase 4b) — der frühere große Einzelschüler-Info-
+           Block (Nachname/Vorname/Geburtsdatum/Verein/Sportart/Gruppe,
+           #saFamilienDetailStudentInfo) wurde AUS DIESEM MODAL entfernt:
+           ein Familienkonto ist kein Profil eines einzelnen Schülers,
+           besonders bei mehreren Kindern. Die zugrunde liegenden Resolver
+           (saFamilienResolveClubName/-SportName/-GruppenNamen) bleiben im
+           System bestehen (werden hier nur nicht mehr aufgerufen) — siehe
+           openSAFamilienDetail() in app.js. -->
 
       <!-- MULTI-CHILD FAMILIENKONTO UI (Phase 4) — ersetzt den früheren
            linearen Aufbau (EINE Student-Page-Karte gefolgt vom Familienkonto)
@@ -3945,7 +3962,7 @@ Abbrechen
       <div class="sa-family-columns">
 
         <div class="sa-family-left-col">
-          <div class="sa-family-account-heading">👪 Familienkonto</div>
+          <div class="sa-family-account-heading">Familienkonto</div>
           <div id="saFamilienDetailBody"></div>
           <div id="saFamilienActionsBar" class="sa-family-actions-bar"></div>
           <div id="saFamilienDetailActionMessage" class="trainer-edit-message hidden"></div>
@@ -3955,10 +3972,10 @@ Abbrechen
                Student-Page-Karte rechts (keine "Karte in der Karte"). Wird
                von renderFamilienChildrenList() aus window._saFamilienChildren
                befüllt (Quelle: get_family_students, Anchor-studentId). -->
-          <div class="sa-family-children-heading">Kinder in diesem Familienkonto</div>
+          <div class="sa-family-children-heading">Kinder</div>
           <ul id="saFamilienChildrenList" class="sa-family-children-list"></ul>
           <div class="sa-family-actions-bar">
-            <button class="add-trainer-save" onclick="saFamilienShowAddChildForm()">+ Kind hinzufügen</button>
+            <button class="sa-btn-add-child" onclick="saFamilienShowAddChildForm()">+ Kind hinzufügen</button>
           </div>
 
           <!-- Kind hinzufügen — kompakte Suche unter bestehenden Schülern
@@ -4101,7 +4118,7 @@ Abbrechen
       </div>
 
     </div>
-    <div class="sa-modal-footer">
+    <div class="sa-modal-footer sa-family-workspace-footer">
       <a class="sa-btn-cancel sa-family-portal-link"
          href="https://jkl-student-parent-portal.netlify.app" target="_blank" rel="noopener"
          title="Öffnet die allgemeine Family-Portal-Startseite — KEINE personalisierte Vorschau dieser Familie.">

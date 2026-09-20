@@ -17309,34 +17309,20 @@ async function openSAFamilienDetail(studentId) {
   window._saFamilienChildren = [];
   window._saStudentPageAccessByStudent = {};
 
-  document.getElementById('saFamilienDetailName').textContent =
-    student ? `${student.nachname || ''} ${student.vorname || ''}`.trim() : ('Schüler #' + studentId);
+  // VISUAL REDESIGN (Phase 4b) — der Header zeigt jetzt den Familienlogin
+  // statt des Schülernamens (siehe renderSAFamilienDetailStatus, das diesen
+  // Platzhalter nach get_status durch data.nickname ersetzt bzw. auf
+  // "Nicht eingerichtet" setzt). Die frühere synchrone Anzeige des
+  // Schülernamens hier UND der komplette Club-/Sport-/Gruppen-Resolve-Block
+  // (Promise.all + #saFamilienDetailStudentInfo) entfallen bewusst — dieses
+  // Modal ist ein Familienkonto-Workspace, kein Einzelschüler-Profil. Die
+  // Resolver-Funktionen selbst bleiben im System (ungenutzt hier).
+  document.getElementById('saFamilienDetailName').textContent = 'Wird geladen…';
 
   document.getElementById('saFamilienActionsBar').innerHTML = '';
   saFamilienHideAllDetailForms();
   saFamilienDetailSetBody('<div class="sa-family-detail-loading">Wird geladen…</div>');
   document.getElementById('saFamilienDetailModal').classList.remove('hidden');
-
-  const infoEl = document.getElementById('saFamilienDetailStudentInfo');
-  if (infoEl) {
-    if (student) {
-      const [clubName, sportName, gruppenNamen] = await Promise.all([
-        saFamilienResolveClubName(student.club_id),
-        saFamilienResolveSportName(student.sport_id),
-        saFamilienResolveGruppenNamen(student.gruppe_id)
-      ]);
-      infoEl.innerHTML = `
-        <div><span class="sa-family-detail-label">Nachname</span><span>${escapeHtml(student.nachname || '-')}</span></div>
-        <div><span class="sa-family-detail-label">Vorname</span><span>${escapeHtml(student.vorname || '-')}</span></div>
-        <div><span class="sa-family-detail-label">Geburtsdatum</span><span>${student.geburtsdatum ? formatDateDE(student.geburtsdatum) : '-'}</span></div>
-        <div><span class="sa-family-detail-label">Verein</span><span>${escapeHtml(clubName || '-')}</span></div>
-        <div><span class="sa-family-detail-label">Sportart</span><span>${escapeHtml(sportName || '-')}</span></div>
-        <div><span class="sa-family-detail-label">Gruppe</span><span>${escapeHtml(gruppenNamen || '-')}</span></div>
-      `;
-    } else {
-      infoEl.innerHTML = '';
-    }
-  }
 
   // MULTI-CHILD FAMILIENKONTO UI (Phase 4) — bewusst NICHT awaited hier:
   // lädt Kinderliste (get_family_students) + je Kind get_student_page_access
@@ -17366,15 +17352,26 @@ function closeSAFamilienDetailModal() {
   saFamilienHideAddChildForm();
 }
 
+// VISUAL REDESIGN (Phase 4b) — reine Darstellungs-Logik, KEINE der drei
+// Backend-Aktionen (get_status/create/activate/deactivate/...) oder ihrer
+// Handler wurde verändert, nur die erzeugte Markup/Klassen. Aktualisiert
+// zusätzlich den Header-Untertitel (#saFamilienDetailName) mit dem
+// Familienlogin statt des früheren Schülernamens.
 function renderSAFamilienDetailStatus(data) {
+  const headerSubtitleEl = document.getElementById('saFamilienDetailName');
+
   if (data.status === 'not_set_up') {
+    if (headerSubtitleEl) headerSubtitleEl.textContent = 'Kein Familienzugang eingerichtet';
     saFamilienDetailSetBody(`
-      <div class="sa-family-status-badge sa-family-status-none">Nicht eingerichtet</div>
+      <div class="sa-family-status-badge sa-family-status-none">● Nicht eingerichtet</div>
       <p class="small">Für diesen Schüler existiert noch kein Familienzugang zum Family Portal.</p>
     `);
-    document.getElementById('saFamilienActionsBar').innerHTML =
-      '<button class="add-trainer-save" onclick="saFamilienShowCreateForm()">👨‍👩‍👧 Familienzugang einrichten</button>' +
-      '<button class="add-trainer-save" onclick="saFamilienPreview()">👁 Student-Seite ansehen (Vorschau)</button>';
+    document.getElementById('saFamilienActionsBar').innerHTML = `
+      <div class="sa-account-actions">
+        <button class="sa-account-action-btn sa-account-action-btn--positive" onclick="saFamilienShowCreateForm()">👨‍👩‍👧 Familienzugang einrichten</button>
+        <button class="sa-account-action-btn" onclick="saFamilienPreview()">👁 Student-Seite ansehen (Vorschau)</button>
+      </div>
+    `;
     return;
   }
 
@@ -17382,25 +17379,32 @@ function renderSAFamilienDetailStatus(data) {
   const badgeClass = isBlocked ? 'sa-family-status-blocked' : 'sa-family-status-active';
   const badgeText  = isBlocked ? 'Inaktiv' : 'Aktiv';
 
+  if (headerSubtitleEl) headerSubtitleEl.textContent = data.nickname || '-';
+
   saFamilienDetailSetBody(`
-    <div class="sa-family-status-badge ${badgeClass}">${badgeText}</div>
-    <div class="sa-family-detail-grid">
-      <div><span class="sa-family-detail-label">Familienlogin</span><span>${escapeHtml(data.nickname || '-')}</span></div>
-      <div><span class="sa-family-detail-label">Kontakt-E-Mail</span><span>${escapeHtml(data.contactEmail || 'Nicht hinterlegt')}</span></div>
-      <div><span class="sa-family-detail-label">Letzter Login</span><span>${formatDateTimeDE(data.lastSignInAt)}</span></div>
-      <div><span class="sa-family-detail-label">Letzte Änderung Zugangsdaten</span><span>${formatDateTimeDE(data.credentialsUpdatedAt)}</span></div>
+    <div class="sa-family-status-badge ${badgeClass}">● ${badgeText}</div>
+    <div class="sa-family-info-list">
+      <div class="sa-family-info-row"><span class="sa-family-info-label">Login</span><span class="sa-family-info-value">${escapeHtml(data.nickname || '-')}</span></div>
+      <div class="sa-family-info-row"><span class="sa-family-info-label">Kontakt-E-Mail</span><span class="sa-family-info-value">${escapeHtml(data.contactEmail || 'Nicht hinterlegt')}</span></div>
+      <div class="sa-family-info-row"><span class="sa-family-info-label">Letzter Login</span><span class="sa-family-info-value">${formatDateTimeDE(data.lastSignInAt)}</span></div>
+      <div class="sa-family-info-row"><span class="sa-family-info-label">Letzte Änderung</span><span class="sa-family-info-value">${formatDateTimeDE(data.credentialsUpdatedAt)}</span></div>
     </div>
   `);
 
   document.getElementById('saFamilienActionsBar').innerHTML = `
-    <button class="add-trainer-save" onclick="saFamilienShowLoginForm()">✏️ Login ändern</button>
-    <button class="add-trainer-save" onclick="saFamilienShowContactEmailForm()">📧 Kontakt-E-Mail ändern</button>
-    <button class="add-trainer-save" onclick="saFamilienShowPasswordForm()">🔑 Neues Passwort setzen</button>
-    <button class="add-trainer-save" onclick="saFamilienSendRecovery()">✉️ Passwort-Wiederherstellung senden</button>
-    ${isBlocked
-      ? '<button class="add-trainer-save" onclick="saFamilienToggleActive(true)">🔓 Zugang aktivieren</button>'
-      : '<button class="add-trainer-save" onclick="saFamilienToggleActive(false)">🔒 Zugang deaktivieren</button>'}
-    <button class="add-trainer-save" onclick="saFamilienPreview()">👁 Family-Seite ansehen</button>
+    <div class="sa-account-actions">
+      <button class="sa-account-action-btn" onclick="saFamilienShowLoginForm()">✏ Login ändern</button>
+      <button class="sa-account-action-btn" onclick="saFamilienShowContactEmailForm()">✉ Kontakt-E-Mail ändern</button>
+      <button class="sa-account-action-btn" onclick="saFamilienShowPasswordForm()">🔑 Neues Passwort setzen</button>
+      <button class="sa-account-action-btn" onclick="saFamilienSendRecovery()">↗ Passwort-Wiederherstellung</button>
+      <button class="sa-account-action-btn" onclick="saFamilienPreview()">👁 Family-Seite ansehen</button>
+    </div>
+    <div class="sa-account-actions-divider"></div>
+    <div class="sa-account-actions">
+      ${isBlocked
+        ? '<button class="sa-account-action-btn sa-account-action-btn--positive" onclick="saFamilienToggleActive(true)">🔓 Zugang aktivieren</button>'
+        : '<button class="sa-account-action-btn sa-account-action-btn--danger" onclick="saFamilienToggleActive(false)">🔒 Zugang deaktivieren</button>'}
+    </div>
   `;
 }
 
@@ -17506,11 +17510,19 @@ function renderStudentPageCardsRow() {
     rowEl.innerHTML = '<div class="sa-family-detail-loading">Keine aktiven Kinder.</div>';
     return;
   }
+  // VISUAL REDESIGN (Phase 4b) — dunkle Karte statt weißer
+  // .add-trainer-modern-card (siehe style.css .sa-student-page-card).
+  // "Vorschau" wandert visuell zu den übrigen Karten-Einstellungen,
+  // "Kind aus Familienkonto entfernen" bekommt einen eigenen, per Trenner
+  // abgesetzten Fußbereich (sa-student-page-remove-zone) — beide Danger-
+  // Aktionen (manuell sperren / entfernen) sollen sich NICHT wie dieselbe
+  // Aktion anfühlen (unterschiedliche Buttonstile, siehe style.css). Kein
+  // einziger onclick-Handler wurde geändert, nur Markup/Klassen/Reihenfolge.
   rowEl.innerHTML = children.map(c => {
     const sid = Number(c.student_id);
     const name = `${c.student_first_name || ''} ${c.student_last_name || ''}`.trim() || ('Schüler #' + sid);
     return `
-      <div id="saStudentPageCard-${sid}" class="add-trainer-modern-card sa-student-page-card" data-student-id="${sid}">
+      <div id="saStudentPageCard-${sid}" class="sa-student-page-card" data-student-id="${sid}">
         <div class="sa-student-page-card-header">
           <div class="sa-student-page-card-kicker">Student Page</div>
           <div class="sa-student-page-card-name">${escapeHtml(name)}</div>
@@ -17531,10 +17543,12 @@ function renderStudentPageCardsRow() {
           </div>
         </div>
         <div id="saStudentPageAccessMessage-${sid}" class="trainer-edit-message hidden"></div>
+        <div class="sa-student-page-secondary-actions">
+          <button class="sa-family-manage-btn sa-family-manage-btn--block" onclick="saFamilienPreview(${sid})">👁 Vorschau</button>
+        </div>
         <div id="saStudentPageDangerZone-${sid}" class="sa-student-page-danger-zone"></div>
-        <div class="sa-student-page-card-footer">
-          <button class="sa-family-manage-btn" onclick="saFamilienPreview(${sid})">👁 Vorschau</button>
-          <button class="sa-btn-danger" onclick="saFamilienRemoveChild(${sid})">Kind aus Familienkonto entfernen</button>
+        <div class="sa-student-page-remove-zone">
+          <button class="sa-btn-danger-outline" onclick="saFamilienRemoveChild(${sid})">Kind aus Familienkonto entfernen</button>
         </div>
       </div>
     `;
@@ -17610,7 +17624,7 @@ function renderStudentPageAccessSection(studentId, data) {
   }
   const badgeEl = document.getElementById('saStudentPageStatusBadge-' + studentId);
   badgeEl.className = `sa-family-status-badge ${badgeClass}`;
-  badgeEl.textContent = badgeText;
+  badgeEl.textContent = '● ' + badgeText;
 
   let remainingRow = '';
   if (data.subscriptionManaged) {
@@ -17633,16 +17647,16 @@ function renderStudentPageAccessSection(studentId, data) {
   }
 
   const familyBadge = data.familySubscriptionAllowsAccess
-    ? '<span class="sa-family-status-badge sa-family-status-active">✓ Zugang erlaubt</span>'
-    : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Zugang gesperrt</span>';
+    ? '<span class="sa-family-status-badge sa-family-status-active">✓ Erlaubt</span>'
+    : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Gesperrt</span>';
   const trainerBadge = data.trainerSubscriptionAllowsAccess
-    ? '<span class="sa-family-status-badge sa-family-status-active">✓ Zugang erlaubt</span>'
-    : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Zugang gesperrt</span>';
+    ? '<span class="sa-family-status-badge sa-family-status-active">✓ Erlaubt</span>'
+    : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Gesperrt</span>';
 
   saStudentPageSetBody(studentId, `
     <div class="sa-settings-row">
       <div class="sa-settings-row-main">
-        <span class="sa-settings-row-label">Ablaufdatum</span>
+        <span class="sa-settings-row-label">Ablauf</span>
         <span class="sa-settings-row-value">
           ${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}
           <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm(${studentId})">Ändern</button>
@@ -17650,7 +17664,7 @@ function renderStudentPageAccessSection(studentId, data) {
       </div>
     </div>
     ${remainingRow}
-    <div class="sa-settings-subheading">Effektiver Zugriff</div>
+    <div class="sa-settings-subheading">Zugriff</div>
     <div class="sa-settings-row">
       <div class="sa-settings-row-main">
         <span class="sa-settings-row-label">Familie / Schüler</span>

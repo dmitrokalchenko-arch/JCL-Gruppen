@@ -16644,18 +16644,27 @@ body.sa-standalone-mode #clubPaymentWarning {
   background: rgba(212,175,55,0.24);
 }
 
-/* VISUAL REDESIGN (Phase 4b) — Panel schmiegt sich jetzt an seinen Inhalt
-   an (fit-content) statt immer fix 1040px breit zu sein: bei 1 Kind bleibt
-   dadurch KEIN riesiger leerer dunkler Bereich rechts mehr übrig, bei vielen
-   Kindern deckelt max-width weiterhin und die Kartenreihe scrollt selbst
-   horizontal (siehe .sa-student-page-cards-row weiter unten). min-width
-   verhindert ein zu schmales Panel, solange noch keine Karten gerendert
-   sind (Ladezustand). Unter 768px wieder auf volle verfügbare Breite
-   reduziert (siehe Media Query weiter unten in dieser Datei). */
-.sa-family-detail-panel {
+/* VOLLBILD-WORKSPACE (Phase 4c) — #saFamilienDetailScreen ist jetzt ein
+   echter .sa-clubs-screen (position:fixed, volle Viewport-Breite/-Höhe,
+   eigenes overflow-y:auto — siehe die geteilte Basisklasse weiter unten in
+   dieser Datei). .sa-family-workspace-content zentriert den eigentlichen
+   Inhalt darin mit einer großzügigen, aber gedeckelten max-width statt der
+   früheren kleinen Modal-Panel-Breite (fit-content/1200px) — bei einem Kind
+   bleibt dadurch kein riesiger leerer Bereich, bei vielen Kindern deckelt
+   max-width weiterhin und die Kartenreihe scrollt selbst horizontal (siehe
+   .sa-student-page-cards-row weiter unten). */
+/* width:fit-content, LINKSBÜNDIG (kein margin:auto/Zentrierung) — exakt wie
+   im Referenz-Screenshot: Header und Inhalt teilen sich denselben linken
+   Rand (das Padding von .sa-clubs-screen), unabhängig von der Kinderzahl.
+   Bei 1-2 Kindern schmiegt sich der Inhalt an seine natürliche Breite an,
+   statt sich künstlich über die volle 1800px-Deckelung zu strecken (das
+   ließ bei wenig Kindern auf breiten Desktop-Bildschirmen eine große leere
+   Fläche rechts stehen — im Browser-Test bei 1920px/1 Kind gefunden). Bei
+   vielen Kindern deckelt max-width weiterhin und die Kartenreihe scrollt
+   selbst horizontal (siehe .sa-student-page-cards-row). */
+.sa-family-workspace-content {
   width: fit-content;
-  max-width: min(1200px, calc(100vw - 32px));
-  min-width: min(700px, calc(100vw - 32px));
+  max-width: min(1800px, 100%);
 }
 
 .sa-family-detail-loading,
@@ -16877,33 +16886,62 @@ body.sa-standalone-mode #clubPaymentWarning {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   VISUAL REDESIGN (Phase 4b) — Workspace-Header (ersetzt den früheren
-   Einzelschüler-Titel). Zeigt "Familienkonto" + darunter den Familienlogin
-   (von renderSAFamilienDetailStatus per #saFamilienDetailName befüllt).
-   ══════════════════════════════════════════════════════════════════════ */
-.sa-family-workspace-header {
-  align-items: center;
+   VOLLBILD-WORKSPACE (Phase 4c) — Screen-Header, baut auf der bestehenden
+   .sa-clubs-header/.sa-clubs-header-left/.sa-back-btn-Basis auf (dieselben
+   Klassen wie #saFamilienScreen), NUR die max-width wird hier überschrieben
+   (900px -> an .sa-family-workspace-content angeglichen), damit der Header
+   dieselbe Breite wie der Inhalt darunter hat. Zeigt "Familienkonto" +
+   darunter den Familienlogin (von renderSAFamilienDetailStatus per
+   #saFamilienDetailName befüllt) + eine kurze Beschreibungszeile. */
+.sa-family-workspace-screen-header {
+  max-width: 1800px;
+  margin: 0 0 28px;
 }
 
-.sa-family-workspace-heading {
+/* min-width:0 ist hier Pflicht: .sa-clubs-header-left (bestehende Basisklasse)
+   ist selbst display:flex, und Flex-Items haben standardmäßig
+   min-width:auto (= Inhaltsbreite) statt 0 — ohne diese Regel konnte der
+   Titel-Textblock auf schmalen Bildschirmen (<560px) nicht unter seine
+   Inhaltsbreite schrumpfen/umbrechen und überlief den Screen horizontal
+   (beim Browser-Test auf 375px gefunden: .sa-clubs-screen bekam dadurch
+   einen eigenen horizontalen Scrollbereich, obwohl document.scrollWidth
+   selbst unauffällig blieb). */
+.sa-family-workspace-title-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
-.sa-family-workspace-header .sa-modal-title {
-  text-transform: none;
-  letter-spacing: normal;
-  font-size: 16px;
+.sa-family-workspace-screen-header .sa-clubs-header-left > div:last-child {
+  min-width: 0;
+}
+
+.sa-family-workspace-title-row .sa-modal-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.sa-family-workspace-title-row .sa-clubs-title {
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .sa-family-workspace-subtitle {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  margin-top: 4px;
+}
+
+.sa-family-workspace-description {
   font-size: 12px;
-  color: rgba(255,255,255,0.5);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: rgba(255,255,255,0.4);
+  margin-top: 4px;
+}
+
+.sa-family-workspace-header-right {
+  flex-shrink: 0;
+  margin-top: 18px;
 }
 
 /* Kompakte Info-Zeilen für die Familienkonto-Spalte (ersetzt die frühere
@@ -17018,47 +17056,6 @@ body.sa-standalone-mode #clubPaymentWarning {
   background: rgba(76,175,80,0.28);
 }
 
-/* Issue 1 — Modal war höher als der Viewport, untere Bedienelemente
-   (Schließen/Family Portal öffnen) waren abgeschnitten. Nur DIESES eine
-   Modal-Panel bekommt eine Höhenbegrenzung + internes Scrollen — die
-   Basisklassen .sa-modal-panel/.sa-modal-body werden NICHT global
-   verändert (sie werden auch vom kleinen 320px-Standard-Modal genutzt,
-   siehe index.html ~Zeile 2913). box-sizing:border-box stellt sicher, dass
-   Padding/Border in die 90vh-Grenze eingerechnet werden, nicht zusätzlich
-   dazu addiert werden. */
-.sa-family-detail-panel {
-  max-height: 90vh;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-}
-
-.sa-family-detail-panel .sa-modal-header,
-.sa-family-detail-panel .sa-modal-footer {
-  flex-shrink: 0;
-}
-
-/* VISUAL REDESIGN (Phase 4b) — Footer wirkte durch zwei auf volle Breite
-   gestreckte .sa-btn-cancel-Buttons (flex:1, globale Basisregel) vom
-   restlichen Workspace abgetrennt. Scoped Override NUR für dieses Modal:
-   beide Buttons kompakt, "Schließen" rechts als klarer sekundärer Abschluss,
-   "Family Portal öffnen" links als kompakte Account-Level-Aktion. Die
-   globale .sa-btn-cancel-Regel (von anderen, kleineren Super-Admin-Modals
-   genutzt) bleibt unverändert. */
-.sa-family-workspace-footer {
-  justify-content: space-between;
-}
-.sa-family-workspace-footer .sa-btn-cancel {
-  flex: 0 0 auto;
-  padding: 8px 16px;
-}
-
-.sa-family-detail-panel .sa-modal-body {
-  overflow-y: auto;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
 .sa-family-detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -17087,28 +17084,24 @@ body.sa-standalone-mode #clubPaymentWarning {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   MULTI-CHILD FAMILIENKONTO UI (Phase 4) — Zwei-Bereiche-Layout: LINKS das
+   MULTI-CHILD FAMILIENKONTO UI (Phase 4, Layout seit Phase 4c im Vollbild-
+   Workspace statt eines Modals) — Zwei-Bereiche-Layout: LINKS das
    Familienkonto (fixe Breite), RECHTS eine horizontal scrollbare Reihe von
    Student-Page-Karten (eine pro aktivem Kind, beliebig viele). Beide Spalten
-   sind normale Flex-Kinder INNERHALB des bereits bestehenden
-   .sa-modal-body-Scrollkontexts (overflow-y:auto, siehe oben) — es wird
+   sind normale Flex-Kinder INNERHALB des Scrollkontexts von
+   #saFamilienDetailScreen (.sa-clubs-screen, overflow-y:auto) — es wird
    bewusst KEIN zweiter eigener vertikaler Scrollcontainer eingeführt, nur
-   die Kartenreihe bekommt eigenes overflow-x. Das vergrößerte
-   .sa-family-detail-panel gilt NUR für dieses eine Modal (Descendant/Klassen-
-   Scope), alle anderen Super-Admin-Modals (Standard 320px) sind unberührt.
-   Die Breitenänderung selbst (640px -> 1040px) sitzt direkt an der
-   bestehenden .sa-family-detail-panel-Regel weiter oben in dieser Datei —
-   keine zweite, konkurrierende width-Deklaration hier. */
+   die Kartenreihe bekommt eigenes overflow-x. */
 .sa-family-columns {
   display: flex;
   align-items: flex-start;
-  gap: 20px;
+  gap: 24px;
   margin-top: 4px;
 }
 
 .sa-family-left-col {
-  flex: 0 0 330px;
-  width: 330px;
+  flex: 0 0 360px;
+  width: 360px;
   min-width: 0;
 }
 
@@ -17178,8 +17171,8 @@ body.sa-standalone-mode #clubPaymentWarning {
    hinaus schieben (echter horizontaler Overflow, beim Browser-Test
    gefunden). */
 .sa-student-page-cards-row .sa-student-page-card {
-  flex: 0 0 380px;
-  width: 380px;
+  flex: 0 0 420px;
+  width: 420px;
   margin-top: 0;
   box-sizing: border-box;
 }
@@ -17237,9 +17230,6 @@ body.sa-standalone-mode #clubPaymentWarning {
    Kartenreihe verliert ihr horizontales Scrollen (jede Karte volle Breite) —
    "keine kaputten horizontalen Layouts auf mobil" (Vorgabe Phase 4). */
 @media (max-width: 768px) {
-  .sa-family-detail-panel {
-    width: calc(100vw - 32px);
-  }
   /* align-items:stretch überschreibt bewusst das Desktop-flex-start
      (.sa-family-columns Basisregel oben) — in flex-direction:column ist
      die Cross-Achse jetzt horizontal; ohne stretch sizen sich die Kinder
@@ -17262,6 +17252,8 @@ body.sa-standalone-mode #clubPaymentWarning {
   }
   .sa-student-page-cards-row .sa-student-page-card {
     width: 100%;
+    min-width: 0;
+    max-width: none;
     flex: 1 1 auto;
   }
 }

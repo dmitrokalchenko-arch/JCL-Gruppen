@@ -3920,43 +3920,62 @@ Abbrechen
 <!-- =========================================================
    SUPER ADMIN — FAMILIENZUGANG DETAIL / VERWALTUNG MODAL
 ========================================================= -->
-<div id="saFamilienDetailModal" class="sa-modal hidden">
-  <div class="sa-modal-overlay" onclick="closeSAFamilienDetailModal()"></div>
-  <div class="sa-modal-panel sa-family-detail-panel">
-    <div class="sa-modal-header sa-family-workspace-header">
-      <span class="sa-modal-icon">👨‍👩‍👧‍👦</span>
-      <div class="sa-family-workspace-heading">
-        <span class="sa-modal-title">Familienkonto</span>
-        <!-- VISUAL REDESIGN (Phase 4b) — zeigt jetzt den Familienlogin/-status
-             statt des früher hier stehenden Schülernamens (siehe
-             renderSAFamilienDetailStatus): dieses Modal ist ein
-             Familienkonto-Workspace, kein Einzelschüler-Profil, auch der
-             Header soll das nicht mehr suggerieren. Wird von
+<!-- VOLLBILD-WORKSPACE (Phase 4c) — ersetzt das frühere kleine, zentrierte
+     Modal (.sa-modal/.sa-modal-panel, siehe Git-Historie) vollständig durch
+     einen echten Vollbild-Screen, exakt nach dem bereits etablierten Super-
+     Admin-Sub-Screen-Muster (.sa-clubs-screen, dieselbe Klasse wie
+     #saFamilienScreen/#saClubsScreen/... — siehe style.css). KEIN Overlay,
+     KEIN abgedunkelter Screen dahinter, KEIN kleines zentriertes Fenster:
+     geöffnet über showSAFamilienDetailScreen() (app.js), das #saFamilienScreen
+     ausblendet und diesen Screen einblendet — Rückweg über den
+     "← Zurück zu Familien"-Button (hideSAFamilienDetailScreen()), nicht über
+     einen Modal-"Schließen"-Button (den gibt es hier bewusst nicht mehr). -->
+<div id="saFamilienDetailScreen" class="sa-clubs-screen hidden">
+
+  <div class="sa-clubs-header sa-family-workspace-screen-header">
+    <div class="sa-clubs-header-left">
+      <button class="sa-back-btn" onclick="hideSAFamilienDetailScreen()">← Zurück zu Familien</button>
+      <div>
+        <div class="sa-family-workspace-title-row">
+          <span class="sa-modal-icon">👨‍👩‍👧‍👦</span>
+          <h2 class="sa-clubs-title">Familienkonto</h2>
+        </div>
+        <!-- Zeigt den Familienlogin/-status statt eines Schülernamens (siehe
+             renderSAFamilienDetailStatus): dieser Screen ist ein
+             Familienkonto-Workspace, kein Einzelschüler-Profil. Wird von
              openSAFamilienDetail() mit einem Platzhalter befüllt und nach
              get_status aktualisiert. -->
-        <span class="sa-family-workspace-subtitle" id="saFamilienDetailName">Wird geladen…</span>
+        <div class="sa-family-workspace-subtitle" id="saFamilienDetailName">Wird geladen…</div>
+        <div class="sa-family-workspace-description">Verwaltung des Familienkontos und der Student Pages aller zugehörigen Kinder.</div>
       </div>
     </div>
-    <div class="sa-modal-body">
+    <div class="sa-family-workspace-header-right">
+      <a class="sa-back-btn sa-family-portal-link"
+         href="https://jkl-student-parent-portal.netlify.app" target="_blank" rel="noopener"
+         title="Öffnet die allgemeine Family-Portal-Startseite — KEINE personalisierte Vorschau dieser Familie.">
+        🔗 Family Portal öffnen
+      </a>
+    </div>
+  </div>
 
-      <!-- VISUAL REDESIGN (Phase 4b) — der frühere große Einzelschüler-Info-
-           Block (Nachname/Vorname/Geburtsdatum/Verein/Sportart/Gruppe,
-           #saFamilienDetailStudentInfo) wurde AUS DIESEM MODAL entfernt:
-           ein Familienkonto ist kein Profil eines einzelnen Schülers,
-           besonders bei mehreren Kindern. Die zugrunde liegenden Resolver
-           (saFamilienResolveClubName/-SportName/-GruppenNamen) bleiben im
-           System bestehen (werden hier nur nicht mehr aufgerufen) — siehe
-           openSAFamilienDetail() in app.js. -->
+  <div class="sa-family-workspace-content">
 
-      <!-- MULTI-CHILD FAMILIENKONTO UI (Phase 4) — ersetzt den früheren
-           linearen Aufbau (EINE Student-Page-Karte gefolgt vom Familienkonto)
-           durch eine Zwei-Bereiche-Struktur: LINKS das Familienkonto (fixe
-           Breite, EIN Account, Kinderliste, "+ Kind hinzufügen"), RECHTS eine
-           horizontal scrollbare Reihe von Student-Page-Karten, eine pro
-           aktivem Kind (beliebig viele, siehe renderStudentPageCardsRow() in
-           app.js). Beide Bereiche bleiben im SELBEN .sa-modal-body-Scroll-
-           kontext (kein zweiter/dritter vertikaler Scrollbalken) — nur die
-           rechte Kartenreihe bekommt eigenes overflow-x:auto (style.css
+      <!-- Der frühere große Einzelschüler-Info-Block (Nachname/Vorname/
+           Geburtsdatum/Verein/Sportart/Gruppe, #saFamilienDetailStudentInfo)
+           bleibt entfernt (Phase 4b) — ein Familienkonto ist kein Profil
+           eines einzelnen Schülers, besonders bei mehreren Kindern. Die
+           zugrunde liegenden Resolver (saFamilienResolveClubName/-SportName/
+           -GruppenNamen) bleiben im System bestehen (werden hier nur nicht
+           mehr aufgerufen) — siehe openSAFamilienDetail() in app.js. -->
+
+      <!-- MULTI-CHILD FAMILIENKONTO UI (Phase 4) — Zwei-Bereiche-Struktur:
+           LINKS das Familienkonto (fixe Breite, EIN Account, Kinderliste,
+           "+ Kind hinzufügen"), RECHTS eine horizontal scrollbare Reihe von
+           Student-Page-Karten, eine pro aktivem Kind (beliebig viele, siehe
+           renderStudentPageCardsRow() in app.js). Beide Bereiche bleiben im
+           SELBEN Scrollkontext des Screens (.sa-clubs-screen, overflow-y:auto
+           — kein zweiter/dritter vertikaler Scrollbalken) — nur die rechte
+           Kartenreihe bekommt eigenes overflow-x:auto (style.css
            .sa-student-page-cards-row). Unter 768px stapeln beide Bereiche
            vertikal (siehe Media Query in style.css). -->
       <div class="sa-family-columns">
@@ -4117,16 +4136,8 @@ Abbrechen
         </div>
       </div>
 
-    </div>
-    <div class="sa-modal-footer sa-family-workspace-footer">
-      <a class="sa-btn-cancel sa-family-portal-link"
-         href="https://jkl-student-parent-portal.netlify.app" target="_blank" rel="noopener"
-         title="Öffnet die allgemeine Family-Portal-Startseite — KEINE personalisierte Vorschau dieser Familie.">
-        🔗 Family Portal öffnen
-      </a>
-      <button class="sa-btn-cancel" onclick="closeSAFamilienDetailModal()">Schließen</button>
-    </div>
   </div>
+
 </div>
 
 <!-- =========================================================

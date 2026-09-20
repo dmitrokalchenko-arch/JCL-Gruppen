@@ -17118,7 +17118,7 @@ async function renderSAFamilienResultsTable(results) {
       <td>${verein}</td>
       <td>${sport}</td>
       <td>${gruppe}</td>
-      <td><button type="button" class="sa-family-manage-btn" onclick="openSAFamilienDetail(${Number(r.id)})">Verwalten →</button></td>
+      <td><button type="button" class="sa-family-manage-btn" onclick="navigateWithPromo(() => openSAFamilienDetail(${Number(r.id)}))">Verwalten →</button></td>
     </tr>`;
   }).join('');
 }
@@ -17163,7 +17163,7 @@ window._saFamilienDetailStatus  = null;
 //                                    globalen Singleton — verhindert, dass
 //                                    eine Aktion auf Karte A versehentlich
 //                                    Kind B beeinflusst.
-// Beide MÜSSEN in closeSAFamilienDetailModal() zurückgesetzt werden, sonst
+// Beide MÜSSEN in hideSAFamilienDetailScreen() zurückgesetzt werden, sonst
 // könnten beim nächsten geöffneten Familienkonto kurzzeitig veraltete Werte
 // sichtbar sein.
 window._saFamilienChildren = [];
@@ -17302,6 +17302,13 @@ function formatDateTimeDE(iso) {
   }
 }
 
+// VOLLBILD-WORKSPACE (Phase 4c) — öffnet #saFamilienDetailScreen (echter
+// Vollbild-Screen, .sa-clubs-screen, dasselbe Muster wie #saFamilienScreen/
+// #saClubsScreen) statt des früheren kleinen zentrierten Modals. Blendet
+// dafür die darunterliegende Familien-Suchliste (#saFamilienScreen) aus —
+// KEIN Overlay/keine zwei gleichzeitig sichtbaren Vollbild-Screens, exakt
+// wie beim bestehenden Dashboard->Familien-Übergang. Rückweg über
+// hideSAFamilienDetailScreen() (siehe dort), NICHT über einen Modal-Close.
 async function openSAFamilienDetail(studentId) {
   const student = (window._saFamilienLastResults || []).find(r => Number(r.id) === Number(studentId));
   window._saFamilienDetailStudent = student || { id: studentId };
@@ -17309,20 +17316,21 @@ async function openSAFamilienDetail(studentId) {
   window._saFamilienChildren = [];
   window._saStudentPageAccessByStudent = {};
 
-  // VISUAL REDESIGN (Phase 4b) — der Header zeigt jetzt den Familienlogin
-  // statt des Schülernamens (siehe renderSAFamilienDetailStatus, das diesen
-  // Platzhalter nach get_status durch data.nickname ersetzt bzw. auf
-  // "Nicht eingerichtet" setzt). Die frühere synchrone Anzeige des
-  // Schülernamens hier UND der komplette Club-/Sport-/Gruppen-Resolve-Block
-  // (Promise.all + #saFamilienDetailStudentInfo) entfallen bewusst — dieses
-  // Modal ist ein Familienkonto-Workspace, kein Einzelschüler-Profil. Die
+  // Der Header zeigt den Familienlogin statt eines Schülernamens (siehe
+  // renderSAFamilienDetailStatus, das diesen Platzhalter nach get_status
+  // durch data.nickname ersetzt bzw. auf "Nicht eingerichtet" setzt). Der
+  // frühere Club-/Sport-/Gruppen-Resolve-Block (Promise.all +
+  // #saFamilienDetailStudentInfo) bleibt entfernt (Phase 4b) — dieser
+  // Screen ist ein Familienkonto-Workspace, kein Einzelschüler-Profil. Die
   // Resolver-Funktionen selbst bleiben im System (ungenutzt hier).
   document.getElementById('saFamilienDetailName').textContent = 'Wird geladen…';
 
   document.getElementById('saFamilienActionsBar').innerHTML = '';
   saFamilienHideAllDetailForms();
   saFamilienDetailSetBody('<div class="sa-family-detail-loading">Wird geladen…</div>');
-  document.getElementById('saFamilienDetailModal').classList.remove('hidden');
+  document.getElementById('saFamilienScreen')?.classList.add('hidden');
+  document.getElementById('saFamilienDetailScreen').classList.remove('hidden');
+  document.getElementById('saFamilienDetailScreen').scrollTop = 0;
 
   // MULTI-CHILD FAMILIENKONTO UI (Phase 4) — bewusst NICHT awaited hier:
   // lädt Kinderliste (get_family_students) + je Kind get_student_page_access
@@ -17343,13 +17351,19 @@ async function openSAFamilienDetail(studentId) {
   renderSAFamilienDetailStatus(result.data);
 }
 
-function closeSAFamilienDetailModal() {
-  document.getElementById('saFamilienDetailModal').classList.add('hidden');
-  window._saFamilienDetailStudent = null;
-  window._saFamilienDetailStatus  = null;
-  window._saFamilienChildren = [];
-  window._saStudentPageAccessByStudent = {};
-  saFamilienHideAddChildForm();
+// Rückweg vom Familienkonto-Workspace zur Familien-Suchliste — exakt nach
+// dem Muster von hideSAFamilienScreen() (dieselbe showPromoTransition-
+// Einbettung wie jeder andere Super-Admin-Sub-Screen-Übergang).
+function hideSAFamilienDetailScreen() {
+  showPromoTransition(() => {
+    document.getElementById('saFamilienDetailScreen').classList.add('hidden');
+    document.getElementById('saFamilienScreen')?.classList.remove('hidden');
+    window._saFamilienDetailStudent = null;
+    window._saFamilienDetailStatus  = null;
+    window._saFamilienChildren = [];
+    window._saStudentPageAccessByStudent = {};
+    saFamilienHideAddChildForm();
+  });
 }
 
 // VISUAL REDESIGN (Phase 4b) — reine Darstellungs-Logik, KEINE der drei

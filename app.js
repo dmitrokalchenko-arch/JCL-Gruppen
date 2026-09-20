@@ -17149,12 +17149,25 @@ const STUDENT_PREVIEW_BASE_URL = 'https://jkl-student-parent-portal.netlify.app/
 
 window._saFamilienDetailStudent = null;
 window._saFamilienDetailStatus  = null;
-// STUDENT PAGE SUBSCRIPTION (Phase 4) — eigener, vom Familienzugang-Status
-// UNABHÄNGIGER Zustand (siehe Kommentar bei #saStudentPageAccessSection in
-// index.html). Muss in closeSAFamilienDetailModal() zurückgesetzt werden,
-// sonst könnten beim nächsten geöffneten Schüler kurzzeitig veraltete Werte
-// des vorherigen Schülers sichtbar sein.
-window._saStudentPageAccessStatus = null;
+// MULTI-CHILD FAMILIENKONTO UI (Phase 4) — ersetzt den früheren EINEN
+// globalen Student-Page-Zustand durch zwei pro-Familienkonto/pro-Kind
+// Zustände:
+//   _saFamilienChildren           — aktuelle ACTIVE-Kinderliste dieses
+//                                    Familienkontos (get_family_students,
+//                                    Anchor = _saFamilienDetailStudent.id).
+//   _saStudentPageAccessByStudent — Map studentId -> zuletzt geladener
+//                                    get_student_page_access-Datensatz GENAU
+//                                    dieses Kindes. Jede Karte/jeder Handler
+//                                    liest/schreibt AUSSCHLIESSLICH seinen
+//                                    eigenen studentId-Eintrag, nie einen
+//                                    globalen Singleton — verhindert, dass
+//                                    eine Aktion auf Karte A versehentlich
+//                                    Kind B beeinflusst.
+// Beide MÜSSEN in closeSAFamilienDetailModal() zurückgesetzt werden, sonst
+// könnten beim nächsten geöffneten Familienkonto kurzzeitig veraltete Werte
+// sichtbar sein.
+window._saFamilienChildren = [];
+window._saStudentPageAccessByStudent = {};
 
 async function saFamilienCallManageAccount(payload) {
   // PHASE 1 (Frontend-Integration Super Admin PIN-Session, 2026-08-30):
@@ -17234,7 +17247,21 @@ function saFamilienErrorMessage(result) {
     manual_disabled_update_failed: 'Fehler beim Ändern der manuellen Deaktivierung.',
     invalid_trainer_exception: 'Ungültiger Wert für die Trainer-Ausnahme.',
     trainer_exception_update_failed: 'Fehler beim Ändern der Trainer-Ausnahme.',
-    student_page_access_lookup_failed: 'Fehler beim Laden des Student-Page-Zugangs.'
+    student_page_access_lookup_failed: 'Fehler beim Laden des Student-Page-Zugangs.',
+    // MULTI-CHILD FAMILIENKONTO UI (Phase 4) — add_family_student/remove_family_student.
+    missing_add_student_id: 'Bitte einen Schüler auswählen.',
+    add_student_not_found: 'Schüler wurde nicht gefunden.',
+    add_student_club_mismatch: 'Dieser Schüler gehört zu einem anderen Verein.',
+    already_linked: 'Dieser Schüler ist bereits Teil dieses Familienkontos.',
+    student_already_in_another_family: 'Dieser Schüler ist bereits aktiv einem anderen Familienkonto zugeordnet.',
+    existing_link_lookup_failed: 'Fehler beim Prüfen bestehender Zuordnungen.',
+    reactivate_link_failed: 'Fehler beim Reaktivieren der Zuordnung.',
+    add_family_student_failed: 'Fehler beim Hinzufügen des Kindes.',
+    missing_remove_student_id: 'Bitte ein Kind zum Entfernen auswählen.',
+    not_active_in_this_family: 'Dieses Kind ist in diesem Familienkonto nicht (mehr) aktiv.',
+    cannot_remove_last_student: 'Der letzte verbleibende Schüler eines Familienkontos kann nicht entfernt werden.',
+    remove_family_student_failed: 'Fehler beim Entfernen des Kindes.',
+    family_students_lookup_failed: 'Fehler beim Laden der Kinder dieses Familienkontos.'
   };
   return map[code] || 'Fehler beim Speichern. Bitte erneut versuchen.';
 }
@@ -17247,7 +17274,7 @@ function saFamilienDetailSetBody(html) {
 function saFamilienHideAllDetailForms() {
   [
     'saFamilienFormCreate', 'saFamilienCreateSuccess', 'saFamilienFormLogin',
-    'saFamilienFormContactEmail', 'saFamilienFormPassword'
+    'saFamilienFormContactEmail', 'saFamilienFormPassword', 'saFamilienFormAddChild'
   ].forEach(id => {
     document.getElementById(id)?.classList.add('hidden');
   });
@@ -17279,7 +17306,8 @@ async function openSAFamilienDetail(studentId) {
   const student = (window._saFamilienLastResults || []).find(r => Number(r.id) === Number(studentId));
   window._saFamilienDetailStudent = student || { id: studentId };
   window._saFamilienDetailStatus  = null;
-  window._saStudentPageAccessStatus = null;
+  window._saFamilienChildren = [];
+  window._saStudentPageAccessByStudent = {};
 
   document.getElementById('saFamilienDetailName').textContent =
     student ? `${student.nachname || ''} ${student.vorname || ''}`.trim() : ('Schüler #' + studentId);
@@ -17310,12 +17338,12 @@ async function openSAFamilienDetail(studentId) {
     }
   }
 
-  // STUDENT PAGE SUBSCRIPTION (Phase 4) — bewusst NICHT awaited hier: eigener,
-  // vom Familienzugang-Status komplett unabhängiger Request/Container (siehe
-  // Kommentar bei #saStudentPageAccessSection) — läuft parallel zum
-  // get_status-Aufruf unten, verwaltet sein eigenes DOM selbst und blockiert
-  // den Familienzugang-Teil nicht (und umgekehrt).
-  loadStudentPageAccessSection(Number(studentId));
+  // MULTI-CHILD FAMILIENKONTO UI (Phase 4) — bewusst NICHT awaited hier:
+  // lädt Kinderliste (get_family_students) + je Kind get_student_page_access
+  // parallel zum get_status-Aufruf unten für das Familienkonto selbst;
+  // beide Bereiche verwalten ihr eigenes DOM unabhängig und blockieren sich
+  // gegenseitig nicht. Siehe refreshFamilyState() für den vollständigen Ablauf.
+  refreshFamilyState();
 
   const result = await saFamilienCallManageAccount({ action: 'get_status', studentId: Number(studentId) });
   if (result.needsAuth) return;
@@ -17333,8 +17361,9 @@ function closeSAFamilienDetailModal() {
   document.getElementById('saFamilienDetailModal').classList.add('hidden');
   window._saFamilienDetailStudent = null;
   window._saFamilienDetailStatus  = null;
-  window._saStudentPageAccessStatus = null;
-  saStudentPageHideAccessUntilForm();
+  window._saFamilienChildren = [];
+  window._saStudentPageAccessByStudent = {};
+  saFamilienHideAddChildForm();
 }
 
 function renderSAFamilienDetailStatus(data) {
@@ -17387,31 +17416,164 @@ function renderSAFamilienDetailStatus(data) {
 // saFamilienCallManageAccount() (keine eigene Auth-Logik).
 // ══════════════════════════════════════════════════════════════════════
 
-function saStudentPageSetBody(html) {
-  const el = document.getElementById('saStudentPageAccessBody');
+function saStudentPageSetBody(studentId, html) {
+  const el = document.getElementById('saStudentPageAccessBody-' + studentId);
   if (el) el.innerHTML = html;
 }
 
-function saStudentPageShowMessage(text, isError) {
-  saFamilienShowFormMessage(document.getElementById('saStudentPageAccessMessage'), text, isError);
+function saStudentPageShowMessage(studentId, text, isError) {
+  saFamilienShowFormMessage(document.getElementById('saStudentPageAccessMessage-' + studentId), text, isError);
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// MULTI-CHILD FAMILIENKONTO UI (Phase 4) — einziger Einstiegspunkt, der
+// Familienkonto-Kinderliste UND Student-Page-Zugang aller Kinder neu lädt
+// und die Karten-Reihe komplett neu aufbaut. Wird nach JEDEM Öffnen des
+// Familienkonto-Modals UND nach jedem erfolgreichen add_family_student/
+// remove_family_student aufgerufen (siehe saFamilienAddChildSelect/
+// saFamilienRemoveChild) — NICHT nur eine einzelne Karte aktualisiert,
+// damit die UI immer exakt dem Backend-Stand entspricht, auch falls sich
+// durch eine zwischenzeitliche Aktion (anderer Tab, Race) mehr geändert hat
+// als nur das eine hinzugefügte/entfernte Kind. p_family_id kommt dabei
+// NIE vom Client — get_family_students wird ausschließlich mit dem bereits
+// server-seitig aufgelösten Anchor-studentId aufgerufen (manage-family-account
+// löst family_id intern auf, siehe Kommentar dort).
+// ══════════════════════════════════════════════════════════════════════
+async function refreshFamilyState() {
+  const anchorId = Number(window._saFamilienDetailStudent?.id);
+  if (!anchorId) return;
+
+  document.getElementById('saStudentPageCardsRow').innerHTML = '<div class="sa-family-detail-loading">Wird geladen…</div>';
+  document.getElementById('saFamilienChildrenList').innerHTML = '';
+
+  const result = await saFamilienCallManageAccount({ action: 'get_family_students', studentId: anchorId });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    document.getElementById('saStudentPageCardsRow').innerHTML =
+      '<div class="sa-family-detail-error">Fehler beim Laden der Kinder dieses Familienkontos.</div>';
+    return;
+  }
+
+  // 1) Aktuelle ACTIVE-Kinderliste übernehmen (ersetzt den bisherigen Stand
+  //    vollständig, statt ihn zu ergänzen).
+  const children = result.data.students || [];
+  window._saFamilienChildren = children;
+  const activeIds = new Set(children.map(c => Number(c.student_id)));
+
+  // 2) Aus dem Frontend-State entfernen, was nicht mehr aktiv ist (z.B. das
+  //    gerade entfernte Kind) — verhindert veraltete Karten/Zustände.
+  Object.keys(window._saStudentPageAccessByStudent).forEach(id => {
+    if (!activeIds.has(Number(id))) delete window._saStudentPageAccessByStudent[id];
+  });
+
+  // 3) Für jedes aktuell aktive Kind get_student_page_access laden — parallel,
+  //    aber jedes Ergebnis wird unter seinem EIGENEN studentId in der Map
+  //    abgelegt, nie in einem gemeinsamen Singleton.
+  await Promise.all(children.map(async (child) => {
+    const sid = Number(child.student_id);
+    const accessResult = await saFamilienCallManageAccount({ action: 'get_student_page_access', studentId: sid });
+    if (accessResult.ok) {
+      window._saStudentPageAccessByStudent[sid] = accessResult.data;
+    } else {
+      window._saStudentPageAccessByStudent[sid] = null;
+    }
+  }));
+
+  // 4) Erst jetzt, mit vollständig konsistentem State, neu rendern.
+  renderFamilienChildrenList();
+  renderStudentPageCardsRow();
+}
+
+function renderFamilienChildrenList() {
+  const listEl = document.getElementById('saFamilienChildrenList');
+  if (!listEl) return;
+  const children = window._saFamilienChildren || [];
+  if (!children.length) {
+    listEl.innerHTML = '<li class="sa-family-children-empty">Keine Kinder in diesem Familienkonto.</li>';
+    return;
+  }
+  listEl.innerHTML = children.map(c =>
+    `<li>${escapeHtml(`${c.student_first_name || ''} ${c.student_last_name || ''}`.trim() || ('Schüler #' + c.student_id))}</li>`
+  ).join('');
+}
+
+function renderStudentPageCardsRow() {
+  const rowEl = document.getElementById('saStudentPageCardsRow');
+  if (!rowEl) return;
+  const children = window._saFamilienChildren || [];
+  if (!children.length) {
+    rowEl.innerHTML = '<div class="sa-family-detail-loading">Keine aktiven Kinder.</div>';
+    return;
+  }
+  rowEl.innerHTML = children.map(c => {
+    const sid = Number(c.student_id);
+    const name = `${c.student_first_name || ''} ${c.student_last_name || ''}`.trim() || ('Schüler #' + sid);
+    return `
+      <div id="saStudentPageCard-${sid}" class="add-trainer-modern-card sa-student-page-card" data-student-id="${sid}">
+        <div class="sa-student-page-card-header">
+          <div class="sa-student-page-card-kicker">Student Page</div>
+          <div class="sa-student-page-card-name">${escapeHtml(name)}</div>
+          <span id="saStudentPageStatusBadge-${sid}" class="sa-family-status-badge sa-family-status-none">…</span>
+        </div>
+        <div id="saStudentPageAccessBody-${sid}">Wird geladen…</div>
+        <div id="saStudentPageFormAccessUntil-${sid}" class="sa-student-page-subform hidden">
+          <div class="add-trainer-form-grid">
+            <div class="add-trainer-field">
+              <label>Neues Ablaufdatum</label>
+              <input id="saStudentPageAccessUntilInput-${sid}" type="date">
+            </div>
+          </div>
+          <div class="add-trainer-buttons">
+            <button class="add-trainer-save" onclick="saStudentPageSubmitAccessUntil(${sid})">✓ Speichern</button>
+            <button class="sa-btn-cancel" onclick="saStudentPageHideAccessUntilForm(${sid})">Abbrechen</button>
+            <button class="sa-family-manage-btn" onclick="saStudentPageRemoveAccessUntil(${sid})">♾️ Unbegrenzt setzen</button>
+          </div>
+        </div>
+        <div id="saStudentPageAccessMessage-${sid}" class="trainer-edit-message hidden"></div>
+        <div id="saStudentPageDangerZone-${sid}" class="sa-student-page-danger-zone"></div>
+        <div class="sa-student-page-card-footer">
+          <button class="sa-family-manage-btn" onclick="saFamilienPreview(${sid})">👁 Vorschau</button>
+          <button class="sa-btn-danger" onclick="saFamilienRemoveChild(${sid})">Kind aus Familienkonto entfernen</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  children.forEach(c => {
+    const sid = Number(c.student_id);
+    const data = window._saStudentPageAccessByStudent[sid];
+    if (data) {
+      renderStudentPageAccessSection(sid, data);
+    } else {
+      saStudentPageSetBody(sid, '<div class="sa-family-detail-error">Fehler beim Laden des Student-Page-Zugangs.</div>');
+    }
+  });
+}
+
+// Lädt get_student_page_access NUR für EIN Kind neu (nach set_access_until/
+// set_manual_disabled/set_trainer_exception — diese Aktionen ändern nie die
+// Kinderliste selbst, ein voller refreshFamilyState() wäre unnötig) und
+// rendert AUSSCHLIESSLICH dessen eigene Karte. Schreibt/liest ausschließlich
+// window._saStudentPageAccessByStudent[studentId] — andere Karten/Kinder
+// werden nicht berührt.
 async function loadStudentPageAccessSection(studentId) {
-  document.getElementById('saStudentPageDangerZone').innerHTML = '';
-  document.getElementById('saStudentPageStatusBadge').textContent = '…';
-  saStudentPageHideAccessUntilForm();
-  saStudentPageSetBody('Wird geladen…');
+  document.getElementById('saStudentPageDangerZone-' + studentId).innerHTML = '';
+  const badgeEl = document.getElementById('saStudentPageStatusBadge-' + studentId);
+  if (badgeEl) badgeEl.textContent = '…';
+  saStudentPageHideAccessUntilForm(studentId);
+  saStudentPageSetBody(studentId, 'Wird geladen…');
 
   const result = await saFamilienCallManageAccount({ action: 'get_student_page_access', studentId });
   if (result.needsAuth) return;
 
   if (!result.ok) {
-    saStudentPageSetBody('<div class="sa-family-detail-error">Fehler beim Laden des Student-Page-Zugangs.</div>');
+    saStudentPageSetBody(studentId, '<div class="sa-family-detail-error">Fehler beim Laden des Student-Page-Zugangs.</div>');
     return;
   }
 
-  window._saStudentPageAccessStatus = result.data;
-  renderStudentPageAccessSection(result.data);
+  window._saStudentPageAccessByStudent[studentId] = result.data;
+  renderStudentPageAccessSection(studentId, result.data);
 }
 
 // Reine Darstellungs-Logik: bildet NUR bereits vom Resolver berechnete Felder
@@ -17430,7 +17592,7 @@ async function loadStudentPageAccessSection(studentId) {
 // aussehenden grünen Buttons. Kein Feld/keine Aktion wurde entfernt, nur
 // neu angeordnet — dieselben 3 Backend-Actions (set_access_until/
 // set_manual_disabled/set_trainer_exception), derselbe Re-read-Fluss.
-function renderStudentPageAccessSection(data) {
+function renderStudentPageAccessSection(studentId, data) {
   let badgeClass = 'sa-family-status-active';
   let badgeText  = 'Aktiv';
   if (data.manualDisabled) {
@@ -17446,7 +17608,7 @@ function renderStudentPageAccessSection(data) {
     badgeClass = 'sa-family-status-warning';
     badgeText  = 'Läuft bald ab';
   }
-  const badgeEl = document.getElementById('saStudentPageStatusBadge');
+  const badgeEl = document.getElementById('saStudentPageStatusBadge-' + studentId);
   badgeEl.className = `sa-family-status-badge ${badgeClass}`;
   badgeEl.textContent = badgeText;
 
@@ -17477,13 +17639,13 @@ function renderStudentPageAccessSection(data) {
     ? '<span class="sa-family-status-badge sa-family-status-active">✓ Zugang erlaubt</span>'
     : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Zugang gesperrt</span>';
 
-  saStudentPageSetBody(`
+  saStudentPageSetBody(studentId, `
     <div class="sa-settings-row">
       <div class="sa-settings-row-main">
         <span class="sa-settings-row-label">Ablaufdatum</span>
         <span class="sa-settings-row-value">
           ${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}
-          <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm()">Ändern</button>
+          <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm(${studentId})">Ändern</button>
         </span>
       </div>
     </div>
@@ -17507,7 +17669,7 @@ function renderStudentPageAccessSection(data) {
         <span class="sa-settings-row-value">
           <label class="sa-settings-toggle">
             <input type="checkbox" ${data.trainerAccessAfterExpiry ? 'checked' : ''}
-              onchange="saStudentPageToggleTrainerException(this.checked)">
+              onchange="saStudentPageToggleTrainerException(${studentId}, this.checked)">
           </label>
         </span>
       </div>
@@ -17515,65 +17677,63 @@ function renderStudentPageAccessSection(data) {
     </div>
   `);
 
-  const dangerZone = document.getElementById('saStudentPageDangerZone');
+  const dangerZone = document.getElementById('saStudentPageDangerZone-' + studentId);
   dangerZone.innerHTML = data.manualDisabled
-    ? `<button class="sa-btn-restore" onclick="saStudentPageToggleManualDisabled(false)">🔓 Manuelle Sperre aufheben</button>
+    ? `<button class="sa-btn-restore" onclick="saStudentPageToggleManualDisabled(${studentId}, false)">🔓 Manuelle Sperre aufheben</button>
        <p class="sa-settings-hint">Betrifft ausschließlich die Student-Page dieses Schülers.</p>`
-    : `<button class="sa-btn-danger" onclick="saStudentPageToggleManualDisabled(true)">🔒 Student Page manuell sperren</button>
+    : `<button class="sa-btn-danger" onclick="saStudentPageToggleManualDisabled(${studentId}, true)">🔒 Student Page manuell sperren</button>
        <p class="sa-settings-hint">Sperrt Familie/Schüler UND Trainer für die Student-Page dieses Schülers — betrifft NICHT das Familienkonto (siehe unten).</p>`;
 }
 
-function saStudentPageShowAccessUntilForm() {
-  const formEl = document.getElementById('saStudentPageFormAccessUntil');
+function saStudentPageShowAccessUntilForm(studentId) {
+  const formEl = document.getElementById('saStudentPageFormAccessUntil-' + studentId);
   if (!formEl) return;
   formEl.classList.remove('hidden');
-  const input = document.getElementById('saStudentPageAccessUntilInput');
-  if (input) input.value = window._saStudentPageAccessStatus?.accessUntil || '';
+  const input = document.getElementById('saStudentPageAccessUntilInput-' + studentId);
+  if (input) input.value = window._saStudentPageAccessByStudent[studentId]?.accessUntil || '';
 }
 
-function saStudentPageHideAccessUntilForm() {
-  document.getElementById('saStudentPageFormAccessUntil')?.classList.add('hidden');
+function saStudentPageHideAccessUntilForm(studentId) {
+  document.getElementById('saStudentPageFormAccessUntil-' + studentId)?.classList.add('hidden');
 }
 
-async function saStudentPageSubmitAccessUntil() {
-  const input = document.getElementById('saStudentPageAccessUntilInput');
+async function saStudentPageSubmitAccessUntil(studentId) {
+  const input = document.getElementById('saStudentPageAccessUntilInput-' + studentId);
   const value = input ? input.value : '';
   if (!value) {
-    saStudentPageShowMessage('Bitte ein Ablaufdatum wählen.', true);
+    saStudentPageShowMessage(studentId, 'Bitte ein Ablaufdatum wählen.', true);
     return;
   }
 
-  const studentId = Number(window._saFamilienDetailStudent.id);
   const result = await saFamilienCallManageAccount({ action: 'set_access_until', studentId, accessUntil: value });
   if (result.needsAuth) return;
 
   if (!result.ok) {
-    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    saStudentPageShowMessage(studentId, saFamilienErrorMessage(result), true);
     return;
   }
 
-  saStudentPageHideAccessUntilForm();
+  saStudentPageHideAccessUntilForm(studentId);
   await loadStudentPageAccessSection(studentId);
-  saStudentPageShowMessage('Ablaufdatum gespeichert.', false);
+  saStudentPageShowMessage(studentId, 'Ablaufdatum gespeichert.', false);
 }
 
-async function saStudentPageRemoveAccessUntil() {
+async function saStudentPageRemoveAccessUntil(studentId) {
   if (!confirm('Ablaufdatum wirklich entfernen? Der Zugang wird dadurch unbegrenzt (nicht verwaltet).')) return;
 
-  const studentId = Number(window._saFamilienDetailStudent.id);
   const result = await saFamilienCallManageAccount({ action: 'set_access_until', studentId, accessUntil: null });
   if (result.needsAuth) return;
 
   if (!result.ok) {
-    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    saStudentPageShowMessage(studentId, saFamilienErrorMessage(result), true);
     return;
   }
 
   await loadStudentPageAccessSection(studentId);
-  saStudentPageShowMessage('Zugang ist jetzt unbegrenzt.', false);
+  saStudentPageShowMessage(studentId, 'Zugang ist jetzt unbegrenzt.', false);
 }
 
-async function saStudentPageToggleManualDisabled(disable) {
+async function saStudentPageToggleManualDisabled(studentId, disable) {
   if (disable) {
     const confirmMsg = 'Student Page für diesen Schüler wirklich manuell sperren? Familie/Schüler UND Trainer ' +
       'verlieren dadurch sofort den Zugriff auf die Student-Seite dieses Schülers — unabhängig vom Ablaufdatum. ' +
@@ -17581,31 +17741,29 @@ async function saStudentPageToggleManualDisabled(disable) {
     if (!confirm(confirmMsg)) return;
   }
 
-  const studentId = Number(window._saFamilienDetailStudent.id);
   const result = await saFamilienCallManageAccount({ action: 'set_manual_disabled', studentId, manualDisabled: disable });
   if (result.needsAuth) return;
 
   if (!result.ok) {
-    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    saStudentPageShowMessage(studentId, saFamilienErrorMessage(result), true);
     return;
   }
 
   await loadStudentPageAccessSection(studentId);
-  saStudentPageShowMessage(disable ? 'Student Page wurde manuell gesperrt.' : 'Manuelle Sperre wurde aufgehoben.', false);
+  saStudentPageShowMessage(studentId, disable ? 'Student Page wurde manuell gesperrt.' : 'Manuelle Sperre wurde aufgehoben.', false);
 }
 
-async function saStudentPageToggleTrainerException(enable) {
-  const studentId = Number(window._saFamilienDetailStudent.id);
+async function saStudentPageToggleTrainerException(studentId, enable) {
   const result = await saFamilienCallManageAccount({ action: 'set_trainer_exception', studentId, trainerAccessAfterExpiry: enable });
   if (result.needsAuth) return;
 
   if (!result.ok) {
-    saStudentPageShowMessage(saFamilienErrorMessage(result), true);
+    saStudentPageShowMessage(studentId, saFamilienErrorMessage(result), true);
     return;
   }
 
   await loadStudentPageAccessSection(studentId);
-  saStudentPageShowMessage(enable ? 'Trainer-Ausnahme aktiviert.' : 'Trainer-Ausnahme entfernt.', false);
+  saStudentPageShowMessage(studentId, enable ? 'Trainer-Ausnahme aktiviert.' : 'Trainer-Ausnahme entfernt.', false);
 }
 
 function saFamilienShowCreateForm() {
@@ -17792,6 +17950,135 @@ async function saFamilienToggleActive(activate) {
   await openSAFamilienDetail(studentId);
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// MULTI-CHILD FAMILIENKONTO UI (Phase 4) — "+ Kind hinzufügen". Kompakte
+// Suche unter bereits existierenden Schülern DESSELBEN Vereins wie das
+// Familienkonto (Anchor-Schüler club_id) — legt NIEMALS einen neuen Schüler
+// an, ruft ausschließlich das bereits bestehende Backend-Action
+// add_family_student mit dem Anchor-studentId + dem ausgewählten
+// addStudentId auf. family_id wird NIE vom Client gesendet.
+// ══════════════════════════════════════════════════════════════════════
+let _saFamilienAddChildSearchTimer = null;
+
+function saFamilienShowAddChildForm() {
+  saFamilienHideAllDetailForms();
+  document.getElementById('saFamilienFormAddChild').classList.remove('hidden');
+  document.getElementById('saFamilienAddChildSearchInput').value = '';
+  document.getElementById('saFamilienAddChildResults').innerHTML = '';
+  const msgEl = document.getElementById('saFamilienAddChildMessage');
+  if (msgEl) msgEl.classList.add('hidden');
+}
+
+function saFamilienHideAddChildForm() {
+  document.getElementById('saFamilienFormAddChild')?.classList.add('hidden');
+}
+
+// Debounced (300ms) — vermeidet eine Anfrage pro Tastenanschlag. Sucht NUR
+// im Verein des Familienkontos (club_id des Anchor-Schülers, niemals
+// club-übergreifend) und blendet bereits aktive Kinder dieses Familienkontos
+// aus den Ergebnissen aus (rein kosmetisch — die eigentliche, verbindliche
+// Prüfung bleibt server-seitig in add_family_student: already_linked/
+// student_already_in_another_family/add_student_club_mismatch).
+function saFamilienAddChildSearch(query) {
+  clearTimeout(_saFamilienAddChildSearchTimer);
+  const resultsEl = document.getElementById('saFamilienAddChildResults');
+  const trimmed = (query || '').trim();
+  if (!trimmed) {
+    resultsEl.innerHTML = '';
+    return;
+  }
+  _saFamilienAddChildSearchTimer = setTimeout(async () => {
+    const clubId = window._saFamilienDetailStudent?.club_id;
+    if (!clubId) { resultsEl.innerHTML = ''; return; }
+
+    resultsEl.innerHTML = '<div class="sa-family-detail-loading">Suche…</div>';
+
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    let studentsQuery = db.from('students').select('id, vorname, nachname, geburtsdatum, club_id').eq('club_id', clubId);
+    if (parts.length === 1) {
+      studentsQuery = studentsQuery.or(`vorname.ilike.%${parts[0]}%,nachname.ilike.%${parts[0]}%`);
+    } else {
+      studentsQuery = studentsQuery.ilike('vorname', `%${parts[0]}%`).ilike('nachname', `%${parts.slice(1).join(' ')}%`);
+    }
+
+    const { data: results, error } = await studentsQuery.order('nachname', { ascending: true }).limit(20);
+
+    if (error) {
+      resultsEl.innerHTML = '<div class="sa-family-detail-error">Fehler bei der Suche.</div>';
+      return;
+    }
+
+    const currentChildIds = new Set((window._saFamilienChildren || []).map(c => Number(c.student_id)));
+    const filtered = (results || []).filter(r => !currentChildIds.has(Number(r.id)));
+
+    if (!filtered.length) {
+      resultsEl.innerHTML = '<div class="sa-family-detail-loading">Keine passenden Schüler gefunden.</div>';
+      return;
+    }
+
+    resultsEl.innerHTML = filtered.map(r => {
+      const name = escapeHtml(`${r.vorname || ''} ${r.nachname || ''}`.trim());
+      const geb = r.geburtsdatum ? formatDateDE(r.geburtsdatum) : '-';
+      return `
+        <div class="sa-add-child-result-row" onclick="saFamilienAddChildSelect(${Number(r.id)})">
+          <span>${name}</span>
+          <span class="sa-add-child-result-meta">${geb}</span>
+        </div>
+      `;
+    }).join('');
+  }, 300);
+}
+
+async function saFamilienAddChildSelect(addStudentId) {
+  const msgEl = document.getElementById('saFamilienAddChildMessage');
+  saFamilienShowFormMessage(msgEl, 'Wird hinzugefügt…', false);
+
+  const anchorId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'add_family_student', studentId: anchorId, addStudentId });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowFormMessage(msgEl, saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  saFamilienHideAddChildForm();
+  await refreshFamilyState();
+  saFamilienShowActionMessage('Kind wurde zum Familienkonto hinzugefügt.', false);
+}
+
+// "Kind aus Familienkonto entfernen" — lebt bewusst auf der jeweiligen
+// Student-Page-Karte (nicht in der Kinderliste links), siehe
+// renderStudentPageCardsRow(). Bestätigung über die bereits im Projekt
+// etablierte showCustomConfirm()-Komponente (Promise-basiert). Ruft
+// ausschließlich das bestehende Backend-Action remove_family_student auf —
+// niemals ein Hard-Delete, das Backend suspendiert nur die Verknüpfung.
+async function saFamilienRemoveChild(removeStudentId) {
+  const child = (window._saFamilienChildren || []).find(c => Number(c.student_id) === Number(removeStudentId));
+  const name = child ? `${child.student_first_name || ''} ${child.student_last_name || ''}`.trim() : ('Schüler #' + removeStudentId);
+
+  const confirmed = await showCustomConfirm({
+    title: 'Kind entfernen',
+    message: `${name} wirklich aus diesem Familienkonto entfernen? Der Zugang zur Student-Page bleibt bestehen — nur die Familienzugehörigkeit wird beendet.`,
+    confirmText: 'Entfernen',
+    cancelText: 'Abbrechen',
+    type: 'danger'
+  });
+  if (!confirmed) return;
+
+  const anchorId = Number(window._saFamilienDetailStudent.id);
+  const result = await saFamilienCallManageAccount({ action: 'remove_family_student', studentId: anchorId, removeStudentId: Number(removeStudentId) });
+  if (result.needsAuth) return;
+
+  if (!result.ok) {
+    saFamilienShowActionMessage(saFamilienErrorMessage(result), true);
+    return;
+  }
+
+  await refreshFamilyState();
+  saFamilienShowActionMessage('Kind wurde aus dem Familienkonto entfernt.', false);
+}
+
 // Sicherer read-only Preview — umgesetzt: kurzlebiger (5 Minuten),
 // einmaliger Support-Token (create-student-preview-token, geprüft über
 // dieselbe duale Super-Admin-Auth wie manage-family-account) + eigene
@@ -17864,15 +18151,20 @@ function saStudentPreviewErrorMessage(errorCode) {
 // einem neuen Tab — KEIN Duplikat der React-Seite in Block 1, KEIN
 // Family-Login/Impersonation. Fordert bei JEDEM Öffnen einen FRISCHEN
 // Ein-mal-Token an (nie einen bereits verwendeten Token wiederverwenden).
-async function saFamilienPreview() {
-  const student = window._saFamilienDetailStudent;
-  if (!student || student.id == null) return;
+// studentId optional — Standard ist der Anchor-Schüler des geöffneten
+// Familienkontos (bestehendes Verhalten, Button "Family-/Student-Seite
+// ansehen" in der Familienkonto-Aktionsleiste). Jede Student-Page-Karte
+// (Phase 4) übergibt stattdessen explizit IHRE EIGENE studentId, damit die
+// Vorschau immer zum richtigen Kind gehört.
+async function saFamilienPreview(studentId) {
+  const targetId = studentId != null ? Number(studentId) : window._saFamilienDetailStudent?.id;
+  if (targetId == null) return;
 
-  window._saStudentPreviewCurrentStudentId = student.id;
+  window._saStudentPreviewCurrentStudentId = targetId;
 
   saFamilienShowActionMessage('Vorschau wird vorbereitet…', false);
 
-  const result = await saStudentPreviewRequestToken(student.id);
+  const result = await saStudentPreviewRequestToken(targetId);
   if (!result.ok) {
     saFamilienShowActionMessage(saStudentPreviewErrorMessage(result.error), true);
     return;

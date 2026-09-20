@@ -16644,8 +16644,14 @@ body.sa-standalone-mode #clubPaymentWarning {
   background: rgba(212,175,55,0.24);
 }
 
+/* MULTI-CHILD FAMILIENKONTO UI (Phase 4) — von 640px auf 1040px verbreitert,
+   damit links das Familienkonto (fixe 300px-Spalte) UND rechts mehrere
+   Student-Page-Karten nebeneinander Platz haben, bevor die Kartenreihe
+   selbst horizontal zu scrollen beginnt (siehe .sa-student-page-cards-row
+   weiter unten). Unter 768px wieder auf volle verfügbare Breite reduziert
+   (siehe Media Query weiter unten in dieser Datei). */
 .sa-family-detail-panel {
-  width: min(640px, calc(100vw - 32px));
+  width: min(1040px, calc(100vw - 32px));
 }
 
 .sa-family-detail-loading,
@@ -16874,6 +16880,185 @@ body.sa-standalone-mode #clubPaymentWarning {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MULTI-CHILD FAMILIENKONTO UI (Phase 4) — Zwei-Bereiche-Layout: LINKS das
+   Familienkonto (fixe Breite), RECHTS eine horizontal scrollbare Reihe von
+   Student-Page-Karten (eine pro aktivem Kind, beliebig viele). Beide Spalten
+   sind normale Flex-Kinder INNERHALB des bereits bestehenden
+   .sa-modal-body-Scrollkontexts (overflow-y:auto, siehe oben) — es wird
+   bewusst KEIN zweiter eigener vertikaler Scrollcontainer eingeführt, nur
+   die Kartenreihe bekommt eigenes overflow-x. Das vergrößerte
+   .sa-family-detail-panel gilt NUR für dieses eine Modal (Descendant/Klassen-
+   Scope), alle anderen Super-Admin-Modals (Standard 320px) sind unberührt.
+   Die Breitenänderung selbst (640px -> 1040px) sitzt direkt an der
+   bestehenden .sa-family-detail-panel-Regel weiter oben in dieser Datei —
+   keine zweite, konkurrierende width-Deklaration hier. */
+.sa-family-columns {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  margin-top: 4px;
+}
+
+.sa-family-left-col {
+  flex: 0 0 300px;
+  width: 300px;
+  min-width: 0;
+}
+
+/* min-width:0 ist hier notwendig, DAMIT overflow-x:auto auf einem Flex-Kind
+   überhaupt greifen kann (Flexbox-Standardverhalten: ein Flex-Item schrumpft
+   sonst nie unter seinen Inhalt) — ohne das würde die Kartenreihe den ganzen
+   Modal-Panel in die Breite drücken statt selbst zu scrollen. */
+.sa-family-students-area {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sa-student-page-cards-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.sa-family-children-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.45);
+  margin: 18px 0 6px;
+}
+
+.sa-family-children-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.sa-family-children-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-size: 13px;
+  color: #e8e8e8;
+}
+
+.sa-family-children-list li:last-child { border-bottom: none; }
+
+.sa-family-children-empty {
+  color: rgba(255,255,255,0.45) !important;
+  font-style: italic;
+}
+
+/* Jede Student-Page-Karte bekommt in der Reihe eine feste Breite (statt der
+   sonst üblichen vollen Breite von .add-trainer-modern-card) und keinen
+   eigenen Top-Margin (der Abstand kommt vom .sa-student-page-cards-row-Gap).
+   box-sizing:border-box ist hier PFLICHT: .add-trainer-modern-card hat 26px
+   Padding und selbst KEIN border-box (globale Basisklasse, absichtlich nicht
+   angetastet) — ohne border-box würde width:100% auf Mobile (Media Query
+   unten) das Padding ZUSÄTZLICH addieren und die Karte über den Container
+   hinaus schieben (echter horizontaler Overflow, beim Browser-Test
+   gefunden). */
+.sa-student-page-cards-row .sa-student-page-card {
+  flex: 0 0 280px;
+  width: 280px;
+  margin-top: 0;
+  box-sizing: border-box;
+}
+
+.sa-student-page-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.sa-student-page-card-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
+}
+
+.sa-student-page-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.25;
+}
+
+.sa-student-page-card-footer {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sa-add-child-results {
+  margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sa-add-child-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(15,23,42,0.08);
+  cursor: pointer;
+  font-size: 13px;
+  color: #111827;
+}
+
+.sa-add-child-result-row:last-child { border-bottom: none; }
+.sa-add-child-result-row:hover { background: rgba(212,175,55,0.1); }
+
+.sa-add-child-result-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Unter 768px: beide Bereiche stapeln vertikal statt nebeneinander, die
+   Kartenreihe verliert ihr horizontales Scrollen (jede Karte volle Breite) —
+   "keine kaputten horizontalen Layouts auf mobil" (Vorgabe Phase 4). */
+@media (max-width: 768px) {
+  .sa-family-detail-panel {
+    width: calc(100vw - 32px);
+  }
+  /* align-items:stretch überschreibt bewusst das Desktop-flex-start
+     (.sa-family-columns Basisregel oben) — in flex-direction:column ist
+     die Cross-Achse jetzt horizontal; ohne stretch sizen sich die Kinder
+     nach ihrem Inhalt statt auf volle Breite, was zu echtem horizontalem
+     Overflow führte (beim Browser-Test auf 375px gefunden: .sa-family-
+     students-area/.sa-student-page-cards-row wurden breiter als ihr
+     Container). */
+  .sa-family-columns {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sa-family-left-col {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .sa-student-page-cards-row {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-x: visible;
+  }
+  .sa-student-page-cards-row .sa-student-page-card {
+    width: 100%;
+    flex: 1 1 auto;
+  }
 }
 
 /* .sa-family-detail-grid используется в ДВУХ разных по фону контейнерах:

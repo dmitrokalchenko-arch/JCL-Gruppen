@@ -17640,25 +17640,54 @@ function renderStudentPageAccessSection(studentId, data) {
   badgeEl.className = `sa-family-status-badge ${badgeClass}`;
   badgeEl.textContent = '● ' + badgeText;
 
-  let remainingRow = '';
-  if (data.subscriptionManaged) {
-    let remainingText;
-    if (data.isExpired) {
-      remainingText = `Abgelaufen vor ${Math.abs(data.daysRemaining)} Tagen`;
-    } else if (data.daysRemaining === 0) {
-      remainingText = 'Läuft heute ab';
-    } else {
-      remainingText = `Noch ${data.daysRemaining} Tage gültig`;
-    }
-    remainingRow = `
+  // ABONNEMENT-Block (Punkt 1-8 der Aufgabe) — reine Darstellung, KEINE neue
+  // Berechnung: daysRemaining/isExpired/warningActive kommen bereits
+  // fertig berechnet vom Server (get_student_page_access, siehe
+  // JKL_STUDENT_PARENT_PORTAL/supabase/migrations/...create_student_page_
+  // access_foundation.sql) — dort läuft die Datums-Arithmetik bereits
+  // date-only in Europe/Berlin (v_today := (now() at time zone
+  // 'Europe/Berlin')::date; v_days_remaining := v_access_until - v_today),
+  // exakt die geforderte timezone-sichere Berechnung. Hier wird NICHTS neu
+  // aus einem Date-Objekt berechnet — nur data.daysRemaining/isExpired
+  // ausgelesen und in Text übersetzt (inkl. korrekter Singular/Plural-Form).
+  let indicatorText;
+  let indicatorTone;
+  let subscriptionHint = '';
+  if (!data.subscriptionManaged) {
+    indicatorText = 'Keine zeitliche Begrenzung';
+    indicatorTone = 'neutral';
+  } else if (data.isExpired) {
+    indicatorText = 'Abgelaufen';
+    indicatorTone = 'danger';
+    const daysAgo = Math.abs(data.daysRemaining);
+    const hintText = daysAgo === 1 ? 'Seit 1 Tag abgelaufen' : `Seit ${daysAgo} Tagen abgelaufen`;
+    subscriptionHint = `<div class="sa-subscription-hint">${escapeHtml(hintText)}</div>`;
+  } else if (data.daysRemaining === 0) {
+    indicatorText = 'Läuft heute ab';
+    indicatorTone = 'warning';
+  } else {
+    indicatorText = data.daysRemaining === 1 ? 'Noch 1 Tag' : `Noch ${data.daysRemaining} Tage`;
+    indicatorTone = data.warningActive ? 'warning' : 'positive';
+  }
+
+  const subscriptionBlock = `
+    <div class="sa-subscription-block">
+      <div class="sa-settings-subheading sa-subscription-heading">Abonnement</div>
       <div class="sa-settings-row">
         <div class="sa-settings-row-main">
-          <span class="sa-settings-row-label">Verbleibende Zeit</span>
-          <span class="sa-settings-row-value">${escapeHtml(remainingText)}</span>
+          <span class="sa-settings-row-label">Gültig bis</span>
+          <span class="sa-settings-row-value">
+            ${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}
+            <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm(${studentId})">Ändern</button>
+          </span>
         </div>
       </div>
-    `;
-  }
+      <div class="sa-subscription-indicator sa-subscription-indicator--${indicatorTone}">
+        <span class="sa-subscription-dot"></span>${escapeHtml(indicatorText)}
+      </div>
+      ${subscriptionHint}
+    </div>
+  `;
 
   const familyBadge = data.familySubscriptionAllowsAccess
     ? '<span class="sa-family-status-badge sa-family-status-active">✓ Erlaubt</span>'
@@ -17668,16 +17697,7 @@ function renderStudentPageAccessSection(studentId, data) {
     : '<span class="sa-family-status-badge sa-family-status-blocked">✕ Gesperrt</span>';
 
   saStudentPageSetBody(studentId, `
-    <div class="sa-settings-row">
-      <div class="sa-settings-row-main">
-        <span class="sa-settings-row-label">Ablauf</span>
-        <span class="sa-settings-row-value">
-          ${data.accessUntil ? escapeHtml(formatDateDE(data.accessUntil)) : 'Unbegrenzt'}
-          <button class="sa-family-manage-btn" onclick="saStudentPageShowAccessUntilForm(${studentId})">Ändern</button>
-        </span>
-      </div>
-    </div>
-    ${remainingRow}
+    ${subscriptionBlock}
     <div class="sa-settings-subheading">Zugriff</div>
     <div class="sa-settings-row">
       <div class="sa-settings-row-main">
